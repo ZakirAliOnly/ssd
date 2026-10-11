@@ -33,9 +33,13 @@ test("stock quantities must be nonnegative whole units", () => {
   assert.equal(normalizeProduct({ category_id, quantity: 0 }, true).quantity, 0);
 });
 
-test("product edits cannot overwrite stock", () => {
+test("product stock edits require the previous quantity", () => {
   for (const data of [{ quantity: 10 }, { quantity: 0 }, { expected_quantity: 10 }]) {
-    assert.throws(() => normalizeProduct(data, false), /Stock quantity cannot be edited/);
+    assert.throws(() => normalizeProduct(data, false), /Reload the product/);
+  }
+  assert.equal(normalizeProduct({ quantity: 0, expected_quantity: 10 }, false).quantity, 0);
+  for (const quantity of [-1, 1.5, 2147483648]) {
+    assert.throws(() => normalizeProduct({ quantity, expected_quantity: 10 }, false), ProductValidationError);
   }
 });
 

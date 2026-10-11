@@ -54,6 +54,31 @@ export async function createOpeningBatch(tx: Prisma.TransactionClient, product: 
     remaining_qty: product.quantity, expiry_date: product.expiry_date, received_date: product.created_at } });
 }
 
+/** Caller holds the product row lock; adjustments preserve existing sale allocations. */
+export async function adjustProductStock(tx: Prisma.TransactionClient, product: {
+  id: string; quantity: number; expiry_date: Date | null;
+}, quantity: number) {
+  const batches = await tx.stockBatch.findMany({ where: { product_id: product.id, remaining_qty: { gt: 0 } },
+    orderBy: [{ received_date: "asc" }, { created_at: "asc" }, { id: "asc" }] });
+  if (batches.reduce((sum, batch) => sum + batch.remaining_qty, 0) !== product.quantity) {
+    throw new InventoryError("Product stock and batches do not match. Reload before saving.");
+  }
+  const delta = quantity - product.quantity;
+  if (delta > 0) {
+    await tx.stockBatch.create({ data: { product_id: product.id, received_qty: delta, remaining_qty: delta,
+      expiry_date: product.expiry_date, received_date: new Date() } });
+  } else {
+    let needed = -delta;
+    for (const batch of batches) {
+      if (!needed) break;
+      const removed = Math.min(needed, batch.remaining_qty);
+      await tx.stockBatch.update({ where: { id: batch.id }, data: { remaining_qty: { decrement: removed } } });
+      needed -= removed;
+    }
+  }
+  await syncProductStock(tx, product.id);
+}
+
 async function adjustBatches(tx: Prisma.TransactionClient, productId: string, consumed: number, invoiceId: string) {
   if (consumed > 0) {
     const batches = await tx.stockBatch.findMany({ where: { product_id: productId, remaining_qty: { gt: 0 } },

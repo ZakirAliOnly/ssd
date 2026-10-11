@@ -4,7 +4,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { normalizeCategory, normalizeProduct, ProductValidationError } from "@/lib/productValidation";
 import { purchaseLines, purchaseDate, receivePurchaseItems } from "@/lib/purchaseInventory";
 import type { Prisma } from "@prisma/client";
-import { applyStockChange, invoiceStockLines, InventoryError, createOpeningBatch } from "@/lib/inventory";
+import { applyStockChange, invoiceStockLines, InventoryError, createOpeningBatch, adjustProductStock } from "@/lib/inventory";
 import { canAccessTable } from "@/lib/moduleAccess";
 
 // Map Supabase snake_case table names → Prisma camelCase model accessors
@@ -607,6 +607,20 @@ export async function POST(req: NextRequest) {
     if (operation === "update") {
       const where = buildWhere(filters, table);
       const updateData = await prepareData((data ?? {}) as Record<string, unknown>, false);
+      if (table === "products" && "quantity" in updateData) {
+        const { quantity, expected_quantity, ...fields } = updateData;
+        await prisma.$transaction(async tx => {
+          const products = await tx.product.findMany({ where, orderBy: { id: "asc" } });
+          if (products.length !== 1) throw new InventoryError("Select one product to adjust its stock.");
+          const id = products[0].id;
+          await tx.$queryRawUnsafe('SELECT id FROM products WHERE id = $1::uuid FOR UPDATE', id);
+          const product = await tx.product.findUniqueOrThrow({ where: { id } });
+          if (product.quantity !== expected_quantity) throw new InventoryError("Stock changed while you were editing. Reopen the product and try again.");
+          await adjustProductStock(tx, product, Number(quantity));
+          await tx.product.update({ where: { id }, data: coerceDates(fields, table) as Prisma.ProductUncheckedUpdateInput });
+        });
+        return NextResponse.json({ data: null, error: null });
+      }
       await model.updateMany({ where, data: coerceDates(updateData, table) });
       return NextResponse.json({ data: null, error: null });
     }

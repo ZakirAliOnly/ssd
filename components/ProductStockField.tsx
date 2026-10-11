@@ -13,7 +13,7 @@ export function ProductStockField({ value, onChange, disabled = false, readOnly 
         onChange={event => onChange(event.target.value)} aria-describedby={`${id}-help`}
         className="border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] font-mono focus-visible:outline-2 focus-visible:outline-[var(--blue)]"
         style={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }} />
-      <p id={`${id}-help`} className="text-xs" style={{ color: "var(--gray-800)" }}>{readOnly ? "Purchase invoices add stock; sales reduce it. Stock cannot be edited here." : "Opening stock in units. Sales reduce this quantity automatically."}</p>
+      <p id={`${id}-help`} className="text-xs" style={{ color: "var(--gray-800)" }}>{readOnly ? "Purchase invoices add stock; sales reduce it. Stock cannot be edited here." : "Available stock in units. Purchases add stock; sales reduce it automatically."}</p>
     </div>
   );
 }

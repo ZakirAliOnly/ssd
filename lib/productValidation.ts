@@ -9,8 +9,10 @@ export function normalizeCategory(data: Record<string, unknown>) {
 }
 
 export function normalizeProduct(data: Record<string, unknown>, inserting: boolean): Record<string, unknown> {
-  if (!inserting && ("quantity" in data || "expected_quantity" in data)) {
-    throw new ProductValidationError("Stock quantity cannot be edited after a product is created.");
+  if ("expected_quantity" in data || (!inserting && "quantity" in data)) {
+    if (inserting || !("quantity" in data) || !Number.isSafeInteger(data.expected_quantity) || Number(data.expected_quantity) < 0 || Number(data.expected_quantity) > 2147483647) {
+      throw new ProductValidationError("Reload the product before editing its stock quantity.");
+    }
   }
   if (inserting || "quantity" in data) {
     if (!Number.isSafeInteger(data.quantity) || Number(data.quantity) < 0 || Number(data.quantity) > 2147483647) {
