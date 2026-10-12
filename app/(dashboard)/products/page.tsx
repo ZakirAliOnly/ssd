@@ -9,7 +9,7 @@ import { ProductExpiryField } from "@/components/ProductExpiryField";
 import { db } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { formatCurrency } from "@/lib/helpers";
-import { Plus, Pencil, Trash2, Package, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Package, Search, X } from "lucide-react";
 import { DT } from "@/lib/dataTableStyles";
 import { useUser } from "@/lib/UserContext";
 import { useSaving } from "@/lib/useSaving";
@@ -43,6 +43,7 @@ export default function ProductsPage() {
   const userProfile = useUser();
   const { saving, run } = useSaving();
   const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState("");
   const [loadError, setLoadError] = useState("");
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -156,6 +157,11 @@ export default function ProductsPage() {
   }
 
   const inputStyle = { borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" };
+  const searchQuery = search.trim().toLowerCase();
+  const filteredProducts = products.filter((product) =>
+    [product.name, product.code, product.description, product.product_categories?.name ?? "Uncategorized"]
+      .some((value) => value?.toLowerCase().includes(searchQuery))
+  );
 
   return (
     <div className="animate-fade-in">
@@ -184,8 +190,31 @@ export default function ProductsPage() {
         <div className="px-5 py-4 border-b border-[var(--gray-100)] flex items-center justify-between">
           <span className="text-lg sm:text-xl font-extrabold tracking-tight" style={{ color: "var(--gray-900)" }}>Product List</span>
           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--blue-pale)", color: "var(--blue-deeper)" }}>
-            {products.length} items
+            {searchQuery ? `${filteredProducts.length} of ${products.length}` : products.length} items
           </span>
+        </div>
+
+        <div className="px-5 py-3 border-b border-[var(--gray-100)]">
+          <div className="relative w-full sm:max-w-md">
+            <Search size={16} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--gray-800)" }} />
+            <input
+              type="search"
+              aria-label="Search products"
+              placeholder="Search by name, code, description or category…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Escape") setSearch(""); }}
+              className="w-full border-[1.5px] border-[var(--gray-200)] rounded-[9px] pl-9 pr-10 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue)] placeholder:text-[var(--gray-800)] [&::-webkit-search-cancel-button]:appearance-none"
+              style={{ background: "var(--gray-50)", color: "var(--gray-900)" }}
+            />
+            {search && (
+              <button type="button" aria-label="Clear product search" onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-[6px] cursor-pointer hover:bg-[var(--blue-pale)] focus-visible:outline-2 focus-visible:outline-[var(--blue)]"
+                style={{ color: "var(--gray-800)" }}>
+                <X size={14} aria-hidden="true" />
+              </button>
+            )}
+          </div>
         </div>
 
         {loadError ? (
@@ -196,6 +225,12 @@ export default function ProductsPage() {
           <div className="py-14 text-center">
             <Package size={32} className="mx-auto mb-2" style={{ color: "var(--gray-200)" }} />
             <p className="text-[13px] font-medium" style={{ color: "var(--gray-800)" }}>No products yet. Add your first product.</p>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="py-14 px-5 text-center" role="status">
+            <Search size={32} aria-hidden="true" className="mx-auto mb-2" style={{ color: "var(--gray-400)" }} />
+            <p className="text-[13px] font-medium" style={{ color: "var(--gray-800)" }}>No products match your search.</p>
+            <button type="button" onClick={() => setSearch("")} className="mt-2 text-[13px] font-semibold underline cursor-pointer" style={{ color: "var(--blue-deeper)" }}>Clear search</button>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -210,7 +245,7 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody>
-                {products.map((p) => {
+                {filteredProducts.map((p) => {
                   const margin = p.sale_price > 0
                     ? Math.round(((p.sale_price - p.cost_price) / p.sale_price) * 100)
                     : 0;
