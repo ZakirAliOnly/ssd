@@ -117,8 +117,8 @@ export default function ProductsPage() {
   async function handleSave() {
     if (!fNonExpiry && !fExpiryDate) { showToast("Enter the expiry date", "err"); return; }
     const quantity = Number(fQuantity);
-    if (!fQuantity.trim() || !Number.isSafeInteger(quantity) || quantity < 0 || quantity > 2147483647) {
-      showToast("Enter a whole stock quantity of zero or more", "err"); return;
+    if (!fQuantity.trim() || !Number.isFinite(quantity) || Math.abs(quantity - Math.round(quantity * 100) / 100) > 0.00000001 || quantity < 0 || quantity > 2147483647) {
+      showToast("Enter stock quantity of zero or more with up to two decimal places", "err"); return;
     }
     if (!fCategoryId) { showToast("Select a category", "err"); return; }
     if (!fName.trim()) { showToast("Enter product name", "err"); return; }

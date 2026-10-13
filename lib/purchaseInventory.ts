@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { InventoryError, syncProductStock } from "./inventory";
+import { InventoryError, syncProductStock, roundQuantity, validQuantity } from "./inventory";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function purchaseDate(value: unknown, nullable = false): Date | null {
@@ -19,7 +19,7 @@ export function purchaseLines(value: unknown) {
     if ((id && (!UUID.test(id) || ids.has(id))) || (product_id && !UUID.test(product_id))) throw new InventoryError("Invalid or repeated purchase item.");
     if (id) ids.add(id);
     const qty = Number(row.qty), rate = Number(row.rate);
-    if (!Number.isSafeInteger(qty) || qty < 1 || qty > 2147483647) throw new InventoryError("Purchase quantity must be a whole number of at least 1.");
+    if (!validQuantity(qty) || qty <= 0) throw new InventoryError("Purchase quantity must be positive with up to two decimal places.");
     if (!Number.isFinite(rate) || rate < 0 || rate > 9999999999.99) throw new InventoryError("Enter a valid purchase price.");
     const amount = Math.round(qty * rate * 100) / 100;
     if (amount > 9999999999.99) throw new InventoryError("Purchase line amount is too large.");
@@ -38,7 +38,7 @@ export async function receivePurchaseItems(tx: Prisma.TransactionClient, purchas
   for (const old of previous) {
     if (kept.has(old.id)) continue;
     if (old.stock_batch) {
-      if (old.stock_batch.received_qty !== old.stock_batch.remaining_qty) throw new InventoryError("This purchase batch has already been sold and cannot be removed.");
+      if (Number(old.stock_batch.received_qty) !== Number(old.stock_batch.remaining_qty)) throw new InventoryError("This purchase batch has already been sold and cannot be removed.");
       await tx.stockBatch.delete({ where: { id: old.stock_batch.id } });
     }
     await tx.purchaseOrderItem.delete({ where: { id: old.id } });
@@ -52,11 +52,10 @@ export async function receivePurchaseItems(tx: Prisma.TransactionClient, purchas
     const batch = old?.stock_batch;
     // Linking an unidentified historical line keeps its untracked baseline.
     const productChanged = old?.product_id != null && old.product_id !== line.product_id;
-    const baseline = old ? Number(old.qty) - old.stock_received_qty : 0;
+    const baseline = old ? roundQuantity(Number(old.qty) - Number(old.stock_received_qty)) : 0;
     if (productChanged && baseline > 0) throw new InventoryError("An older purchase with untracked stock cannot change product. Create a new purchase instead.");
-    const receivedQty = line.product_id ? Math.max(0, line.qty - (productChanged ? 0 : baseline)) : 0;
-    if (!Number.isSafeInteger(receivedQty)) throw new InventoryError("Older fractional purchase quantities need a separate stock adjustment before changing quantity.");
-    const sold = batch ? batch.received_qty - batch.remaining_qty : 0;
+    const receivedQty = line.product_id ? roundQuantity(Math.max(0, line.qty - (productChanged ? 0 : baseline))) : 0;
+    const sold = batch ? roundQuantity(Number(batch.received_qty) - Number(batch.remaining_qty)) : 0;
     if (receivedQty < sold || (productChanged && sold > 0)) throw new InventoryError("Purchase quantity cannot be reduced below the units already sold, or moved to another product after sale.");
     if (batch && productChanged) await tx.stockBatch.delete({ where: { id: batch.id } });
     const data = { product_id: line.product_id, description: product?.name ?? line.description,
@@ -67,7 +66,7 @@ export async function receivePurchaseItems(tx: Prisma.TransactionClient, purchas
     savedItems.push(saved);
     if (batch && !productChanged) {
       await tx.stockBatch.update({ where: { id: batch.id }, data: { received_qty: receivedQty,
-        remaining_qty: receivedQty - sold, expiry_date: line.expiry_date, received_date: receivedDate } });
+        remaining_qty: roundQuantity(receivedQty - sold), expiry_date: line.expiry_date, received_date: receivedDate } });
     } else if (receivedQty > 0 && line.product_id) {
       await tx.stockBatch.create({ data: { product_id: line.product_id, purchase_item_id: saved.id,
         received_qty: receivedQty, remaining_qty: receivedQty, expiry_date: line.expiry_date, received_date: receivedDate } });

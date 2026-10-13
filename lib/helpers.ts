@@ -3,7 +3,7 @@ export function formatNumber(n: number): string {
 }
 
 export function formatCurrency(n: number): string {
-  return "Rs " + formatNumber(Math.round(n));
+  return "Rs " + n.toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 export function getInitials(name: string): string {

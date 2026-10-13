@@ -25,7 +25,7 @@ export function buildStockReport(products: StockReportProduct[], from: string, t
     for (const batch of p.batches) {
       const allocated = batch.allocations.reduce((sum, a) => sum + a.qty, 0);
       // Manual reductions have no dated movement record. Never invent a historical balance.
-      if (batch.received_qty - batch.remaining_qty !== allocated) incomplete = true;
+      if (money(batch.received_qty - batch.remaining_qty) !== money(allocated)) incomplete = true;
       if (batch.received_date < from) opening += batch.received_qty;
       else if (batch.received_date <= to) received += batch.received_qty;
       for (const a of batch.allocations) {
@@ -41,12 +41,12 @@ export function buildStockReport(products: StockReportProduct[], from: string, t
     const sold = sales.reduce((sum, s) => sum + s.qty, 0);
     const deducted = sales.reduce((sum, s) => sum + s.deducted, 0);
     const historicalDeducted = p.sales.filter(s => s.date <= to).reduce((sum, s) => sum + s.deducted, 0);
-    if (deducted !== consumed || historicalDeducted !== historicalAllocated || opening < 0 || opening + received - consumed < 0 || p.sales.some(s => s.date <= to && s.deducted !== s.qty)) incomplete = true;
+    if (money(deducted) !== money(consumed) || money(historicalDeducted) !== money(historicalAllocated) || money(opening) < 0 || money(opening + received - consumed) < 0 || p.sales.some(s => s.date <= to && s.deducted !== s.qty)) incomplete = true;
     cost += Math.max(0, sold - costQty) * p.cost_price;
     const revenue = money(sales.reduce((sum, s) => sum + s.revenue, 0));
     return { id: p.id, code: p.code, name: p.name, category: p.category,
-      opening: incomplete ? null : opening, received, sold,
-      available: incomplete ? null : opening + received - consumed,
+      opening: incomplete ? null : money(opening), received: money(received), sold: money(sold),
+      available: incomplete ? null : money(opening + received - consumed),
       costPrice: p.cost_price, revenue, cost: money(cost), profit: money(revenue - cost),
       warning: incomplete ? "Historical balance unavailable: untracked sales or stock adjustments." : null };
   });

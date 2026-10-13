@@ -1,0 +1,9 @@
+BEGIN;
+ALTER TABLE products ALTER COLUMN quantity TYPE NUMERIC(14,2);
+ALTER TABLE invoice_items ALTER COLUMN qty TYPE NUMERIC(14,2), ALTER COLUMN stock_deducted_qty TYPE NUMERIC(14,2);
+ALTER TABLE stock_batches ALTER COLUMN received_qty TYPE NUMERIC(14,2), ALTER COLUMN remaining_qty TYPE NUMERIC(14,2);
+ALTER TABLE stock_allocations ALTER COLUMN qty TYPE NUMERIC(14,2);
+ALTER TABLE purchase_order_items ALTER COLUMN stock_received_qty TYPE NUMERIC(14,2);
+ALTER TABLE quick_invoice_items ALTER COLUMN qty TYPE NUMERIC(14,2);
+ALTER TABLE quotation_items ALTER COLUMN qty TYPE NUMERIC(14,2);
+COMMIT;

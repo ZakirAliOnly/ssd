@@ -1,5 +1,9 @@
 export class ProductValidationError extends Error {}
 
+function validStock(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 2147483647 && Math.abs(value - Math.round(value * 100) / 100) < 0.00000001;
+}
+
 export function normalizeCategory(data: Record<string, unknown>) {
   const name = typeof data.name === "string" ? data.name.trim().replace(/\s+/g, " ") : "";
   if (!name || name.length > 100) {
@@ -10,13 +14,13 @@ export function normalizeCategory(data: Record<string, unknown>) {
 
 export function normalizeProduct(data: Record<string, unknown>, inserting: boolean): Record<string, unknown> {
   if ("expected_quantity" in data || (!inserting && "quantity" in data)) {
-    if (inserting || !("quantity" in data) || !Number.isSafeInteger(data.expected_quantity) || Number(data.expected_quantity) < 0 || Number(data.expected_quantity) > 2147483647) {
+    if (inserting || !("quantity" in data) || !validStock(data.expected_quantity)) {
       throw new ProductValidationError("Reload the product before editing its stock quantity.");
     }
   }
   if (inserting || "quantity" in data) {
-    if (!Number.isSafeInteger(data.quantity) || Number(data.quantity) < 0 || Number(data.quantity) > 2147483647) {
-      throw new ProductValidationError("Stock quantity must be a whole number of zero or more.");
+    if (!validStock(data.quantity)) {
+      throw new ProductValidationError("Stock quantity must be zero or more with up to two decimal places.");
     }
   }
   if (inserting || "category_id" in data) {

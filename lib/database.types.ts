@@ -66,6 +66,7 @@ export interface Invoice {
 }
 
 export interface InvoiceItem {
+  discount_pct?: number;
   product_id?: string | null;
   stock_deducted_qty?: number;
   id: string;

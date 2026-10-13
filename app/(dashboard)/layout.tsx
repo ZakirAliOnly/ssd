@@ -18,6 +18,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
 
   useEffect(() => {
+    const preserveNumberOnScroll = (event: WheelEvent) => {
+      const input = event.target;
+      if (input instanceof HTMLInputElement && input.type === "number" && document.activeElement === input) {
+        input.blur();
+      }
+    };
+    document.addEventListener("wheel", preserveNumberOnScroll, { capture: true, passive: true });
+    return () => document.removeEventListener("wheel", preserveNumberOnScroll, true);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
       try {

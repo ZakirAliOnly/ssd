@@ -1,5 +1,11 @@
 # UI Registry
 
+### Numeric input behavior
+
+Last updated: 2026-10-13
+
+Hide native spinner buttons globally with textfield appearance and WebKit spin-button overrides. Dashboard number inputs blur on mouse-wheel scrolling so their values remain unchanged while the page continues scrolling. Preserve normal typing and keyboard input.
+
 ### Product search
 
 File: app/(dashboard)/products/page.tsx
@@ -38,3 +44,35 @@ Last updated: 2026-10-13
 | Accent usage | existing ReportTypeCard blue active state; var(--red) for incomplete history |
 
 **Pattern notes:** Reuse ReportTypeCard and the report date controls. Share StockReport between screen and print. Left-align descriptive columns, center quantity headers/values/totals, and right-align currency headers/values/totals with matching cell padding and monospace values. Explain unavailable historical balances in visible copy.
+
+### Delivery challan print header
+
+File: components/PrintHeader.tsx (challan variant)
+Last updated: 2026-10-13
+
+| Property | Style |
+| --- | --- |
+| Background | #fff |
+| Border | 2px solid #0284c7 under letterhead |
+| Text — primary | Georgia bold business name, #111 |
+| Text — secondary | Arial semibold contact details, #0369a1 |
+| Spacing | gap 20px; header padding 0 0 10px; document top padding 6mm |
+| Shadow | none |
+
+**Pattern notes:** Top-align enlarged triangular logo with the business name. Keep address and phone details; omit email and sales-manager lines only in this variant. Challans omit delivery number and receiver/delivery/signature fields in both editor and output.
+
+### Invoice product rows and discounts
+
+File: app/(dashboard)/accounts/page.tsx, app/(dashboard)/quick-invoice/page.tsx, components/InvoiceLineDiscount.tsx
+Last updated: 2026-10-13
+
+| Property | Class / token |
+| --- | --- |
+| Background | existing white inputs and var(--blue-pale) row hover |
+| Border | existing var(--gray-200) inputs and var(--gray-100) table cells |
+| Text — primary | existing bold numeric input classes; DT table heading tokens |
+| Spacing | existing px-2 py-2 or py-3 cell spacing |
+| Focus | existing blue input focus borders |
+| Print discount | 11px semibold #111, margin-top 3px |
+
+**Pattern notes:** Product and Description occupy separate columns. Top-align every row cell. Center quantity/discount headings, right-align totals. Qty and Rate allow two decimal places (step 0.01); quantities must be positive. Currency values retain up to two decimal places without rounding to whole rupees. Discount percentage accepts 0–100 with two decimal places. Print percentage and deducted amount beneath the product; show invoice-wide discounts separately.

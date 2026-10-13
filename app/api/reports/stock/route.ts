@@ -30,15 +30,15 @@ export async function GET(request: NextRequest) {
       id: p.id, code: p.code, name: p.name, category: p.category?.name ?? "Uncategorized",
       created_at: p.created_at.toISOString(), cost_price: Number(p.cost_price),
       batches: p.stock_batches.map(b => ({ received_date: b.received_date.toISOString().slice(0, 10),
-        received_qty: b.received_qty, remaining_qty: b.remaining_qty,
-        allocations: b.allocations.map(a => ({ qty: a.qty, date: a.invoice.invoice_date.toISOString().slice(0, 10),
+        received_qty: Number(b.received_qty), remaining_qty: Number(b.remaining_qty),
+        allocations: b.allocations.map(a => ({ qty: Number(a.qty), date: a.invoice.invoice_date.toISOString().slice(0, 10),
           cost: b.purchase_item && Number(b.purchase_item.qty) > 0 ? Number(b.purchase_item.amount) / Number(b.purchase_item.qty) : null })),
       })),
       sales: p.invoice_items.flatMap(line => {
         if (!line.invoice) return [];
         const total = line.invoice.items.reduce((sum, item) => sum + Number(item.amount), 0);
-        return [{ date: line.invoice.invoice_date.toISOString().slice(0, 10), qty: line.qty,
-          deducted: line.stock_deducted_qty, revenue: stockSaleRevenue(Number(line.amount), total, Number(line.invoice.discount_amount)) }];
+        return [{ date: line.invoice.invoice_date.toISOString().slice(0, 10), qty: Number(line.qty),
+          deducted: Number(line.stock_deducted_qty), revenue: stockSaleRevenue(Number(line.amount), total, Number(line.invoice.discount_amount)) }];
       }),
     })), from, to);
     return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } });

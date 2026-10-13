@@ -2,6 +2,11 @@ import type { Prisma } from "@prisma/client";
 
 export class InventoryError extends Error {}
 
+export const roundQuantity = (value: number) => Math.round(value * 100) / 100;
+export function validQuantity(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= 2147483647 && Math.abs(value - roundQuantity(value)) < 0.00000001;
+}
+
 export interface StockLine {
   product_id: string | null;
   qty: number;
@@ -14,23 +19,23 @@ export function planStockChange(previous: StockLine[], next: Omit<StockLine, "st
   const deducted = new Map<string, number>();
   for (const line of previous) {
     if (!line.product_id) continue;
-    baseline.set(line.product_id, (baseline.get(line.product_id) ?? 0) + line.qty - line.stock_deducted_qty);
-    deducted.set(line.product_id, (deducted.get(line.product_id) ?? 0) + line.stock_deducted_qty);
+    baseline.set(line.product_id, roundQuantity((baseline.get(line.product_id) ?? 0) + line.qty - line.stock_deducted_qty));
+    deducted.set(line.product_id, roundQuantity((deducted.get(line.product_id) ?? 0) + line.stock_deducted_qty));
   }
   const quantities = new Map<string, number>();
   const lines = next.map(line => {
-    if (!Number.isSafeInteger(line.qty) || line.qty < 1 || line.qty > 2147483647) {
-      throw new InventoryError("Each invoice item must have a whole quantity of at least 1.");
+    if (!validQuantity(line.qty) || line.qty <= 0 || line.qty > 2147483647) {
+      throw new InventoryError("Each invoice item must have a positive quantity with up to two decimal places.");
     }
     if (!line.product_id) return { ...line, stock_deducted_qty: 0 };
     const exempt = Math.min(line.qty, baseline.get(line.product_id) ?? 0);
     baseline.set(line.product_id, (baseline.get(line.product_id) ?? 0) - exempt);
-    const amount = line.qty - exempt;
-    quantities.set(line.product_id, (quantities.get(line.product_id) ?? 0) + amount);
+    const amount = roundQuantity(line.qty - exempt);
+    quantities.set(line.product_id, roundQuantity((quantities.get(line.product_id) ?? 0) + amount));
     return { ...line, stock_deducted_qty: amount };
   });
   const deltas = [...new Set([...deducted.keys(), ...quantities.keys()])].sort().map(product_id => ({
-    product_id, consumed: (quantities.get(product_id) ?? 0) - (deducted.get(product_id) ?? 0),
+    product_id, consumed: roundQuantity((quantities.get(product_id) ?? 0) - (deducted.get(product_id) ?? 0)),
   }));
   return { lines, deltas };
 }
@@ -38,8 +43,8 @@ export function planStockChange(previous: StockLine[], next: Omit<StockLine, "st
 export async function syncProductStock(tx: Prisma.TransactionClient, productId: string) {
   const batches = await tx.stockBatch.findMany({ where: { product_id: productId, remaining_qty: { gt: 0 } },
     orderBy: [{ received_date: "asc" }, { created_at: "asc" }, { id: "asc" }] });
-  const quantity = batches.reduce((sum, batch) => sum + batch.remaining_qty, 0);
-  if (!Number.isSafeInteger(quantity) || quantity > 2147483647) throw new InventoryError("Total product stock is too large.");
+  const quantity = roundQuantity(batches.reduce((sum, batch) => sum + Number(batch.remaining_qty), 0));
+  if (!validQuantity(quantity) || quantity > 2147483647) throw new InventoryError("Total product stock is too large.");
   await tx.product.update({ where: { id: productId }, data: {
     quantity,
     expiry_date: batches[0]?.expiry_date ?? null,
@@ -47,23 +52,23 @@ export async function syncProductStock(tx: Prisma.TransactionClient, productId: 
 }
 
 export async function createOpeningBatch(tx: Prisma.TransactionClient, product: {
-  id: string; quantity: number; expiry_date: Date | null; created_at: Date;
+  id: string; quantity: number | Prisma.Decimal; expiry_date: Date | null; created_at: Date;
 }) {
-  if (product.quantity < 1) return;
+  if (Number(product.quantity) <= 0) return;
   await tx.stockBatch.create({ data: { product_id: product.id, received_qty: product.quantity,
     remaining_qty: product.quantity, expiry_date: product.expiry_date, received_date: product.created_at } });
 }
 
 /** Caller holds the product row lock; adjustments preserve existing sale allocations. */
 export async function adjustProductStock(tx: Prisma.TransactionClient, product: {
-  id: string; quantity: number; expiry_date: Date | null;
+  id: string; quantity: number | Prisma.Decimal; expiry_date: Date | null;
 }, quantity: number) {
   const batches = await tx.stockBatch.findMany({ where: { product_id: product.id, remaining_qty: { gt: 0 } },
     orderBy: [{ received_date: "asc" }, { created_at: "asc" }, { id: "asc" }] });
-  if (batches.reduce((sum, batch) => sum + batch.remaining_qty, 0) !== product.quantity) {
+  if (roundQuantity(batches.reduce((sum, batch) => sum + Number(batch.remaining_qty), 0)) !== Number(product.quantity)) {
     throw new InventoryError("Product stock and batches do not match. Reload before saving.");
   }
-  const delta = quantity - product.quantity;
+  const delta = roundQuantity(quantity - Number(product.quantity));
   if (delta > 0) {
     await tx.stockBatch.create({ data: { product_id: product.id, received_qty: delta, remaining_qty: delta,
       expiry_date: product.expiry_date, received_date: new Date() } });
@@ -71,9 +76,9 @@ export async function adjustProductStock(tx: Prisma.TransactionClient, product: 
     let needed = -delta;
     for (const batch of batches) {
       if (!needed) break;
-      const removed = Math.min(needed, batch.remaining_qty);
+      const removed = Math.min(needed, Number(batch.remaining_qty));
       await tx.stockBatch.update({ where: { id: batch.id }, data: { remaining_qty: { decrement: removed } } });
-      needed -= removed;
+      needed = roundQuantity(needed - removed);
     }
   }
   await syncProductStock(tx, product.id);
@@ -85,13 +90,13 @@ async function adjustBatches(tx: Prisma.TransactionClient, productId: string, co
       orderBy: [{ received_date: "asc" }, { created_at: "asc" }, { id: "asc" }] });
     let needed = consumed;
     for (const batch of batches) {
-      const qty = Math.min(needed, batch.remaining_qty);
+      const qty = Math.min(needed, Number(batch.remaining_qty));
       if (!qty) break;
       const changed = await tx.stockBatch.updateMany({ where: { id: batch.id, remaining_qty: { gte: qty } }, data: { remaining_qty: { decrement: qty } } });
       if (changed.count !== 1) throw new InventoryError("Stock changed during this sale. Try saving again.");
       await tx.stockAllocation.upsert({ where: { invoice_id_batch_id: { invoice_id: invoiceId, batch_id: batch.id } },
         create: { invoice_id: invoiceId, batch_id: batch.id, qty }, update: { qty: { increment: qty } } });
-      needed -= qty;
+      needed = roundQuantity(needed - qty);
     }
     if (needed) throw new InventoryError("Product stock and batches do not match. Reload before saving.");
   } else {
@@ -99,12 +104,12 @@ async function adjustBatches(tx: Prisma.TransactionClient, productId: string, co
     const allocations = await tx.stockAllocation.findMany({ where: { invoice_id: invoiceId, batch: { product_id: productId } },
       orderBy: [{ created_at: "desc" }, { id: "desc" }] });
     for (const allocation of allocations) {
-      const qty = Math.min(returned, allocation.qty);
+      const qty = Math.min(returned, Number(allocation.qty));
       if (!qty) break;
       await tx.stockBatch.update({ where: { id: allocation.batch_id }, data: { remaining_qty: { increment: qty } } });
-      if (qty === allocation.qty) await tx.stockAllocation.delete({ where: { id: allocation.id } });
+      if (qty === Number(allocation.qty)) await tx.stockAllocation.delete({ where: { id: allocation.id } });
       else await tx.stockAllocation.update({ where: { id: allocation.id }, data: { qty: { decrement: qty } } });
-      returned -= qty;
+      returned = roundQuantity(returned - qty);
     }
     if (returned) {
       // Deductions recorded before batch tracking have no allocation records.
@@ -152,12 +157,14 @@ export function invoiceStockLines(items: unknown) {
     const product_id = item.product_id == null ? null : String(item.product_id).toLowerCase();
     if (product_id && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(product_id)) throw new InventoryError("Select a valid product.");
     const qty = Number(item.qty);
-    if (!Number.isSafeInteger(qty) || qty < 1 || qty > 2147483647) throw new InventoryError("Each invoice item must have a whole quantity of at least 1.");
+    const discount_pct = Number(item.discount_pct ?? 0);
+    if (!Number.isFinite(discount_pct) || discount_pct < 0 || discount_pct > 100) throw new InventoryError("Product discount percentage must be between 0 and 100.");
+    if (!validQuantity(qty) || qty <= 0 || qty > 2147483647) throw new InventoryError("Each invoice item must have a positive quantity with up to two decimal places.");
     const numbers = Object.fromEntries(["width", "height", "sqft", "rate", "amount"].map(key => {
       const value = Number(item[key] ?? 0);
       if (!Number.isFinite(value) || value < 0) throw new InventoryError(`Invalid invoice item ${key}.`);
       return [key, value];
     }));
-    return { product_id, qty, category: String(item.category ?? ""), description: String(item.description ?? ""), ...numbers };
+    return { product_id, qty, discount_pct, category: String(item.category ?? ""), description: String(item.description ?? ""), ...numbers };
   });
 }

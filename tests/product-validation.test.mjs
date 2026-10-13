@@ -25,9 +25,9 @@ test("a caller cannot create or edit a sqft product", () => {
   assert.equal(normalizeProduct({ pricing_type: "sqft" }, false).pricing_type, "standalone");
 });
 
-test("stock quantities must be nonnegative whole units", () => {
+test("stock quantities must be nonnegative values with up to two decimal places", () => {
   const category_id = "e55b082a-5bc6-4631-ae1c-2b28c55f7fa6";
-  for (const quantity of [-1, 1.5, NaN, Infinity, "5", null, 2147483648]) {
+  for (const quantity of [-1, 1.555, NaN, Infinity, "5", null, 2147483648]) {
     assert.throws(() => normalizeProduct({ category_id, quantity }, true), ProductValidationError);
   }
   assert.equal(normalizeProduct({ category_id, quantity: 0 }, true).quantity, 0);
@@ -38,7 +38,7 @@ test("product stock edits require the previous quantity", () => {
     assert.throws(() => normalizeProduct(data, false), /Reload the product/);
   }
   assert.equal(normalizeProduct({ quantity: 0, expected_quantity: 10 }, false).quantity, 0);
-  for (const quantity of [-1, 1.5, 2147483648]) {
+  for (const quantity of [-1, 1.555, 2147483648]) {
     assert.throws(() => normalizeProduct({ quantity, expected_quantity: 10 }, false), ProductValidationError);
   }
 });

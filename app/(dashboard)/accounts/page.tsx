@@ -1,6 +1,7 @@
 "use client";
 
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
+import { InvoiceLineDiscount } from "@/components/InvoiceLineDiscount";
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
@@ -46,6 +47,7 @@ interface InvItem {
   lineType: "product" | "labor";
   product: string;
   productId?: string | null;
+  discountPct?: number;
   laborType: string;
   description: string;
   width: number;
@@ -62,7 +64,7 @@ function blankInvItem(): InvItem {
 }
 
 function calcInvItem(item: InvItem): InvItem {
-  return { ...item, width: 0, height: 0, sqft: 0, pricingType: "standalone", total: invoiceLineTotal(item.rate, item.qty) };
+  return { ...item, width: 0, height: 0, sqft: 0, pricingType: "standalone", total: invoiceLineTotal(item.rate, item.qty, item.discountPct ?? 0) };
 }
 
 export default function AccountsPage() {
@@ -535,6 +537,7 @@ export default function AccountsPage() {
         height: 0,
         sqft: 0,
         rate: invoiceUnitRate(it),
+        discountPct: Number(it.discount_pct ?? 0),
         qty: Number(it.qty),
         total: Number(it.amount),
         pricingType,
@@ -885,7 +888,7 @@ export default function AccountsPage() {
         product_id: it.lineType === "product" ? (it.productId ?? invProducts.find(p => p.name === it.product)?.id ?? null) : null,
         category: it.lineType === "labor" ? "Labor" : it.product,
         description: it.lineType === "labor" ? it.laborType : it.description.trim(),
-        width: it.width, height: it.height, sqft: it.sqft, rate: it.rate, qty: it.qty, amount: it.total,
+        width: it.width, height: it.height, sqft: it.sqft, rate: it.rate, qty: it.qty, amount: it.total, discount_pct: it.discountPct ?? 0,
       }));
 
       setInvSaving(true);
@@ -1093,6 +1096,7 @@ export default function AccountsPage() {
             rate: it.rate,
             qty: it.qty,
             amount: it.total,
+        discount_pct: it.discountPct ?? 0,
           }))
         );
         pendingProductIdsRef.current = [];
@@ -1215,6 +1219,7 @@ export default function AccountsPage() {
         height: 0,
         sqft: 0,
         rate: invoiceUnitRate(it),
+        discountPct: Number(it.discount_pct ?? 0),
         qty: Number(it.qty) || 1,
         amount: Number(it.amount) || 0,
       })),
@@ -1235,10 +1240,10 @@ export default function AccountsPage() {
     if (!rMethod || !rMethod.trim()) { showToast("Please select a payment method", "err"); return; }
     if (!paymentMethods.some((m) => m.name === rMethod)) { showToast("Select a valid payment method", "err"); return; }
 
-    // Business operates in whole rupees. Round at write time so the cashbook row,
+    // Preserve cents at write time so the cashbook row,
     // the recomputed balance, and the WhatsApp message all use the identical
     // integer — no off-by-rupee drift between the Credit column and the ledger.
-    const amt = Math.round(amtRaw);
+    const amt = Math.round(amtRaw * 100) / 100;
 
     setReceivingSaving(true);
 
@@ -1933,12 +1938,12 @@ export default function AccountsPage() {
 
             {/* Items table */}
             <div className="p-5">
-              <div className="rounded-[10px] border border-[var(--gray-100)] overflow-hidden">
-                <table className="w-full border-collapse" style={{ minWidth: 580 }}>
+              <div className="rounded-[10px] border border-[var(--gray-100)] overflow-x-auto">
+                <table className="w-full border-collapse" style={{ minWidth: 900 }}>
                   <thead>
                     <tr>
-                      {["Product", "Qty", "Rate", "Total", ""].map((h) => (
-                        <th key={h} className={`${DT.thDense} text-left`} style={DT.thStyle}>
+                      {["Product", "Description", "Qty", "Rate", "Discount %", "Total", ""].map((h) => (
+                        <th key={h} className={`${DT.thDense} ${h === "Total" ? "text-right" : ["Qty", "Rate", "Discount %"].includes(h) ? "text-center" : "text-left"}`} style={DT.thStyle}>
                           {h}
                         </th>
                       ))}
@@ -1946,7 +1951,7 @@ export default function AccountsPage() {
                   </thead>
                   <tbody>
                     {invItems.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-[var(--blue-pale)] transition-colors">
+                      <tr key={idx} className="hover:bg-[var(--blue-pale)] transition-colors [&>td]:align-top">
                         {/* Product */}
                         <td className="px-2 py-2 border-b border-[var(--gray-100)]" style={{ minWidth: 160 }}>
                           <SearchableSelect
@@ -1960,35 +1965,43 @@ export default function AccountsPage() {
                             createLabel="+ Add new product"
                           />
                     <ProductExpiryNotice product={invProducts.find(p => item.productId ? p.id === item.productId : p.name === item.product)} />
+                        </td>
+                        <td className="px-2 py-2 border-b border-[var(--gray-100)]" style={{ minWidth: 200 }}>
                           <textarea
                             value={item.description}
                             onChange={(e) => updateInvItem(idx, "description", e.target.value)}
                             placeholder="Description (optional)"
                             rows={2}
-                            className="mt-1.5 border border-[var(--gray-200)] rounded-[6px] px-2 py-1.5 text-[12px] outline-none bg-white focus:border-[var(--blue)] w-full resize-y min-h-[44px]"
+                            className="border border-[var(--gray-200)] rounded-[6px] px-2 py-1.5 text-[12px] outline-none bg-white focus:border-[var(--blue)] w-full resize-y min-h-[44px]"
                           />
                         </td>
 
                         {/* Qty */}
                         <td className="px-2 py-2 border-b border-[var(--gray-100)]" style={{ width: 90 }}>
-                          <input type="number" min="1"
+                          <input type="number" min="0.01" step="0.01"
                             value={item.qty}
-                            onChange={(e) => updateInvItem(idx, "qty", parseInt(e.target.value) || 0)}
+                            onChange={(e) => updateInvItem(idx, "qty", parseFloat(e.target.value) || 0)}
                             className="border-2 border-[var(--gray-200)] rounded-[7px] px-2 py-2 text-[16px] font-bold outline-none bg-white focus:border-[var(--blue)] w-full text-center"
-                            style={item.qty < 1 ? { borderColor: "var(--red)", color: "var(--red)" } : undefined}
-                            aria-invalid={item.qty < 1}
-                            title={item.qty < 1 ? "Quantity must be at least 1" : undefined} />
+                            style={item.qty <= 0 ? { borderColor: "var(--red)", color: "var(--red)" } : undefined}
+                            aria-invalid={item.qty <= 0}
+                            title={item.qty <= 0 ? "Quantity must be greater than zero" : undefined} />
                         </td>
 
                         {/* Rate */}
                         <td className="px-2 py-2 border-b border-[var(--gray-100)]" style={{ width: 100 }}>
-                          <input type="number" min="0"
-                            value={item.rate || ""}
+                          <input type="number" min="0" step="0.01"
+                      value={item.rate || ""}
                             onChange={(e) => updateInvItem(idx, "rate", parseFloat(e.target.value) || 0)}
                             className="border-2 border-[var(--gray-200)] rounded-[7px] px-2 py-2 text-[16px] font-bold outline-none bg-white focus:border-[var(--blue)] w-full text-right"
                             placeholder="0" />
                         </td>
                         {/* Total */}
+                        <td className="px-2 py-2 border-b border-[var(--gray-100)]" style={{ width: 100 }}>
+                          <input type="number" min="0" max="100" step="0.01" value={item.discountPct ?? 0}
+                            aria-label={`Discount percentage for product ${idx + 1}`}
+                            onChange={e => updateInvItem(idx, "discountPct", Math.round(Math.min(100, Math.max(0, Number(e.target.value) || 0)) * 100) / 100)}
+                            className="border-2 border-[var(--gray-200)] rounded-[7px] px-2 py-2 text-[16px] font-bold outline-none bg-white focus:border-[var(--blue)] w-full text-center" />
+                        </td>
                         <td className="px-3 py-2 border-b border-[var(--gray-100)] font-mono font-extrabold text-right whitespace-nowrap"
                           style={{ color: "var(--blue-deeper)", fontSize: 15, width: 110 }}>
                           {item.total > 0 ? formatCurrency(item.total) : "—"}
@@ -2413,7 +2426,7 @@ export default function AccountsPage() {
                     Amount <span style={{ color: "var(--red)" }}>*</span>
                   </label>
                   <input value={rAmount} onChange={(e) => setRAmount(e.target.value)}
-                    type="number" min="1" placeholder="0"
+                    type="number" min="0.01" step="0.01" placeholder="0"
                     className="border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none font-mono"
                     style={inputStyle} />
                 </div>
@@ -2914,6 +2927,7 @@ export default function AccountsPage() {
                         {it.category && it.description ? (
                           <div style={{ fontWeight: 400, fontSize: 11, color: "#444", marginTop: 2, whiteSpace: "pre-wrap" }}>{it.description}</div>
                         ) : null}
+                        <InvoiceLineDiscount line={it} />
                       </div>
                       <div style={{ padding: cellPad, textAlign: "center", fontFamily: "monospace", fontWeight: 700, borderLeft: "1px solid #000" }}>{it.qty}</div>
 
@@ -2928,6 +2942,10 @@ export default function AccountsPage() {
             })()}
             <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 12px", marginBottom: 16 }}>
               <div style={{ width: 230 }}>
+                {inv.discount_amount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px" }}>
+                  <span>Invoice discount{inv.discount_type === "pct" ? ` (${inv.discount_value}%)` : ""}</span>
+                  <span>− {formatCurrency(inv.discount_amount)}</span>
+                </div>}
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>Previous Balance</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(inv.previous_balance)}</span>

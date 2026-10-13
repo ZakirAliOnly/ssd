@@ -3,6 +3,16 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { harness } from "./helpers/inventory-harness.mjs";
 
+test("fractional receipts and sales preserve FIFO batch balances", async () => {
+  const h = harness(undefined, 0);
+  assert.equal((await h.purchase(1.5, { date: "2026-01-01" })).status, 200);
+  assert.equal((await h.purchase(2.2, { date: "2026-02-01" })).status, 200);
+  assert.equal((await h.save(1.7)).status, 200);
+  assert.equal(h.state().products[0].quantity, 2);
+  assert.equal(h.state().batches[0].remaining_qty, 0);
+  assert.equal(h.state().batches[1].remaining_qty, 2);
+});
+
 test("a purchase receives stock and its expiry in the same transaction", async () => {
   const h = harness();
   const response = await h.purchase(4);
@@ -79,10 +89,10 @@ test("invoice reductions and deletion return the original batches", async () => 
   assert.equal(h.state().allocations.length, 0);
 });
 
-test("invalid calendar dates and fractional purchase quantities roll back", async () => {
+test("invalid calendar dates and over-precision purchase quantities roll back", async () => {
   const h = harness(); const before = structuredClone(h.state());
   assert.equal((await h.purchase(4, { expiryDate: "2026-02-30" })).status, 400);
-  assert.equal((await h.purchase(1.5)).status, 400);
+  assert.equal((await h.purchase(1.555)).status, 400);
   assert.deepEqual(h.state(), before);
 });
 

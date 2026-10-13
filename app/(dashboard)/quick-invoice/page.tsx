@@ -1,6 +1,7 @@
 "use client";
 
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
+import { InvoiceLineDiscount } from "@/components/InvoiceLineDiscount";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { db, saveInvoice } from "@/lib/db";
@@ -45,6 +46,7 @@ interface Item {
   lineType: "product" | "labor";
   product: string;
   productId?: string | null;
+  discountPct?: number;
   laborType: string;
   description: string;
   width: number;
@@ -76,6 +78,10 @@ interface WalkInDraft {
 }
 
 interface SavedInvoice {
+  subtotal?: number;
+  discount_amount?: number;
+  discount_type?: "pct" | "flat";
+  discount_value?: number;
   id: string;
   invoice_number: string;
   client_name: string;
@@ -99,6 +105,9 @@ interface InvoicePdfPayload {
     invoice_date: string;
     payment_status: string;
     subtotal: number;
+    discount_amount?: number;
+    discount_type?: "pct" | "flat";
+    discount_value?: number;
     grand_total: number;
     previous_balance: number;
     amount_received: number;
@@ -123,6 +132,7 @@ interface InvoicePdfPayload {
     rate: number;
     qty: number;
     amount: number;
+    discount_pct?: number;
   }>;
 }
 
@@ -131,7 +141,7 @@ function blankItem(): Item {
 }
 
 function calcItem(item: Item): Item {
-  return { ...item, width: 0, height: 0, sqft: 0, pricingType: "standalone", total: invoiceLineTotal(item.rate, item.qty) };
+  return { ...item, width: 0, height: 0, sqft: 0, pricingType: "standalone", total: invoiceLineTotal(item.rate, item.qty, item.discountPct ?? 0) };
 }
 
 function computeWalkInPayment(draft: WalkInDraft) {
@@ -231,7 +241,7 @@ export default function InvoicePage() {
     const [{ data: invData }, { data: acctData }] = await Promise.all([
       db
         .from("invoices")
-        .select("id, invoice_number, client_name, invoice_date, grand_total, amount_received, previous_balance, balance_due, payment_status, payment_method, created_by_name, created_by_email")
+        .select("id, invoice_number, client_name, invoice_date, grand_total, amount_received, previous_balance, balance_due, payment_status, payment_method, created_by_name, created_by_email, subtotal, discount_amount, discount_type, discount_value")
         .eq("is_walk_in", true)
         .order("created_at", { ascending: false })
         .limit(50),
@@ -464,7 +474,7 @@ export default function InvoicePage() {
     }
     const { data: rows, error: itemErr } = await db
       .from("invoice_items")
-      .select("product_id, category, description, width, height, sqft, rate, qty, amount")
+      .select("product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
       .eq("invoice_id", inv.id)
       .order("id", { ascending: true });
     if (itemErr) {
@@ -485,6 +495,7 @@ export default function InvoicePage() {
         height: 0,
         sqft: 0,
         rate: invoiceUnitRate(r),
+        discountPct: Number(r.discount_pct ?? 0),
         qty: Number(r.qty) || 1,
         total: Number(r.amount) || 0,
         pricingType,
@@ -535,7 +546,7 @@ export default function InvoicePage() {
         product_id: it.lineType === "product" ? (it.productId ?? products.find(p => p.name === it.product)?.id ?? null) : null,
         category: it.lineType === "labor" ? "Labor" : it.product,
         description: it.lineType === "labor" ? it.laborType : it.description.trim(),
-        width: it.width, height: it.height, sqft: it.sqft, rate: it.rate, qty: it.qty, amount: it.total,
+        width: it.width, height: it.height, sqft: it.sqft, rate: it.rate, qty: it.qty, amount: it.total, discount_pct: it.discountPct ?? 0,
       }));
 
       setSaving(true);
@@ -739,7 +750,7 @@ export default function InvoicePage() {
     }
     const { data: rows, error: itemErr } = await db
       .from("invoice_items")
-      .select("product_id, category, description, width, height, sqft, rate, qty, amount")
+      .select("product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
       .eq("invoice_id", invId)
       .order("id", { ascending: true });
     if (itemErr) {
@@ -755,6 +766,9 @@ export default function InvoicePage() {
         invoice_date: full.invoice_date as string,
         payment_status: full.payment_status as string,
         subtotal: Number(full.subtotal ?? full.grand_total),
+        discount_amount: Number(full.discount_amount ?? 0),
+        discount_type: full.discount_type === "flat" ? "flat" : "pct",
+        discount_value: Number(full.discount_value ?? 0),
         grand_total: Number(full.grand_total),
         previous_balance: Number(full.previous_balance ?? 0),
         amount_received: Number(full.amount_received),
@@ -776,6 +790,7 @@ export default function InvoicePage() {
         height: 0,
         sqft: 0,
         rate: Number(it.rate),
+        discount_pct: Number(it.discount_pct ?? 0),
         qty: Number(it.qty),
         amount: Number(it.amount),
       })),
@@ -785,7 +800,7 @@ export default function InvoicePage() {
   async function fetchInvoicePdfItems(invId: string): Promise<InvoicePdfPayload["items"]> {
     const { data: rows, error } = await db
       .from("invoice_items")
-      .select("product_id, category, description, width, height, sqft, rate, qty, amount")
+      .select("product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
       .eq("invoice_id", invId)
       .order("id", { ascending: true });
     if (error) throw new Error(error.message);
@@ -798,6 +813,7 @@ export default function InvoicePage() {
       height: 0,
       sqft: 0,
       rate: Number(it.rate),
+        discount_pct: Number(it.discount_pct ?? 0),
       qty: Number(it.qty),
       amount: Number(it.amount),
     }));
@@ -814,6 +830,9 @@ export default function InvoicePage() {
         invoice_date: todayISO(),
         payment_status: paymentStatus,
         subtotal,
+        discount_amount: computeWalkInPayment(d).discountAmount,
+        discount_type: d.discountType,
+        discount_value: Number(d.discountValue) || 0,
         grand_total: grandTotal,
         previous_balance: 0,
         amount_received: amountReceived,
@@ -837,6 +856,7 @@ export default function InvoicePage() {
         rate: it.rate,
         qty: it.qty,
         amount: it.total,
+        discount_pct: it.discountPct ?? 0,
       })),
     };
   }
@@ -985,7 +1005,10 @@ export default function InvoicePage() {
           client_phone: "",
           invoice_date: inv.invoice_date,
           payment_status: inv.payment_status,
-          subtotal: Number(inv.grand_total),
+          subtotal: Number(inv.subtotal ?? inv.grand_total),
+          discount_amount: Number(inv.discount_amount ?? 0),
+          discount_type: inv.discount_type,
+          discount_value: Number(inv.discount_value ?? 0),
           grand_total: Number(inv.grand_total),
           previous_balance: Number(inv.previous_balance ?? 0),
           amount_received: Number(inv.amount_received),
@@ -1070,7 +1093,7 @@ export default function InvoicePage() {
     }
     const { data: itemRows, error: itemErr } = await db
       .from("invoice_items")
-      .select("product_id, category, description, width, height, sqft, rate, qty, amount")
+      .select("product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
       .eq("invoice_id", inv.id)
       .order("id", { ascending: true });
     if (itemErr) {
@@ -1582,6 +1605,7 @@ export default function InvoicePage() {
                         {it.description ? (
                           <div style={{ fontWeight: 400, fontSize: 11, color: "#444", marginTop: 2, whiteSpace: "pre-wrap" }}>{it.description}</div>
                         ) : null}
+                        <InvoiceLineDiscount line={it} />
                       </div>
                       <div style={{ padding: cellPad, textAlign: "center", fontFamily: "monospace", fontWeight: 700, borderLeft: "1px solid #000" }}>{it.qty}</div>
 
@@ -1598,6 +1622,10 @@ export default function InvoicePage() {
             {/* Totals */}
             <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 12px", marginBottom: 16 }}>
               <div style={{ width: 230 }}>
+                {(invoicePdfData.invoice.discount_amount ?? 0) > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px" }}>
+                  <span>Invoice discount{invoicePdfData.invoice.discount_type === "pct" ? ` (${invoicePdfData.invoice.discount_value}%)` : ""}</span>
+                  <span>− {formatCurrency(invoicePdfData.invoice.discount_amount ?? 0)}</span>
+                </div>}
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>Previous Balance</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(invoicePdfData.invoice.previous_balance)}</span>
@@ -1848,12 +1876,12 @@ function WalkInInvoiceModal({
         </div>
 
         <div className="overflow-x-auto px-2 sm:px-4 py-4">
-          <table className={`${DT.table}`} style={{ minWidth: 580 }}>
+          <table className={`${DT.table}`} style={{ minWidth: 900 }}>
             <thead>
               <tr>
-                {["Product", "Qty", "Rate", "Total", "Actions"].map((h) => {
-                  const num = h === "Qty" || h === "Rate" || h === "Total";
-                  const align = h === "Actions" ? "text-center" : num ? "text-center" : "text-left";
+                {["Product", "Description", "Qty", "Rate", "Discount %", "Total", "Actions"].map((h) => {
+                  const num = h === "Qty" || h === "Rate" || h === "Discount %" || h === "Total";
+                  const align = h === "Total" ? "text-right" : h === "Actions" || num ? "text-center" : "text-left";
                   return (
                     <th key={h} className={`${DT.thDense} ${align}`} style={DT.thStyle}>
                       {h}
@@ -1864,7 +1892,7 @@ function WalkInInvoiceModal({
             </thead>
             <tbody>
               {draft.items.map((item, idx) => (
-                <tr key={idx} className="transition-colors hover:bg-[var(--blue-pale)]">
+                <tr key={idx} className="transition-colors hover:bg-[var(--blue-pale)] [&>td]:align-top">
                   <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ minWidth: 150 }}>
                     <SearchableSelect
                       value={item.productId ?? products.find((p) => p.name === item.product)?.id ?? ""}
@@ -1886,12 +1914,14 @@ function WalkInInvoiceModal({
                       );
                     })()}
                     <ProductExpiryNotice product={products.find(p => item.productId ? p.id === item.productId : p.name === item.product)} />
+                  </td>
+                  <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ minWidth: 200 }}>
                     <textarea
                       value={item.description}
                       onChange={(e) => updateItem(idx, "description", e.target.value)}
                       placeholder="Description (optional)"
                       rows={2}
-                      className={`${sm} mt-1.5 resize-y min-h-[48px] py-1.5`}
+                      className={`${sm} resize-y min-h-[48px] py-1.5`}
                       style={{ color: "#0C2433" }}
                     />
                   </td>
@@ -1899,27 +1929,32 @@ function WalkInInvoiceModal({
                   <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ width: 80 }}>
                     <input
                       type="number"
-                      min="1"
+                      min="0.01" step="0.01"
                       value={item.qty}
-                      onChange={(e) => updateItem(idx, "qty", parseInt(e.target.value) || 0)}
+                      onChange={(e) => updateItem(idx, "qty", parseFloat(e.target.value) || 0)}
                       onWheel={(e) => e.currentTarget.blur()}
                       className={`${lg} text-center`}
-                      style={item.qty < 1 ? { borderColor: "var(--red)", color: "var(--red)" } : undefined}
-                      aria-invalid={item.qty < 1}
-                      title={item.qty < 1 ? "Quantity must be at least 1" : undefined}
+                      style={item.qty <= 0 ? { borderColor: "var(--red)", color: "var(--red)" } : undefined}
+                      aria-invalid={item.qty <= 0}
+                      title={item.qty <= 0 ? "Quantity must be greater than zero" : undefined}
                     />
                   </td>
 
                   <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ width: 110 }}>
                     <input
-                      type="number"
-                      min="0"
+                      type="number" min="0" step="0.01"
                       value={item.rate || ""}
                       onChange={(e) => updateItem(idx, "rate", parseFloat(e.target.value) || 0)}
                       onWheel={(e) => e.currentTarget.blur()}
                       className={`${lg} text-right`}
                       placeholder="0"
                     />
+                  </td>
+                  <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ width: 100 }}>
+                    <input type="number" min="0" max="100" step="0.01" value={item.discountPct ?? 0}
+                      aria-label={`Discount percentage for product ${idx + 1}`}
+                      onChange={e => updateItem(idx, "discountPct", Math.round(Math.min(100, Math.max(0, Number(e.target.value) || 0)) * 100) / 100)}
+                      className={`${lg} text-center`} onWheel={e => e.currentTarget.blur()} />
                   </td>
                   <td
                     className="px-2.5 py-3 border-b border-[var(--gray-100)] text-right font-mono font-extrabold whitespace-nowrap"

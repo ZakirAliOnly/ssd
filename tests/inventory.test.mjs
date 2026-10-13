@@ -41,7 +41,7 @@ test("non-product service lines do not change product stock", () => {
   assert.deepEqual(planStockChange([], [line(null, 2)]).deltas, []);
 });
 test("invalid quantities and item identities are rejected", () => {
-  for (const qty of [0, -1, 1.5, NaN, 2147483648]) assert.throws(() => invoiceStockLines([{ product_id: A, qty }]), InventoryError);
+  for (const qty of [0, -1, 1.555, NaN, 2147483648]) assert.throws(() => invoiceStockLines([{ product_id: A, qty }]), InventoryError);
   assert.throws(() => invoiceStockLines([{ product_id: "bad", qty: 1 }]), InventoryError);
   assert.throws(() => invoiceStockLines([null]), InventoryError);
   assert.throws(() => invoiceStockLines([]), InventoryError);

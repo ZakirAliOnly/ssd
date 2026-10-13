@@ -2,6 +2,41 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { harness } from "./helpers/inventory-harness.mjs";
 
+test("decimal sales preserve exact stock across repeated saves, edits and deletion", async () => {
+  const h = harness(undefined, 20);
+  const saved = await h.save(13.5, undefined, 178.2);
+  assert.equal(saved.status, 200);
+  const id = saved.body.data.id;
+  assert.equal(h.state().invoiceItems[0].qty, 13.5);
+  assert.equal(h.state().products[0].quantity, 6.5);
+  assert.equal((await h.save(13.5, id, 178.2)).status, 200);
+  assert.equal(h.state().products[0].quantity, 6.5);
+  assert.equal((await h.save(13.2, id, 174.24)).status, 200);
+  assert.equal(h.state().products[0].quantity, 6.8);
+  assert.equal((await h.call({ table: "invoices", operation: "delete", filters: [{ column: "id", op: "eq", value: id }] })).status, 200);
+  assert.equal(h.state().products[0].quantity, 20);
+});
+
+test("invoice line discounts persist through saves without changing quantity consumption", async () => {
+  const h = harness();
+  const result = await h.call({ table: "invoices", operation: "save_invoice", data: { invoice_number: "discount-test", client_name: "Client", grand_total: 180 },
+    items: [{ product_id: h.productId, qty: 2, rate: 100, amount: 180, discount_pct: 10 }] });
+  assert.equal(result.status, 200);
+  assert.equal(h.state().invoiceItems[0].discount_pct, 10);
+  assert.equal(h.state().invoiceItems[0].amount, 180);
+  assert.equal(h.state().products[0].quantity, 8);
+});
+
+test("invalid line discounts are rejected before writing invoices or consuming stock", async () => {
+  for (const discount_pct of [-1, 101, "invalid"]) {
+    const h = harness();
+    const result = await h.call({ table: "invoices", operation: "save_invoice", data: { client_name: "Client" }, items: [{ product_id: h.productId, qty: 2, rate: 100, amount: 180, discount_pct }] });
+    assert.equal(result.status, 400);
+    assert.equal(h.state().products[0].quantity, 10);
+    assert.equal(h.state().invoices.length, 0);
+  }
+});
+
 test("unassigned modules reject direct API requests before transactions", async () => {
   const h = harness({ role: "sub_user", modules: ["products"], is_active: true });
   assert.equal((await h.save(3)).status, 403);

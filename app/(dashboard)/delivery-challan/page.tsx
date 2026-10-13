@@ -61,7 +61,7 @@ function itemsToPrintRows(items: InvoiceItem[]): PrintRow[] {
       detail,
       qty: String(qty),
       rate: invoiceUnitRate(it) ? String(invoiceUnitRate(it)) : "",
-      amount: Number(it.amount) > 0 ? String(Math.round(Number(it.amount))) : "",
+      amount: Number(it.amount) > 0 ? String(Number(it.amount)) : "",
     };
   });
 }
@@ -82,11 +82,7 @@ export default function DeliveryChallanPage() {
   const [challanDate, setChallanDate] = useState("");
   const [challanTime, setChallanTime] = useState("");
   const [cell, setCell] = useState("");
-  const [delNo, setDelNo] = useState("");
   const [terms, setTerms] = useState(DEFAULT_TERMS);
-  const [recvName, setRecvName] = useState("");
-  const [recvDate, setRecvDate] = useState("");
-  const [deliverName, setDeliverName] = useState("");
   const [lineItems, setLineItems] = useState<InvoiceItem[]>([]);
   const [grandTotal, setGrandTotal] = useState(0);
   const [invoiceRef, setInvoiceRef] = useState("");
@@ -118,14 +114,10 @@ export default function DeliveryChallanPage() {
       setChallanDate("");
       setChallanTime(nowTimeStr());
       setCell("");
-      setDelNo("");
       setLineItems([]);
       setGrandTotal(0);
       setInvoiceRef("");
       setTerms(DEFAULT_TERMS);
-      setRecvName("");
-      setRecvDate("");
-      setDeliverName("");
       return;
     }
     setLoadingInvoice(true);
@@ -158,7 +150,6 @@ export default function DeliveryChallanPage() {
       setChallanDate(String(inv.invoice_date ?? ""));
       setChallanTime(nowTimeStr());
       setCell(String(inv.client_phone ?? "").trim());
-      setDelNo(String(inv.invoice_number ?? ""));
       setInvoiceRef(String(inv.invoice_number ?? ""));
       setLineItems(items);
       setGrandTotal(Number(inv.grand_total) || items.reduce((s, it) => s + Number(it.amount), 0));
@@ -225,7 +216,7 @@ export default function DeliveryChallanPage() {
         const y = -pageHeight * i;
         pdf.addImage(imgData, "PNG", 0, y, imgWidth, imgHeight);
       }
-      const safe = (delNo || invoiceRef || "challan").replace(/[^\w.-]+/g, "_");
+      const safe = (invoiceRef || "challan").replace(/[^\w.-]+/g, "_");
       const party = (headerParty || "Client").slice(0, 40).replace(/[^\w\s.-]+/g, "").replace(/\s+/g, "_");
       pdf.save(`DeliveryChallan_${safe}_${party || "SSDiagnostics"}.pdf`);
       showToast("PDF downloaded", "ok");
@@ -351,17 +342,7 @@ export default function DeliveryChallanPage() {
                   style={{ borderColor: "var(--gray-200)" }}
                 />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--blue-deeper)" }}>
-                  Del No
-                </span>
-                <input
-                  value={delNo}
-                  onChange={(e) => setDelNo(e.target.value)}
-                  className="border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none font-mono"
-                  style={{ borderColor: "var(--gray-200)" }}
-                />
-              </label>
+
             </div>
             <label className="flex flex-col gap-1">
               <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--blue-deeper)" }}>
@@ -375,40 +356,6 @@ export default function DeliveryChallanPage() {
                 style={{ borderColor: "var(--gray-200)" }}
               />
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="text-[11px] font-bold" style={{ color: "var(--gray-900)" }}>
-                  Received by
-                </div>
-                <input
-                  value={recvName}
-                  onChange={(e) => setRecvName(e.target.value)}
-                  placeholder="Name"
-                  className="w-full border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none"
-                  style={{ borderColor: "var(--gray-200)" }}
-                />
-                <input
-                  value={recvDate}
-                  onChange={(e) => setRecvDate(e.target.value)}
-                  placeholder="Date"
-                  className="w-full border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none"
-                  style={{ borderColor: "var(--gray-200)" }}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="text-[11px] font-bold" style={{ color: "var(--gray-900)" }}>
-                  Delivered by
-                </div>
-                <input
-                  value={deliverName}
-                  onChange={(e) => setDeliverName(e.target.value)}
-                  placeholder="Name"
-                  className="w-full border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none"
-                  style={{ borderColor: "var(--gray-200)" }}
-                />
-              </div>
-            </div>
-
             <div className="flex flex-wrap gap-2 pt-2">
               <button
                 type="button"
@@ -442,7 +389,7 @@ export default function DeliveryChallanPage() {
         style={{
           width: "210mm",
           maxWidth: "100%",
-          padding: "10mm 12mm 12mm",
+          padding: "6mm 12mm 12mm",
           boxSizing: "border-box",
           fontFamily: "Arial, Helvetica, sans-serif",
           color: "#111",
@@ -450,7 +397,7 @@ export default function DeliveryChallanPage() {
           lineHeight: 1.35,
         }}
       >
-        <PrintHeader />
+        <PrintHeader variant="challan" />
 
         {/* Title bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", background: "#0369a1", color: "#fff", marginBottom: 10 }}>
@@ -492,10 +439,7 @@ export default function DeliveryChallanPage() {
             <span style={{ fontWeight: 700 }}>Cell</span>
             <span style={{ marginLeft: 8 }}>{cell || "\u00A0"}</span>
           </div>
-          <div>
-            <span style={{ fontWeight: 700 }}>Del No :</span>
-            <span style={{ marginLeft: 8, fontFamily: "monospace", fontWeight: 700 }}>{delNo || "\u00A0"}</span>
-          </div>
+
         </div>
 
         <table
@@ -541,28 +485,6 @@ export default function DeliveryChallanPage() {
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 11, textDecoration: "underline" }}>Terms &amp; Conditions</div>
           <div style={{ whiteSpace: "pre-wrap", fontSize: 10, color: "#222", lineHeight: 1.45 }}>{terms || "\u00A0"}</div>
-        </div>
-
-        <div style={{ display: "flex", gap: 24, marginTop: 20 }}>
-          <div style={{ flex: 1, fontSize: 10 }}>
-            <div style={{ fontWeight: 800, marginBottom: 10 }}>Recieved By</div>
-            <div style={{ marginBottom: 6 }}>
-              <span style={{ fontWeight: 700 }}>Name:</span> <span>{recvName || "\u00A0"}</span>
-            </div>
-            <div style={{ marginBottom: 6 }}>
-              <span style={{ fontWeight: 700 }}>Date:</span> <span>{recvDate || "\u00A0"}</span>
-            </div>
-            <div style={{ marginTop: 14, fontWeight: 700 }}>Signature &amp; Stamp</div>
-            <div style={{ borderBottom: "1px solid #000", minHeight: 36, marginTop: 6 }} />
-          </div>
-          <div style={{ flex: 1, fontSize: 10 }}>
-            <div style={{ fontWeight: 800, marginBottom: 10 }}>Delivered By</div>
-            <div style={{ marginBottom: 6 }}>
-              <span style={{ fontWeight: 700 }}>Name:</span> <span>{deliverName || "\u00A0"}</span>
-            </div>
-            <div style={{ marginTop: 48, textAlign: "center", fontWeight: 700 }}>Authorised Sign</div>
-            <div style={{ borderBottom: "1px solid #000", minHeight: 36, marginTop: 6 }} />
-          </div>
         </div>
 
         {/* Footer image */}

@@ -493,7 +493,7 @@ export async function POST(req: NextRequest) {
               if (matching.length > 1) throw new InventoryError("Select the product again so its stock can be identified.");
               if (matching.length === 1) line.product_id = matching[0].id;
             }
-            const stockLines = await applyStockChange(tx, previous, items, invoice.id);
+            const stockLines = await applyStockChange(tx, previous.map(line => ({ ...line, qty: Number(line.qty), stock_deducted_qty: Number(line.stock_deducted_qty) })), items, invoice.id);
             await tx.invoiceItem.deleteMany({ where: { invoice_id: invoice.id } });
             await tx.invoiceItem.createMany({ data: items.map((line, index) => ({ ...line, invoice_id: invoice.id, stock_deducted_qty: stockLines[index].stock_deducted_qty })) as Prisma.InvoiceItemCreateManyInput[] });
             return invoice;
@@ -615,7 +615,7 @@ export async function POST(req: NextRequest) {
           const id = products[0].id;
           await tx.$queryRawUnsafe('SELECT id FROM products WHERE id = $1::uuid FOR UPDATE', id);
           const product = await tx.product.findUniqueOrThrow({ where: { id } });
-          if (product.quantity !== expected_quantity) throw new InventoryError("Stock changed while you were editing. Reopen the product and try again.");
+          if (Number(product.quantity) !== Number(expected_quantity)) throw new InventoryError("Stock changed while you were editing. Reopen the product and try again.");
           await adjustProductStock(tx, product, Number(quantity));
           await tx.product.update({ where: { id }, data: coerceDates(fields, table) as Prisma.ProductUncheckedUpdateInput });
         });
@@ -650,7 +650,7 @@ export async function POST(req: NextRequest) {
           for (const id of [...new Set(ids)].sort()) await tx.$queryRawUnsafe('SELECT id FROM invoices WHERE id = $1::uuid FOR UPDATE', id);
           const itemWhere = table === "invoices" ? { invoice_id: { in: ids } } : where;
           const lines = await tx.invoiceItem.findMany({ where: itemWhere });
-          for (const id of [...new Set(ids)].sort()) await applyStockChange(tx, lines.filter(line => line.invoice_id === id), [], id);
+          for (const id of [...new Set(ids)].sort()) await applyStockChange(tx, lines.filter(line => line.invoice_id === id).map(line => ({ ...line, qty: Number(line.qty), stock_deducted_qty: Number(line.stock_deducted_qty) })), [], id);
           if (table === "invoices") await tx.invoice.deleteMany({ where: { id: { in: ids } } });
           else await tx.invoiceItem.deleteMany({ where: { id: { in: lines.map(line => line.id) } } });
         }, { timeout: 15000 });
