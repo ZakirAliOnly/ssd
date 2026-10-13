@@ -7,7 +7,7 @@ import {
   Printer, FileText, TrendingDown, Users, CalendarDays,
   ChevronRight, Wallet, Package,
 } from "lucide-react";
-import type { Invoice, CashbookEntry, Account, Expense } from "@/lib/database.types";
+import type { Invoice, CashbookEntry, Account, HeadAccount, Expense } from "@/lib/database.types";
 import { DT } from "@/lib/dataTableStyles";
 import { PdfPrintBanner } from "@/components/PdfPrintBanner";
 import { PrintFooter } from "@/components/PrintFooter";
@@ -67,7 +67,7 @@ const REPORT_CARDS: { id: Tab; title: string; description: string; icon: ReactNo
   { id: "stock", title: "Stock reports", description: "Stock received, sold and available by date and category, with revenue and estimated gross profit.", icon: <Package size={22} /> },
   { id: "party", title: "Party Statement", description: "All party balances. Select a party to view debit and credit details.", icon: <Users size={22} /> },
   { id: "supplier", title: "Supplier Statement", description: "All supplier balances. Select a supplier to view debit and credit details.", icon: <Users size={22} /> },
-  { id: "account", title: "Account Statement", description: "Debit / credit ledger for one party between two dates.", icon: <FileText size={22} /> },
+  { id: "account", title: "Head Account Statement", description: "Select a head account to view debit and credit for all its parties.", icon: <FileText size={22} /> },
   { id: "cashbook", title: "Cashbook", description: "All cash in and out between the selected dates.", icon: <CalendarDays size={22} /> },
   { id: "dailyparties", title: "Daily Parties", description: "Invoices issued on a selected day by party.", icon: <Users size={22} /> },
   { id: "paymentmethod", title: "Payment Method Report", description: "Cashbook transactions filtered by a single payment method.", icon: <Wallet size={22} /> },
@@ -128,16 +128,15 @@ export default function ReportsPage() {
   });
   const [toDate, setToDate] = useState(reportDateISO());
   const [preset, setPreset] = useState("thismonth");
-  const [accountFilter, setAccountFilter] = useState("all");
+  const [headAccountFilter, setHeadAccountFilter] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
   const { methods: paymentMethods } = usePaymentMethods();
   // ── Daily tab date state ──────────────────────────────────
   const [dailyDate, setDailyDate] = useState(reportDateISO());
 
   // ── Data ──────────────────────────────────────────────────
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [cashbook, setCashbook] = useState<CashbookEntry[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [headAccounts, setHeadAccounts] = useState<HeadAccount[]>([]);
   const [dailyInvoices, setDailyInvoices] = useState<Invoice[]>([]);
   const [dailyLoading, setDailyLoading] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -146,6 +145,12 @@ export default function ReportsPage() {
   const [partyData, setPartyData] = useState<{ accounts: Account[]; invoices: Invoice[] }>({ accounts: [], invoices: [] });
   const supplierStatements = useMemo(() => buildSupplierStatements(supplierData.suppliers, supplierData.purchases, supplierData.payments, fromDate, toDate, supplierData.customerNames), [supplierData, fromDate, toDate]);
   const partyStatements = useMemo(() => buildPartyStatements(partyData.accounts, partyData.invoices, supplierData.payments, supplierData.suppliers, supplierData.purchases, fromDate, toDate), [partyData, supplierData, fromDate, toDate]);
+
+  const selectedHeadAccount = headAccounts.find(head => head.id === headAccountFilter);
+  const headAccountStatements = useMemo(() => {
+    const partyIds = new Set(partyData.accounts.filter(account => account.head_id === headAccountFilter).map(account => account.id));
+    return partyStatements.filter(statement => partyIds.has(statement.supplier.id));
+  }, [partyData.accounts, partyStatements, headAccountFilter]);
 
   async function fetchSupplierData(): Promise<boolean> {
     setLoading(true);
@@ -176,12 +181,6 @@ export default function ReportsPage() {
   // ── Fetch main data ───────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const invoiceQuery = db
-      .from("invoices")
-      .select("*")
-      .gte("invoice_date", fromDate)
-      .lte("invoice_date", toDate)
-      .order("invoice_date", { ascending: true });
     const cashbookQuery = db
       .from("cashbook")
       .select("*")
@@ -196,8 +195,7 @@ export default function ReportsPage() {
       .lte("date", toDate)
       .order("date", { ascending: true })
       .order("created_at", { ascending: true });
-    const [{ data: invData }, { data: cbData }, { data: expPeriod }] = await Promise.all([invoiceQuery, cashbookQuery, expensesPeriodQuery]);
-    if (invData) setInvoices(invData);
+    const [{ data: cbData }, { data: expPeriod }] = await Promise.all([cashbookQuery, expensesPeriodQuery]);
     if (cbData) setCashbook(cbData);
     setExpenses((expPeriod ?? []) as Expense[]);
     setLoading(false);
@@ -208,8 +206,9 @@ export default function ReportsPage() {
       if (error) setGenerateError(error.message);
       if (data) setStockCategories(data);
     });
-    db.from("accounts").select("*").order("name").then(({ data }) => {
-      if (data) setAccounts(data);
+    db.from("head_accounts").select("*").order("code").then(({ data, error }) => {
+      if (error) setGenerateError(error.message);
+      if (data) setHeadAccounts(data);
     });
   }, []);
 
@@ -233,8 +232,8 @@ export default function ReportsPage() {
       setGenerateError("Select a valid date range. From date must be on or before To date.");
       return;
     }
-    if (activeTab === "account" && accountFilter === "all") {
-      setGenerateError("Select an account / party for the account statement.");
+    if (activeTab === "account" && !selectedHeadAccount) {
+      setGenerateError("Select a head account to generate its party statement.");
       return;
     }
     if (activeTab === "paymentmethod" && methodFilter === "all") {
@@ -253,7 +252,7 @@ export default function ReportsPage() {
         setGenerateError(error instanceof Error ? error.message : "Could not load stock report.");
         return;
       } finally { setLoading(false); }
-    } else if (activeTab === "supplier" || activeTab === "party") {
+    } else if (activeTab === "supplier" || activeTab === "party" || activeTab === "account") {
       if (!await fetchSupplierData()) return;
     } else if (activeTab === "dailyparties") {
       await fetchDailyData();
@@ -281,28 +280,7 @@ export default function ReportsPage() {
   // ── Derived: expense report ───────────────────────────────
   const expenseTotal = useMemo(() => expenses.reduce((s, e) => s + Number(e.amount), 0), [expenses]);
 
-  // ── Derived: account statement ────────────────────────────
-  const accStatementRows = useMemo(() => {
-    if (accountFilter === "all") return [];
-    const rows: { date: string; doc: string; desc: string; debit: number; credit: number; method: string }[] = [];
-    invoices
-      .filter((i) => i.client_name === accountFilter)
-      .forEach((i) => {
-        rows.push({ date: i.invoice_date, doc: i.invoice_number, desc: `Invoice — ${i.job_name || i.client_name}`, debit: Number(i.grand_total), credit: 0, method: i.payment_method || "—" });
-        if (Number(i.amount_received) > 0) {
-          rows.push({ date: i.invoice_date, doc: i.invoice_number, desc: `Payment Received`, debit: 0, credit: Number(i.amount_received), method: i.payment_method || "—" });
-        }
-      });
-    rows.sort((a, b) => a.date.localeCompare(b.date));
-    return rows;
-  }, [invoices, accountFilter]);
-
-  const accStatementWithBal = useMemo(() => {
-    let bal = 0;
-    return accStatementRows.map((r) => { bal += r.debit - r.credit; return { ...r, balance: bal }; });
-  }, [accStatementRows]);
-
-  // ── Derived: cashbook running balance ───────────────────
+  // ── Derived: cashbook running balance ────────────────────────────
   const cashbookWithBal = useMemo(() => {
     return cashbook.reduce<Array<CashbookEntry & { runningBal: number }>>((acc, c) => {
       const prev = acc.length > 0 ? acc[acc.length - 1].runningBal : 0;
@@ -337,7 +315,7 @@ export default function ReportsPage() {
   const methodCashOut = useMemo(() => methodCashbook.filter((c) => c.type === "out").reduce((s, c) => s + Number(c.amount), 0), [methodCashbook]);
 
   // ── Filter label ──────────────────────────────────────────
-  const filterLabel = `${formatDate(fromDate)} — ${formatDate(toDate)}${accountFilter !== "all" && activeTab !== "stock" && activeTab !== "cashbook" && activeTab !== "supplier" && activeTab !== "party" ? ` · ${accountFilter}` : ""}${activeTab === "paymentmethod" && methodFilter !== "all" ? ` · ${methodFilter}` : ""}${activeTab === "stock" ? ` · ${stockCategories.find(c => c.id === stockCategory)?.name ?? "All categories"}` : ""}`;
+  const filterLabel = `${formatDate(fromDate)} - ${formatDate(toDate)}${activeTab === "account" && selectedHeadAccount ? ` / ${selectedHeadAccount.name}` : ""}${activeTab === "paymentmethod" && methodFilter !== "all" ? ` / ${methodFilter}` : ""}${activeTab === "stock" ? ` / ${stockCategories.find(c => c.id === stockCategory)?.name ?? "All categories"}` : ""}`;
 
   // ──────────────────────────────────────────────────────────
   return (
@@ -447,18 +425,14 @@ export default function ReportsPage() {
                     </div>
                   ) : activeTab === "expense" || activeTab === "cashbook" || activeTab === "supplier" || activeTab === "party" ? null : (
                   <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
-                    <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
-                      Account / Party{activeTab === "account" ? " *" : ""}
-                    </label>
-                    <SearchableSelect
-                      value={accountFilter}
-                      onChange={(value) => { setReportGenerated(false); setAccountFilter(value); }}
-                      options={accounts.map((a) => ({ value: a.name, label: a.name }))}
-                      placeholder={activeTab === "account" ? "— Select party —" : "— All parties —"}
-                      emptyValue="all"
-                      inputClassName="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] outline-none w-full"
-                      inputStyle={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }}
-                    />
+                    <label htmlFor="head-account-filter" className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Head account *</label>
+                    <select id="head-account-filter" value={headAccountFilter}
+                      onChange={event => { setReportGenerated(false); setHeadAccountFilter(event.target.value); }}
+                      className="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] w-full focus-visible:outline-2 focus-visible:outline-[var(--blue)]"
+                      style={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }}>
+                      <option value="">Select head account</option>
+                      {headAccounts.map(head => <option key={head.id} value={head.id}>{head.code} - {head.name}</option>)}
+                    </select>
                   </div>
                   )}
                   <div className="flex flex-col gap-1">
@@ -523,104 +497,12 @@ export default function ReportsPage() {
 
         {reportGenerated && activeTab === "account" && (
           <div>
-            {accountFilter === "all" ? (
-              <div className="bg-white rounded-[14px] border border-[var(--gray-100)] py-16 text-center" style={{ boxShadow: "var(--shadow-sm)" }}>
-                <Users size={36} className="mx-auto mb-3" style={{ color: "var(--gray-200)" }} />
-                <p className="text-[13px] font-semibold mb-1" style={{ color: "var(--gray-900)" }}>Select an Account / Party</p>
-                <p className="text-[12px]" style={{ color: "var(--gray-800)" }}>Choose a party in the filters panel, then generate the report.</p>
-              </div>
-            ) : loading ? (
-              <div className="text-center py-10 text-[13px]" style={{ color: "var(--gray-800)" }}>Loading...</div>
-            ) : (
-              <div className="bg-white rounded-[14px] border border-[var(--gray-100)] overflow-hidden" style={{ boxShadow: "var(--shadow-sm)" }}>
-                {/* Statement header */}
-                <div className="px-5 py-4 border-b border-[var(--gray-100)] flex flex-wrap items-center justify-between gap-3" style={{ background: "var(--gray-50)" }}>
-                  <div>
-                    <div className="text-[13px] font-extrabold" style={{ color: "var(--gray-900)" }}>{accountFilter}</div>
-                    <div className="text-[11px] mt-0.5" style={{ color: "var(--gray-800)" }}>Account Statement · {formatDate(fromDate)} — {formatDate(toDate)}</div>
-                  </div>
-                  <div className="flex gap-4 flex-wrap">
-                    {[
-                      { label: "Total Billed", val: formatCurrency(accStatementRows.reduce((s, r) => s + r.debit, 0)), color: "var(--blue-deeper)" },
-                      { label: "Total Received", val: formatCurrency(accStatementRows.reduce((s, r) => s + r.credit, 0)), color: "var(--green)" },
-                      { label: "Closing Balance", val: formatCurrency(accStatementWithBal.at(-1)?.balance ?? 0), color: "var(--red)" },
-                    ].map((s) => (
-                      <div key={s.label} className="text-right">
-                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "var(--gray-800)" }}>{s.label}</div>
-                        <div className="text-[13px] font-extrabold font-mono" style={{ color: s.color }}>{s.val}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {accStatementWithBal.length === 0 ? (
-                  <div className="py-14 text-center">
-                    <FileText size={32} className="mx-auto mb-2" style={{ color: "var(--gray-200)" }} />
-                    <p className="text-[13px] font-medium" style={{ color: "var(--gray-800)" }}>No transactions found for this party in the selected period.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className={`${DT.table} min-w-[700px]`}>
-                      <thead>
-                        <tr>
-                          {["Date", "Document #", "Description", "Debit", "Credit", "Balance", "Method"].map((h) => {
-                            const right = ["Debit", "Credit", "Balance"].includes(h);
-                            return (
-                              <th key={h} className={`${DT.thDense} ${right ? "text-right" : "text-left"}`} style={DT.thStyle}>{h}</th>
-                            );
-                          })}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {accStatementWithBal.map((r, idx) => (
-                          <tr key={idx} className={DT.row}>
-                            <td className={`${DT.tdDense} ${DT.cellBody} whitespace-nowrap`} style={{ color: "var(--gray-900)" }}>{formatDate(r.date)}</td>
-                            <td className={DT.tdDense}>
-                              <span className="font-mono text-[11px] font-bold" style={{ color: "var(--blue-deeper)" }}>{r.doc}</span>
-                            </td>
-                            <td className={`${DT.tdDense} ${DT.cellBody}`} style={{ color: "var(--gray-700)" }}>{r.desc}</td>
-                            <td className={`${DT.tdDense} font-mono text-right font-bold text-[15px]`} style={{ color: r.debit > 0 ? "var(--blue-deeper)" : "var(--gray-300)" }}>
-                              {r.debit > 0 ? formatCurrency(r.debit) : "—"}
-                            </td>
-                            <td className={`${DT.tdDense} font-mono text-right font-bold text-[15px]`} style={{ color: r.credit > 0 ? "var(--green)" : "var(--gray-300)" }}>
-                              {r.credit > 0 ? formatCurrency(r.credit) : "—"}
-                            </td>
-                            <td className={`${DT.tdDense} font-mono text-right font-extrabold text-[15px]`} style={{ color: r.balance > 0 ? "var(--red)" : "var(--green)" }}>
-                              {formatCurrency(Math.abs(r.balance))}
-                            </td>
-                            <td className={DT.tdDense}>
-                              <span className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold" style={{ background: "var(--gray-100)", color: "var(--gray-900)" }}>{r.method}</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ background: "var(--gray-50)" }}>
-                          <td colSpan={3} className={`${DT.tdDense} text-[13.5px] font-bold border-t-2 border-[var(--gray-200)]`} style={{ color: "var(--gray-700)" }}>
-                            Closing Balance
-                          </td>
-                          <td className={`${DT.tdDense} font-mono text-right text-[15px] font-extrabold border-t-2 border-[var(--gray-200)]`} style={{ color: "var(--blue-deeper)" }}>
-                            {formatCurrency(accStatementRows.reduce((s, r) => s + r.debit, 0))}
-                          </td>
-                          <td className={`${DT.tdDense} font-mono text-right text-[15px] font-extrabold border-t-2 border-[var(--gray-200)]`} style={{ color: "var(--green)" }}>
-                            {formatCurrency(accStatementRows.reduce((s, r) => s + r.credit, 0))}
-                          </td>
-                          <td className={`${DT.tdDense} font-mono text-right text-[15px] font-extrabold border-t-2 border-[var(--gray-200)]`}
-                            style={{ color: (accStatementWithBal.at(-1)?.balance ?? 0) > 0 ? "var(--red)" : "var(--green)" }}>
-                            {formatCurrency(Math.abs(accStatementWithBal.at(-1)?.balance ?? 0))}
-                          </td>
-                          <td className={`${DT.tdDense} border-t-2 border-[var(--gray-200)]`} />
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
+            <h2 className="text-lg font-extrabold mb-1">Head Account Statement / {selectedHeadAccount?.name}</h2>
+            <p className="text-xs mb-4" style={{ color: "var(--gray-800)" }}>{formatDate(fromDate)} - {formatDate(toDate)}</p>
+            <SupplierStatementReport statements={headAccountStatements} selectedId={null} party summaryOnly />
           </div>
         )}
 
-        {/* ── TAB: CASHBOOK ───────────────────────────── */}
         {reportGenerated && activeTab === "cashbook" && (
           <div>
             {/* Daily KPIs */}
@@ -968,11 +850,11 @@ export default function ReportsPage() {
             {activeTab === "dailyparties"
               ? `Date: ${formatDate(dailyDate)}`
               : `Period: ${formatDate(fromDate)} — ${formatDate(toDate)}`}
-            {accountFilter !== "all" && activeTab !== "stock" && activeTab !== "paymentmethod" && activeTab !== "cashbook" && activeTab !== "supplier" && activeTab !== "party" && <span style={{ marginLeft: 8, color: "#888" }}>· Party: {accountFilter}</span>}
+            {activeTab === "account" && selectedHeadAccount && <span style={{ marginLeft: 8, color: "#888" }}> / Head account: {selectedHeadAccount.name}</span>}
             {activeTab === "paymentmethod" && methodFilter !== "all" && <span style={{ marginLeft: 8, color: "#888" }}>· Method: {methodFilter}</span>}
           </div>
           <div style={{ fontWeight: 900, color: "#075985", fontSize: 14, letterSpacing: 2, textTransform: "uppercase" }}>
-            {{ stock: "Stock reports", account: "Account Statement", cashbook: "Cashbook", dailyparties: "Daily Parties Report", paymentmethod: "Payment Method Report", expense: "Expense Report", supplier: "Supplier Statement", party: "Party Statement" }[activeTab]}
+            {{ stock: "Stock reports", account: "Head Account Statement", cashbook: "Cashbook", dailyparties: "Daily Parties Report", paymentmethod: "Payment Method Report", expense: "Expense Report", supplier: "Supplier Statement", party: "Party Statement" }[activeTab]}
           </div>
         </div>
 
@@ -1070,37 +952,8 @@ export default function ReportsPage() {
           </table>
         )}
 
-        {/* Print: account statement */}
-        {activeTab === "account" && accStatementWithBal.length > 0 && (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-            <thead>
-              <tr style={{ background: "#075985" }}>
-                {["Date", "Document #", "Description", "Debit", "Credit", "Balance", "Method"].map((h) => (
-                  <th key={h} style={{ color: "#fff", fontWeight: 700, textAlign: "left", padding: "7px 8px", fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {accStatementWithBal.map((r, idx) => (
-                <tr key={idx} style={{ background: idx % 2 === 0 ? "#fff" : "#fafafa", borderBottom: "1px solid #f0f0f0" }}>
-                  <td style={{ padding: "6px 8px", color: "#555" }}>{formatDate(r.date)}</td>
-                  <td style={{ padding: "6px 8px", fontWeight: 800, color: "#075985", fontFamily: "monospace" }}>{r.doc}</td>
-                  <td style={{ padding: "6px 8px" }}>{r.desc}</td>
-                  <td style={{ padding: "6px 8px", fontFamily: "monospace", fontWeight: 700, textAlign: "right", color: r.debit > 0 ? "#111" : "#ccc" }}>
-                    {r.debit > 0 ? formatCurrency(r.debit) : "—"}
-                  </td>
-                  <td style={{ padding: "6px 8px", fontFamily: "monospace", fontWeight: 700, textAlign: "right", color: r.credit > 0 ? "#16a34a" : "#ccc" }}>
-                    {r.credit > 0 ? formatCurrency(r.credit) : "—"}
-                  </td>
-                  <td style={{ padding: "6px 8px", fontFamily: "monospace", fontWeight: 800, textAlign: "right", color: r.balance > 0 ? "#dc2626" : "#16a34a" }}>
-                    {formatCurrency(Math.abs(r.balance))}
-                  </td>
-                  <td style={{ padding: "6px 8px", color: "#666" }}>{r.method}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {/* Print: head account statement */}
+        {activeTab === "account" && <SupplierStatementReport statements={headAccountStatements} selectedId={null} print party summaryOnly />}
 
         {/* Print: payment method report */}
         {activeTab === "paymentmethod" && (

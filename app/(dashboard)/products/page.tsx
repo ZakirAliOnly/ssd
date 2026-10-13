@@ -56,7 +56,6 @@ export default function ProductsPage() {
   const [fCost, setFCost] = useState("");
   const [fSale, setFSale] = useState("");
   const [fQuantity, setFQuantity] = useState("0");
-  const [originalQuantity, setOriginalQuantity] = useState(0);
   const [fNonExpiry, setFNonExpiry] = useState(true);
   const [fExpiryDate, setFExpiryDate] = useState("");
 
@@ -93,7 +92,6 @@ export default function ProductsPage() {
   }
 
   function openEdit(p: Product) {
-    setOriginalQuantity(p.quantity ?? 0);
     setFQuantity(String(p.quantity ?? 0));
     setFNonExpiry(!p.expiry_date);
     setFExpiryDate(p.expiry_date?.slice(0, 10) ?? "");
@@ -131,7 +129,7 @@ export default function ProductsPage() {
       sale_price: parseFloat(fSale) || 0,
       pricing_type: "standalone",
       category_id: fCategoryId,
-      ...(!editingId ? { quantity } : quantity !== originalQuantity ? { quantity, expected_quantity: originalQuantity } : {}),
+      ...(!editingId ? { quantity } : {}),
       ...(!editingId ? { expiry_date: fNonExpiry ? null : fExpiryDate } : {}),
     };
 
@@ -349,7 +347,7 @@ export default function ProductsPage() {
 
               {/* Pricing Type */}
               <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
-              <ProductStockField value={fQuantity} onChange={setFQuantity} disabled={saving} />
+              <ProductStockField value={fQuantity} onChange={setFQuantity} disabled={saving} readOnly={!!editingId} />
               <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving || !!editingId} />
               {editingId && <ProductBatchList productId={editingId} />}
               <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>Standalone (fixed price per unit)</div>

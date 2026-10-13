@@ -1,9 +1,11 @@
 export interface StockReportProduct {
+  description?: string | null;
   id: string; code: string; name: string; cost_price: number; category: string; created_at: string;
   batches: { received_date: string; received_qty: number; remaining_qty: number; allocations: { qty: number; date: string; cost: number | null }[] }[];
   sales: { date: string; qty: number; deducted: number; revenue: number }[];
 }
 export interface StockReportRow {
+  description: string;
   id: string; code: string; name: string; category: string; opening: number | null;
   received: number; sold: number; available: number | null; costPrice: number;
   revenue: number; cost: number; profit: number; warning: string | null;
@@ -44,7 +46,7 @@ export function buildStockReport(products: StockReportProduct[], from: string, t
     if (money(deducted) !== money(consumed) || money(historicalDeducted) !== money(historicalAllocated) || money(opening) < 0 || money(opening + received - consumed) < 0 || p.sales.some(s => s.date <= to && s.deducted !== s.qty)) incomplete = true;
     cost += Math.max(0, sold - costQty) * p.cost_price;
     const revenue = money(sales.reduce((sum, s) => sum + s.revenue, 0));
-    return { id: p.id, code: p.code, name: p.name, category: p.category,
+    return { id: p.id, code: p.code, name: p.name, description: p.description ?? "", category: p.category,
       opening: incomplete ? null : money(opening), received: money(received), sold: money(sold),
       available: incomplete ? null : money(opening + received - consumed),
       costPrice: p.cost_price, revenue, cost: money(cost), profit: money(revenue - cost),

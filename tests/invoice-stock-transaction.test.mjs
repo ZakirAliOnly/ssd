@@ -81,6 +81,29 @@ test("insufficient opening stock rolls back the newly created invoice", async ()
   assert.equal(h.state().products[0].quantity, 10);
 });
 
+test("out-of-stock products reject invoice sales without saving or consuming stock", async () => {
+  const h = harness(undefined, 0);
+  const before = structuredClone(h.state());
+  const response = await h.save(1);
+  assert.equal(response.status, 400);
+  assert.match(response.body.error.message, /Sign is out of stock/);
+  assert.deepEqual(h.state(), before);
+});
+
+test("selling the last units blocks a new invoice but allows resaving the original", async () => {
+  const h = harness(undefined, 1);
+  const saved = await h.save(1);
+  assert.equal(saved.status, 200);
+  assert.equal(h.state().products[0].quantity, 0);
+  const before = structuredClone(h.state());
+  const rejected = await h.save(1);
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.body.error.message, /out of stock/);
+  assert.deepEqual(h.state(), before);
+  assert.equal((await h.save(1, saved.body.data.id)).status, 200);
+  assert.equal(h.state().products[0].quantity, 0);
+});
+
 test("a rejected edit preserves the previous invoice, items, and stock", async () => {
   const h = harness(); const created = await h.save(3); const before = structuredClone(h.state());
   const response = await h.save(11, created.body.data.id);

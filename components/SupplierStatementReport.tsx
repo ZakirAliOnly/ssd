@@ -1,9 +1,9 @@
 import type { SupplierStatement } from "@/lib/supplierStatement";
 import { formatCurrency, formatDate } from "@/lib/helpers";
 
-export function SupplierStatementReport({ statements, selectedId, onSelect, onBack, print = false, party = false }: {
+export function SupplierStatementReport({ statements, selectedId, onSelect, onBack, print = false, party = false, summaryOnly = false }: {
   statements: SupplierStatement[]; selectedId: string | null;
-  onSelect?: (id: string) => void; onBack?: () => void; print?: boolean; party?: boolean;
+  onSelect?: (id: string) => void; onBack?: () => void; print?: boolean; party?: boolean; summaryOnly?: boolean;
 }) {
   const selected = statements.find(s => s.supplier.id === selectedId);
   const totals = (selected ? [selected] : statements).reduce((sum, s) => ({
@@ -37,12 +37,12 @@ export function SupplierStatementReport({ statements, selectedId, onSelect, onBa
             </tr>)}
             {!selected.rows.length && <tr><td colSpan={6} style={cell}>No transactions in this date range.</td></tr>}
           </> : statements.map(s => <tr key={s.supplier.id}>
-            <td style={cell}>{print ? s.supplier.name : <button type="button" onClick={() => onSelect?.(s.supplier.id)} className="font-semibold text-[var(--blue-deeper)] underline cursor-pointer">{s.supplier.name}</button>}
+            <td style={cell}>{print || summaryOnly ? s.supplier.name : <button type="button" onClick={() => onSelect?.(s.supplier.id)} className="font-semibold text-[var(--blue-deeper)] underline cursor-pointer">{s.supplier.name}</button>}
               {s.warning && <span className="block text-[11px]">Payment history needs review</span>}</td>
             <td style={amount}>{formatCurrency(s.opening)}</td><td style={amount}>{formatCurrency(s.debit)}</td>
             <td style={amount}>{formatCurrency(s.credit)}</td><td style={amount}>{formatCurrency(s.closing)}</td>
           </tr>)}
-          {!selected && !statements.length && <tr><td colSpan={5} style={cell}>No {party ? "parties" : "suppliers"} added yet.</td></tr>}
+          {!selected && !statements.length && <tr><td colSpan={5} style={cell}>{summaryOnly ? "No parties are assigned to this head account." : `No ${party ? "parties" : "suppliers"} added yet.`}</td></tr>}
         </tbody>
         <tfoot><tr className="font-bold" style={{ background: "var(--gray-50)" }}>
           <td colSpan={selected ? 3 : 1} style={cell}>Period totals / Closing balance</td>

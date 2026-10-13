@@ -24,6 +24,12 @@ test("single day includes both receipts and sales on that day", () => {
   const [r] = buildStockReport([product], "2026-02-01", "2026-02-01");
   assert.equal(r.opening, 8); assert.equal(r.received, 0); assert.equal(r.available, 5);
 });
+
+test("stock report carries product descriptions and handles missing descriptions", () => {
+  const rows = buildStockReport([{ ...product, description: "Outdoor printing vinyl" }, { ...product, id: "p2", description: null }], "2026-02-01", "2026-02-28");
+  assert.equal(rows[0].description, "Outdoor printing vinyl");
+  assert.equal(rows[1].description, "");
+});
 test("undated manual stock reductions never create invented historical balances", () => {
   const changed = { ...product, batches: [{ ...product.batches[0], remaining_qty: 4 }, product.batches[1]] };
   const [r] = buildStockReport([changed], "2026-02-01", "2026-02-28");

@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       },
     }), { isolationLevel: "RepeatableRead" });
     const rows = buildStockReport(products.map(p => ({
-      id: p.id, code: p.code, name: p.name, category: p.category?.name ?? "Uncategorized",
+      id: p.id, code: p.code, name: p.name, description: p.description, category: p.category?.name ?? "Uncategorized",
       created_at: p.created_at.toISOString(), cost_price: Number(p.cost_price),
       batches: p.stock_batches.map(b => ({ received_date: b.received_date.toISOString().slice(0, 10),
         received_qty: Number(b.received_qty), remaining_qty: Number(b.remaining_qty),

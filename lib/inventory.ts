@@ -142,7 +142,9 @@ export async function applyStockChange(tx: Prisma.TransactionClient, previous: S
     if (result.count !== 1) {
       const product = await tx.product.findUnique({ where: { id: product_id }, select: { name: true, quantity: true } });
       throw new InventoryError(product
-        ? `Insufficient stock for ${product.name}: ${product.quantity} available, ${consumed} additional units needed.`
+        ? Number(product.quantity) <= 0
+          ? `${product.name} is out of stock. Add stock before selling this product.`
+          : `Insufficient stock for ${product.name}: ${product.quantity} available, ${consumed} additional units needed.`
         : "A selected product no longer exists. Reload the products and try again.");
     }
     await adjustBatches(tx, product_id, consumed, invoiceId);
