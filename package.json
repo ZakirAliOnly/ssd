@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
+    "predev": "prisma generate",
+    "prebuild": "prisma generate",
     "db:upgrade:decimal-quantities": "prisma db execute --file scripts/migration-v32-decimal-quantities.sql --schema prisma/schema.prisma",
     "db:upgrade:item-discounts": "prisma db execute --file scripts/migration-v31-invoice-item-discount.sql --schema prisma/schema.prisma",
     "dev": "next dev",
