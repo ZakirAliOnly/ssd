@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/helpers";
 import {
   Printer, FileText, TrendingDown, Users, CalendarDays,
-  ChevronRight, Wallet,
+  ChevronRight, Wallet, Package,
 } from "lucide-react";
 import type { Invoice, CashbookEntry, Account, Expense } from "@/lib/database.types";
 import { DT } from "@/lib/dataTableStyles";
@@ -16,9 +16,11 @@ import { usePaymentMethods, normalizePaymentMethod } from "@/lib/paymentMethods"
 import { buildSupplierStatements } from "@/lib/supplierStatement";
 import { buildPartyStatements } from "@/lib/partyStatement";
 import { SupplierStatementReport } from "@/components/SupplierStatementReport";
+import { StockReport } from "@/components/StockReport";
+import type { StockReportRow } from "@/lib/stockReport";
 import type { Supplier, PurchaseOrder } from "@/lib/database.types";
 
-type Tab = "account" | "cashbook" | "dailyparties" | "paymentmethod" | "expense" | "supplier" | "party";
+type Tab = "account" | "cashbook" | "dailyparties" | "paymentmethod" | "expense" | "supplier" | "party" | "stock";
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   paid:    { bg: "var(--green-light)", color: "var(--green)", label: "Paid" },
@@ -62,6 +64,7 @@ function KpiCard({ label, value, color, sub }: { label: string; value: string; c
 }
 
 const REPORT_CARDS: { id: Tab; title: string; description: string; icon: ReactNode }[] = [
+  { id: "stock", title: "Stock reports", description: "Stock received, sold and available by date and category, with revenue and estimated gross profit.", icon: <Package size={22} /> },
   { id: "party", title: "Party Statement", description: "All party balances. Select a party to view debit and credit details.", icon: <Users size={22} /> },
   { id: "supplier", title: "Supplier Statement", description: "All supplier balances. Select a supplier to view debit and credit details.", icon: <Users size={22} /> },
   { id: "account", title: "Account Statement", description: "Debit / credit ledger for one party between two dates.", icon: <FileText size={22} /> },
@@ -114,6 +117,9 @@ export default function ReportsPage() {
   const [reportGenerated, setReportGenerated] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [stockCategory, setStockCategory] = useState("all");
+  const [stockCategories, setStockCategories] = useState<{ id: string; name: string }[]>([]);
+  const [stockRows, setStockRows] = useState<StockReportRow[]>([]);
 
   // ── Master filter state ───────────────────────────────────
   const [fromDate, setFromDate] = useState(() => {
@@ -198,6 +204,10 @@ export default function ReportsPage() {
   }, [fromDate, toDate]);
 
   useEffect(() => {
+    db.from("product_categories").select("*").order("name").then(({ data, error }) => {
+      if (error) setGenerateError(error.message);
+      if (data) setStockCategories(data);
+    });
     db.from("accounts").select("*").order("name").then(({ data }) => {
       if (data) setAccounts(data);
     });
@@ -231,7 +241,19 @@ export default function ReportsPage() {
       setGenerateError("Select a payment method to generate this report.");
       return;
     }
-    if (activeTab === "supplier" || activeTab === "party") {
+    if (activeTab === "stock") {
+      setLoading(true);
+      setReportGenerated(false);
+      try {
+        const response = await fetch(`/api/reports/stock?${new URLSearchParams({ from: fromDate, to: toDate, category: stockCategory })}`);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not load stock report.");
+        setStockRows(result.rows);
+      } catch (error) {
+        setGenerateError(error instanceof Error ? error.message : "Could not load stock report.");
+        return;
+      } finally { setLoading(false); }
+    } else if (activeTab === "supplier" || activeTab === "party") {
       if (!await fetchSupplierData()) return;
     } else if (activeTab === "dailyparties") {
       await fetchDailyData();
@@ -315,7 +337,7 @@ export default function ReportsPage() {
   const methodCashOut = useMemo(() => methodCashbook.filter((c) => c.type === "out").reduce((s, c) => s + Number(c.amount), 0), [methodCashbook]);
 
   // ── Filter label ──────────────────────────────────────────
-  const filterLabel = `${formatDate(fromDate)} — ${formatDate(toDate)}${accountFilter !== "all" && activeTab !== "cashbook" && activeTab !== "supplier" && activeTab !== "party" ? ` · ${accountFilter}` : ""}${activeTab === "paymentmethod" && methodFilter !== "all" ? ` · ${methodFilter}` : ""}`;
+  const filterLabel = `${formatDate(fromDate)} — ${formatDate(toDate)}${accountFilter !== "all" && activeTab !== "stock" && activeTab !== "cashbook" && activeTab !== "supplier" && activeTab !== "party" ? ` · ${accountFilter}` : ""}${activeTab === "paymentmethod" && methodFilter !== "all" ? ` · ${methodFilter}` : ""}${activeTab === "stock" ? ` · ${stockCategories.find(c => c.id === stockCategory)?.name ?? "All categories"}` : ""}`;
 
   // ──────────────────────────────────────────────────────────
   return (
@@ -330,7 +352,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Report type cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+        <div inert={loading || dailyLoading} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
           {REPORT_CARDS.map((card) => (
             <ReportTypeCard
               key={card.id}
@@ -384,7 +406,7 @@ export default function ReportsPage() {
               </div>
             )}
 
-            <div className="flex flex-wrap gap-3 items-end">
+            <div inert={loading || dailyLoading} className="flex flex-wrap gap-3 items-end">
               {activeTab === "dailyparties" ? (
                 <div className="flex flex-col gap-1">
                   <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Report date</label>
@@ -398,7 +420,17 @@ export default function ReportsPage() {
                 </div>
               ) : (
                 <>
-                  {activeTab === "paymentmethod" ? (
+                  {activeTab === "stock" ? (
+                    <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
+                      <label htmlFor="stock-category" className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Category</label>
+                      <select id="stock-category" value={stockCategory} onChange={e => { setReportGenerated(false); setStockCategory(e.target.value); }}
+                        className="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] focus-visible:outline-2 focus-visible:outline-[var(--blue)]"
+                        style={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }}>
+                        <option value="all">All categories</option>
+                        {stockCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                  ) : activeTab === "paymentmethod" ? (
                     <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
                       <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
                         Payment method *
@@ -484,6 +516,7 @@ export default function ReportsPage() {
         )}
 
         {/* ── TAB: ACCOUNT STATEMENT ────────────────────────── */}
+        {reportGenerated && activeTab === "stock" && <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-4 mb-4" style={{ boxShadow: "var(--shadow-sm)" }}><h2 className="text-lg font-extrabold mb-1">Stock reports</h2><p className="text-xs mb-4">{formatDate(fromDate)} — {formatDate(toDate)} · {stockCategories.find(c => c.id === stockCategory)?.name ?? "All categories"}</p><StockReport rows={stockRows} /></div>}
         {reportGenerated && activeTab === "party" && <SupplierStatementReport statements={partyStatements} selectedId={selectedSupplierId} onSelect={setSelectedSupplierId} onBack={() => setSelectedSupplierId(null)} party />}
 
         {reportGenerated && activeTab === "supplier" && <SupplierStatementReport statements={supplierStatements} selectedId={selectedSupplierId} onSelect={setSelectedSupplierId} onBack={() => setSelectedSupplierId(null)} />}
@@ -935,14 +968,15 @@ export default function ReportsPage() {
             {activeTab === "dailyparties"
               ? `Date: ${formatDate(dailyDate)}`
               : `Period: ${formatDate(fromDate)} — ${formatDate(toDate)}`}
-            {accountFilter !== "all" && activeTab !== "paymentmethod" && activeTab !== "cashbook" && activeTab !== "supplier" && activeTab !== "party" && <span style={{ marginLeft: 8, color: "#888" }}>· Party: {accountFilter}</span>}
+            {accountFilter !== "all" && activeTab !== "stock" && activeTab !== "paymentmethod" && activeTab !== "cashbook" && activeTab !== "supplier" && activeTab !== "party" && <span style={{ marginLeft: 8, color: "#888" }}>· Party: {accountFilter}</span>}
             {activeTab === "paymentmethod" && methodFilter !== "all" && <span style={{ marginLeft: 8, color: "#888" }}>· Method: {methodFilter}</span>}
           </div>
           <div style={{ fontWeight: 900, color: "#075985", fontSize: 14, letterSpacing: 2, textTransform: "uppercase" }}>
-            {{ account: "Account Statement", cashbook: "Cashbook", dailyparties: "Daily Parties Report", paymentmethod: "Payment Method Report", expense: "Expense Report", supplier: "Supplier Statement", party: "Party Statement" }[activeTab]}
+            {{ stock: "Stock reports", account: "Account Statement", cashbook: "Cashbook", dailyparties: "Daily Parties Report", paymentmethod: "Payment Method Report", expense: "Expense Report", supplier: "Supplier Statement", party: "Party Statement" }[activeTab]}
           </div>
         </div>
 
+        {activeTab === "stock" && <><p className="text-xs mb-3">Category: {stockCategories.find(c => c.id === stockCategory)?.name ?? "All categories"}</p><StockReport rows={stockRows} /></>}
         {activeTab === "party" && <SupplierStatementReport statements={partyStatements} selectedId={selectedSupplierId} print party />}
 
         {activeTab === "supplier" && <SupplierStatementReport statements={supplierStatements} selectedId={selectedSupplierId} print />}
