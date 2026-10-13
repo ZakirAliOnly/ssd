@@ -66,6 +66,8 @@ Last updated: 2026-10-13
 File: app/(dashboard)/accounts/page.tsx, app/(dashboard)/quick-invoice/page.tsx, components/InvoiceLineDiscount.tsx
 Last updated: 2026-10-13
 
+Product selectors display the product name only. Keep code searchable without showing it as a prefix; omit serial/category metadata and FIFO expiry notes beneath the editor's selector.
+
 | Property | Class / token |
 | --- | --- |
 | Background | existing white inputs and var(--blue-pale) row hover |

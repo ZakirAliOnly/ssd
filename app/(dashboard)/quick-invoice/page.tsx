@@ -19,7 +19,6 @@ import { useRouter } from "next/navigation";
 import { PrintFooter } from "@/components/PrintFooter";
 import { PrintHeader } from "@/components/PrintHeader";
 import { useUser } from "@/lib/UserContext";
-import { ProductExpiryNotice } from "@/components/ProductExpiryNotice";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { confirmDialog } from "@/components/ConfirmModal";
 import { logActivity } from "@/lib/activityLog";
@@ -1897,7 +1896,7 @@ function WalkInInvoiceModal({
                     <SearchableSelect
                       value={item.productId ?? products.find((p) => p.name === item.product)?.id ?? ""}
                       onChange={(v) => updateItem(idx, "productId", v)}
-                      options={products.map((p) => ({ value: p.id, searchText: p.name, label: `${p.code ? `#${p.code} - ` : ""}${p.name} | ${p.product_categories?.name || "Uncategorized"} | ${p.expiry_date ? `Expires ${p.expiry_date.slice(0, 10)}` : "Non-expiry"}` }))}
+                      options={products.map((p) => ({ value: p.id, searchText: `${p.name} ${p.code ?? ""}`, label: p.name }))}
                       maxResults={10}
                       placeholder="— Product —"
                       inputClassName={sm}
@@ -1905,15 +1904,6 @@ function WalkInInvoiceModal({
                       onCreate={(q) => onRequestCreateProduct(idx, q)}
                       createLabel="+ Add new product"
                     />
-                    {item.product && (() => {
-                      const metadata = productMetadata(products, item.productId, item.product);
-                      return (
-                        <div className="mt-1.5 text-[12px] break-words" style={{ color: "var(--gray-700)" }}>
-                          Serial no.: {metadata.serialNumber || "—"} · Category: {metadata.productCategory || "—"}
-                        </div>
-                      );
-                    })()}
-                    <ProductExpiryNotice product={products.find(p => item.productId ? p.id === item.productId : p.name === item.product)} />
                   </td>
                   <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ minWidth: 200 }}>
                     <textarea

@@ -27,7 +27,6 @@ import {
   buildInvoiceShareWhatsAppMessage,
 } from "@/lib/whatsappWaMe";
 import { useUser } from "@/lib/UserContext";
-import { ProductExpiryNotice } from "@/components/ProductExpiryNotice";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { confirmDialog } from "@/components/ConfirmModal";
 import { logActivity } from "@/lib/activityLog";
@@ -1958,13 +1957,12 @@ export default function AccountsPage() {
                             value={item.productId ?? invProducts.find((p) => p.name === item.product)?.id ?? ""}
                             onChange={(v) => updateInvItem(idx, "productId", v)}
                             maxResults={10}
-                            options={invProducts.map((p) => ({ value: p.id, searchText: p.name, label: `${p.code ? `#${p.code} - ` : ""}${p.name} | ${p.product_categories?.name || "Uncategorized"} | ${p.expiry_date ? `Expires ${p.expiry_date.slice(0, 10)}` : "Non-expiry"}` }))}
+                            options={invProducts.map((p) => ({ value: p.id, searchText: `${p.name} ${p.code ?? ""}`, label: p.name }))}
                             placeholder="— Product —"
                             inputClassName="border border-[var(--gray-200)] rounded-[6px] px-2 py-1.5 text-[12px] outline-none bg-white focus:border-[var(--blue)] w-full"
                             onCreate={(q) => setProductCreate({ idx, initialName: q })}
                             createLabel="+ Add new product"
                           />
-                    <ProductExpiryNotice product={invProducts.find(p => item.productId ? p.id === item.productId : p.name === item.product)} />
                         </td>
                         <td className="px-2 py-2 border-b border-[var(--gray-100)]" style={{ minWidth: 200 }}>
                           <textarea
