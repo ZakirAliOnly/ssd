@@ -37,4 +37,4 @@ Last updated: 2026-10-13
 | Shadow | var(--shadow-sm) |
 | Accent usage | existing ReportTypeCard blue active state; var(--red) for incomplete history |
 
-**Pattern notes:** Reuse ReportTypeCard and the report date controls. Share StockReport between screen and print, use tabular quantity/currency values, and explain unavailable historical balances in visible copy.
+**Pattern notes:** Reuse ReportTypeCard and the report date controls. Share StockReport between screen and print. Left-align descriptive columns, center quantity headers/values/totals, and right-align currency headers/values/totals with matching cell padding and monospace values. Explain unavailable historical balances in visible copy.
