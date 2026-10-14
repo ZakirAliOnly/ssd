@@ -45,6 +45,8 @@ Hide native spinner buttons globally with textfield appearance and WebKit spin-b
 
 Product add and edit forms use an editable ProductStockField. Edit submissions send changed quantities with the original stock snapshot so concurrent sales cannot be overwritten; unchanged quantities are omitted. Keep the existing field styling and two-decimal quantity input.
 
+Purchase invoice quantity fields may be cleared while typing; do not replace an empty field with 1 or clamp draft quantities to 1 during recalculation. Keep a default of 1 for new lines and allow positive quantities with two decimal places; the save validation rejects unfinished or zero quantities.
+
 ### Product search
 
 File: app/(dashboard)/products/page.tsx

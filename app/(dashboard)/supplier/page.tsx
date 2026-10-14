@@ -89,7 +89,7 @@ function purchaseItemsPayload(items: PoLine[]) {
 }
 
 function calcLine(line: PoLine): PoLine {
-  const qty = Math.max(1, Number(line.qty) || 1);
+  const qty = Math.max(0, Number(line.qty) || 0);
   const rate = Number(line.rate) || 0;
   const amount = Math.round(qty * rate * 100) / 100;
   return { ...line, qty, rate, amount };
@@ -2323,10 +2323,10 @@ function PoModal({
                             type="number"
                             className={sm}
                             value={it.qty || ""}
-                            min={1}
-                            step={1}
+                            min={0.01}
+                            step={0.01}
                             placeholder="Qty"
-                            onChange={(e) => updateLine(idx, "qty", parseFloat(e.target.value) || 1)}
+                            onChange={(e) => updateLine(idx, "qty", parseFloat(e.target.value) || 0)}
                           />
                         </td>
                         <td className="px-2 py-2 w-28">
