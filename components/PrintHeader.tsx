@@ -1,6 +1,6 @@
 "use client";
 
-type Props = { style?: React.CSSProperties; variant?: "default" | "challan" };
+type Props = { style?: React.CSSProperties; variant?: "default" | "challan" | "invoice" };
 
 /** Inline letterhead renders immediately, including in hidden print templates. */
 export function PrintHeader({ style, variant = "default" }: Props = {}) {
@@ -21,7 +21,7 @@ export function PrintHeader({ style, variant = "default" }: Props = {}) {
           <div>Dawn Medical Centre, Room No. 1, 1st Floor</div>
           <div>Jinnah Road, Quetta, Pakistan · Tel: +92-81-2836967</div>
           <div>Mob: 0333-7808836, 0334-2247408, 0345-8346536</div>
-          {!challan && <><div>E-mail: ssdig@isb.comsats.net.pk</div>
+          {variant === "default" && <><div>E-mail: ssdig@isb.comsats.net.pk</div>
           <div>Ejaz Gill · Sales Manager · 0333-7808836</div></>}
         </div>
       </div>

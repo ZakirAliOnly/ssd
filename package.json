@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "db:upgrade:inventory": "node scripts/upgrade-inventory.cjs",
     "postinstall": "prisma generate",
     "predev": "prisma generate",
     "prebuild": "prisma generate",

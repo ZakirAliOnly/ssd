@@ -80,6 +80,13 @@ Last updated: 2026-10-13
 
 **Pattern notes:** Top-align enlarged triangular logo with the business name. Keep address and phone details; omit email and sales-manager lines only in this variant. Challans omit delivery number and receiver/delivery/signature fields in both editor and output.
 
+### Invoice print header
+
+File: components/PrintHeader.tsx (invoice variant)
+Last updated: 2026-10-14
+
+Reuse the default letterhead typography, logo, spacing, address, and phone details. Omit the business email and the Ejaz Gill / Sales Manager line in invoice print and PDF templates for Accounts and Quick Invoice. Other document headers retain their existing variants.
+
 ### Invoice product rows and discounts
 
 File: app/(dashboard)/accounts/page.tsx, app/(dashboard)/quick-invoice/page.tsx, components/InvoiceLineDiscount.tsx

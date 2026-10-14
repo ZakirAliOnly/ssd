@@ -1536,7 +1536,7 @@ export default function InvoicePage() {
       <div ref={invoicePdfRef} className="a4-print-only" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 11, paddingBottom: 12 }}>
         {invoicePdfData ? (
           <>
-            <PrintHeader />
+            <PrintHeader variant="invoice" />
 
             {/* Title bar */}
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16, padding: "5px 12px", background: "#075985", color: "#fff", marginBottom: 10 }}>

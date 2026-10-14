@@ -2867,7 +2867,7 @@ export default function AccountsPage() {
         const items = viewingInvoiceItems;
         return (
           <>
-            <PrintHeader />
+            <PrintHeader variant="invoice" />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px", background: "#075985", color: "#fff", marginBottom: 10 }}>
               <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Invoice</span>
               <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 13 }}>{inv.invoice_number}</span>
