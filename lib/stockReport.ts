@@ -1,7 +1,7 @@
 export interface StockReportProduct {
   description?: string | null;
   id: string; code: string; name: string; cost_price: number; category: string; created_at: string;
-  batches: { received_date: string; received_qty: number; remaining_qty: number; allocations: { qty: number; date: string; cost: number | null; returns?: { qty: number; date: string }[] }[] }[];
+  batches: { received_date: string; received_qty: number; remaining_qty: number; supplier_returns?: { qty: number; date: string }[]; allocations: { qty: number; date: string; cost: number | null; returns?: { qty: number; date: string }[] }[] }[];
   sales: { date: string; qty: number; deducted: number; revenue: number }[];
   returns?: { date: string; qty: number; restored: number; revenue: number }[];
 }
@@ -28,10 +28,15 @@ export function buildStockReport(products: StockReportProduct[], from: string, t
     for (const batch of p.batches) {
       const allocated = batch.allocations.reduce((sum, a) => sum + a.qty, 0);
       const returned = batch.allocations.reduce((sum, a) => sum + (a.returns ?? []).reduce((n, r) => n + r.qty, 0), 0);
+      const supplierReturned = (batch.supplier_returns ?? []).reduce((sum, r) => sum + r.qty, 0);
       // Manual reductions have no dated movement record. Never invent a historical balance.
-      if (money(batch.received_qty - batch.remaining_qty) !== money(allocated - returned)) incomplete = true;
+      if (money(batch.received_qty - batch.remaining_qty) !== money(allocated - returned + supplierReturned)) incomplete = true;
       if (batch.received_date < from) opening += batch.received_qty;
       else if (batch.received_date <= to) received += batch.received_qty;
+      for (const r of batch.supplier_returns ?? []) {
+        if (r.date < from) opening -= r.qty;
+        else if (r.date <= to) received -= r.qty;
+      }
       for (const a of batch.allocations) {
         for (const r of a.returns ?? []) {
           if (r.date < from) opening += r.qty;

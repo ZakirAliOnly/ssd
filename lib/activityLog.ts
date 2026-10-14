@@ -7,6 +7,7 @@ export type ActivityEntityType =
   | "head_account"
   | "invoice"
   | "invoice_return"
+  | "supplier_return"
   | "quick_invoice"
   | "cashbook"
   | "expense"

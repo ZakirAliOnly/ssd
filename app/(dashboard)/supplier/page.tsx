@@ -109,7 +109,7 @@ function estimatedSupplierPayable(supplierId: string, openingBalance: number, po
   const opening = Math.max(0, Number(openingBalance) || 0);
   const poRemain = pos
     .filter((p) => p.supplier_id === supplierId)
-    .reduce((s, p) => s + Math.max(0, Number(p.balance_due) || 0), 0);
+    .reduce((s, p) => s + (Number(p.balance_due) || 0), 0);
   return Math.round((opening + poRemain) * 100) / 100;
 }
 
@@ -184,10 +184,10 @@ function buildSupplierLedgerRows(
         sortAt: `${c.date}T${c.created_at || "1970-01-01"}_${c.id}`,
         doc: "Cashbook",
         desc: c.description || (c.type === "in" ? "Cashbook entry (in)" : "Cashbook entry (out)"),
-        // Both "in" and "out" against a supplier reduce what we owe them.
-        // (out = we paid the supplier; in = supplier refunded us.)
-        debit: 0,
-        credit: Number(c.amount) || 0,
+        // A cash refund received settles a supplier credit; noncash return
+        // adjustments and cash paid reduce what we owe.
+        debit: c.type === "in" ? Number(c.amount) || 0 : 0,
+        credit: c.type === "out" ? Number(c.amount) || 0 : 0,
         method: c.method || "—",
       });
     });
@@ -224,6 +224,7 @@ export default function SupplierPage() {
   const [paySupplierTarget, setPaySupplierTarget] = useState<SupplierRow | null>(null);
   const [paySupplierLoading, setPaySupplierLoading] = useState(false);
   const [payOpeningSnapshot, setPayOpeningSnapshot] = useState(0);
+  const [payCreditSnapshot, setPayCreditSnapshot] = useState(0);
   const [paySupplierUnpaid, setPaySupplierUnpaid] = useState<SupplierUnpaidPoRow[]>([]);
   const [spDate, setSpDate] = useState(todayISO());
   const [spMethod, setSpMethod] = useState<PaymentMethod>("Cash");
@@ -472,6 +473,7 @@ export default function SupplierPage() {
     setSpAmount("");
     setPaySupplierUnpaid([]);
     setPayOpeningSnapshot(0);
+    setPayCreditSnapshot(0);
     setShowPaySupplierModal(true);
     setPaySupplierLoading(true);
     try {
@@ -486,10 +488,12 @@ export default function SupplierPage() {
       const opening = Math.max(0, Number(sup?.opening_balance) || 0);
       const rows = (pos ?? []) as SupplierUnpaidPoRow[];
       const unpaid = rows.filter((p) => Number(p.balance_due) > 0.005);
+      const credit = rows.reduce((sum, p) => sum + Math.min(0, Number(p.balance_due) || 0), 0);
+      setPayCreditSnapshot(credit);
       setPayOpeningSnapshot(opening);
       setPaySupplierUnpaid(unpaid);
       const poOwed = unpaid.reduce((acc, p) => acc + Math.max(0, Number(p.balance_due) || 0), 0);
-      const out = Math.round((opening + poOwed) * 100) / 100;
+      const out = Math.round((opening + poOwed + credit) * 100) / 100;
       setSpAmount(out > 0 ? String(out) : "");
     } catch {
       showToast("Could not load supplier balances", "err");
@@ -688,7 +692,8 @@ export default function SupplierPage() {
       const opening = Math.max(0, Number(supFresh?.opening_balance) || 0);
       const unpaidList = ((poRows ?? []) as { id: string; balance_due: number | string; amount_paid: number | string; grand_total: number | string }[]).filter((p) => Number(p.balance_due) > 0.005);
       const poOwed = unpaidList.reduce((s, p) => s + Math.max(0, Number(p.balance_due) || 0), 0);
-      const outstanding = Math.round((opening + poOwed) * 100) / 100;
+      const credits = (poRows ?? []).reduce((sum: number, p: { balance_due: unknown }) => sum + Math.min(0, Number(p.balance_due) || 0), 0);
+      const outstanding = Math.round((opening + poOwed + credits) * 100) / 100;
 
       if (outstanding <= 0) {
         showToast("Nothing owed to this supplier", "err");
@@ -1142,7 +1147,7 @@ export default function SupplierPage() {
 
   const payModalOutstanding =
     Math.round(
-      (payOpeningSnapshot +
+      (payOpeningSnapshot + payCreditSnapshot +
         paySupplierUnpaid.reduce((s, p) => s + Math.max(0, Number(p.balance_due) || 0), 0)) *
         100
     ) / 100;

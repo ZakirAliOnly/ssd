@@ -9,6 +9,7 @@ with its production database configured in `.env`:
 
 ```bash
 npm run db:upgrade:returns
+npm run db:upgrade:supplier-returns
 npm run db:generate
 npm run build
 ```
@@ -24,6 +25,12 @@ or deleted. Cash refunds are recorded separately in Cash Book as an **out** entr
 linked to the party. Untracked historical invoice lines credit their value but
 do not invent stock; invoices with tracked deductions and missing batch history
 must be reviewed before returning those products.
+
+The Supplier Invoice Return tab uses the same return modal. It removes available
+stock from the original purchase batch, preserves the purchase items, and reduces
+the supplier balance with a noncash adjustment. Supplier cash refunds are entered
+separately as an **in** entry in Cash Book, referenced to the supplier ID. Purchase
+invoices with returns cannot be edited; further payments use their net balance.
 
 First, run the development server:
 

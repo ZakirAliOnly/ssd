@@ -97,3 +97,15 @@ test("return credits preserve cents, leave cash unchanged and separate refunds s
   const methods = load("paymentMethods").computeMethodBalances([credit, refund], [{ name: "Cash", opening_balance: 10 }]);
   assert.equal(methods.Cash, 8.99);
 });
+
+test("supplier return credits reduce payable without inventing opening cash and refunds settle the credit", () => {
+  const supplier = { id: "s", name: "Supplier", opening_balance: 0, created_at: "2026-01-01" };
+  const purchase = { id: "p", supplier_id: "s", supplier_name: "Supplier", po_number: "PO-1", order_date: "2026-10-06", created_at: "2026-10-06T00:00:00", grand_total: 500, amount_paid: 500 };
+  const payment = { id: "pay", reference: "s", account_name: "Supplier", date: "2026-10-06", created_at: "2026-10-06T00:00:01", type: "out", amount: 500, method: "Cash", description: "Supplier payment" };
+  const credit = { id: "r", reference: "s", account_name: "Supplier", date: "2026-10-10", created_at: "2026-10-10T00:00:00", type: "out", amount: 200, method: "Adjustment", description: "Supplier return PO-1" };
+  const [returned] = buildSupplierStatements([supplier], [purchase], [payment, credit], "2026-10-01", "2026-10-31");
+  assert.equal(returned.opening, 0); assert.equal(returned.closing, -200); assert.equal(returned.warning, null);
+  const refund = { ...payment, id: "refund", type: "in", amount: 200, date: "2026-10-11", description: "Supplier refund" };
+  const [settled] = buildSupplierStatements([supplier], [purchase], [payment, credit, refund], "2026-10-01", "2026-10-31");
+  assert.equal(settled.closing, 0);
+});

@@ -16,7 +16,7 @@ Last updated: 2026-10-14
 | Focus | focus-visible:outline-2 focus-visible:outline-[var(--blue)] |
 | Accent | var(--blue-deeper) table headers and confirm action; var(--blue-pale) selected invoice |
 
-**Pattern notes:** Paginate invoice search and keep the selected invoice's return editor below the list. Use visible labels for search, date, reason and quantities. Tables scroll horizontally on small screens, amounts align right and quantities align center. Review and confirm inline; show original, returned and remaining quantities and retain immutable return history. A whole-invoice return selects all remaining quantities. Cash refunds are separate. Do not show zero-stock products as unavailable for returns, since returns restore sold stock.
+**Pattern notes:** Sales Invoice Return and Supplier Invoice Return use matching tab buttons with a blue active state. Paginate invoice search; the Return button opens a native dialog with a labeled title, keyboard focus containment, a sticky header and Close action. Dialog width is viewport minus 24px (maximum 5xl), maximum height 90dvh, with vertical scrolling and a translucent backdrop. Block closing while saving or while the save result is uncertain. Use visible labels for search, date, reason and quantities. Tables scroll horizontally on small screens, amounts align right and quantities align center. Review and confirm inline in the modal; show original, returned and remaining quantities and immutable return history. A whole-invoice return selects all remaining quantities. Sales returns restore stock; supplier returns remove unsold stock from the original purchase batch. Cash refunds are separate.
 
 ### Head Account Statement
 
@@ -41,7 +41,7 @@ Last updated: 2026-10-13
 
 Hide native spinner buttons globally with textfield appearance and WebKit spin-button overrides. Dashboard number inputs blur on mouse-wheel scrolling so their values remain unchanged while the page continues scrolling. Preserve normal typing and keyboard input.
 
-Product edit forms show stock quantity through ProductStockField in read-only mode, with helper text explaining that purchases add stock and sales reduce it. New-product opening stock remains editable. Product edit submissions omit quantity changes.
+Product add and edit forms use an editable ProductStockField. Edit submissions send changed quantities with the original stock snapshot so concurrent sales cannot be overwritten; unchanged quantities are omitted. Keep the existing field styling and two-decimal quantity input.
 
 ### Product search
 

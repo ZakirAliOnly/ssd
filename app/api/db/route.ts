@@ -445,6 +445,10 @@ export async function POST(req: NextRequest) {
         try {
           const saved = await prisma.$transaction(async tx => {
             await tx.$queryRawUnsafe('SELECT id FROM purchase_orders WHERE id = $1::uuid FOR UPDATE', id);
+            if (body.purchaseId) {
+              const returns = await tx.supplierReturn.findMany({ where: { purchase_order_id: id }, take: 1 });
+              if (returns.length) throw new InventoryError("This supplier invoice has returns and cannot be edited. Its original items must remain unchanged.");
+            }
             const previous = await tx.purchaseOrder.findUnique({ where: { id } });
             if (!body.purchaseId && previous) return { ...previous, items: await tx.purchaseOrderItem.findMany({ where: { purchase_order_id: id } }) }; // Never receive twice.
             if (body.purchaseId && !previous) throw new InventoryError("Purchase invoice not found.");
@@ -612,6 +616,24 @@ export async function POST(req: NextRequest) {
     if (operation === "update") {
       const where = buildWhere(filters, table);
       const updateData = await prepareData((data ?? {}) as Record<string, unknown>, false);
+      if (table === "purchase_orders") {
+        await prisma.$transaction(async tx => {
+          const purchases = await tx.purchaseOrder.findMany({ where, orderBy: { id: "asc" } });
+          for (const purchase of purchases) {
+            await tx.$queryRawUnsafe('SELECT id FROM purchase_orders WHERE id = $1::uuid FOR UPDATE', purchase.id);
+            const fresh = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } });
+            const returns = await tx.supplierReturn.findMany({ where: { purchase_order_id: purchase.id } });
+            const credit = returns.reduce((sum, item) => sum + Number(item.amount), 0);
+            const paid = Number((updateData as Record<string, unknown>).amount_paid ?? fresh.amount_paid);
+            if (!Number.isFinite(paid) || paid < 0 || Math.abs(paid - Math.round(paid * 100) / 100) > 0.00000001
+              || (paid > Number(fresh.amount_paid) && paid > Math.max(0, Number(fresh.grand_total) - credit))) throw new InventoryError("Payment exceeds the supplier invoice balance after returns.");
+            const due = Math.round((Number(fresh.grand_total) - credit - paid) * 100) / 100;
+            await tx.purchaseOrder.update({ where: { id: fresh.id }, data: { ...coerceDates(updateData, table), amount_paid: paid,
+              balance_due: due, payment_status: due <= 0 ? "paid" : paid > 0 || credit > 0 ? "partial" : "unpaid" } });
+          }
+        });
+        return NextResponse.json({ data: null, error: null });
+      }
       if (table === "invoices") {
         await prisma.$transaction(async tx => {
           const invoices = await tx.invoice.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
@@ -627,7 +649,8 @@ export async function POST(req: NextRequest) {
           const entries = await tx.cashbook.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
           for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
           const returns = await tx.invoiceReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
-          if (returns.length) throw new InventoryError("Return credits cannot be edited. Record a separate adjustment if needed.");
+          const supplierReturns = await tx.supplierReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
+          if (returns.length || supplierReturns.length) throw new InventoryError("Return credits cannot be edited. Record a separate adjustment if needed.");
           await tx.cashbook.updateMany({ where: { id: { in: entries.map(entry => entry.id) } }, data: coerceDates(updateData, table) });
         });
         return NextResponse.json({ data: null, error: null });
@@ -657,7 +680,8 @@ export async function POST(req: NextRequest) {
           const entries = await tx.cashbook.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
           for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
           const returns = await tx.invoiceReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
-          if (returns.length) throw new InventoryError("Return credits cannot be deleted. Return history must remain intact.");
+          const supplierReturns = await tx.supplierReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
+          if (returns.length || supplierReturns.length) throw new InventoryError("Return credits cannot be deleted. Return history must remain intact.");
           await tx.cashbook.deleteMany({ where: { id: { in: entries.map(entry => entry.id) } } });
         });
         return NextResponse.json({ data: null, error: null });

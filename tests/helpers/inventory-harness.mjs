@@ -17,6 +17,9 @@ new Function("require", "module", "exports", compile("../../lib/purchaseInventor
 const returnModule = { exports: {} };
 new Function("require", "module", "exports", compile("../../lib/invoiceReturns.ts"))(
   name => name === "./inventory" ? inventory : require(name), returnModule, returnModule.exports);
+const supplierReturnModule = { exports: {} };
+new Function("require", "module", "exports", compile("../../lib/supplierReturns.ts"))(
+  name => name === "./inventory" ? inventory : name === "./invoiceReturns" ? returnModule.exports : require(name), supplierReturnModule, supplierReturnModule.exports);
 
 /** Rollback-capable adapter exercising the real route and batch algorithms. */
 export function harness(profile = { role: "super_admin", modules: [], is_active: true }, openingQty = 10) {
@@ -28,6 +31,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
       received_qty: openingQty, remaining_qty: openingQty, expiry_date: new Date("2027-12-31"), received_date: new Date("2026-01-01"), created_at: new Date("2026-01-01") }] : [],
     allocations: [], invoices: [], invoiceItems: [], purchases: [], purchaseItems: [],
     returns: [], returnItems: [], returnAllocations: [], cashbook: [], activity: [],
+    supplierReturns: [], supplierReturnItems: [],
     suppliers: [{ id: supplierId, name: "Supplier", phone: "" }],
   };
   let transactions = 0;
@@ -55,6 +59,11 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
   }
   function model(key) {
     const hydrate = (row, include) => ({ ...row,
+      ...(key === "purchases" && include?.items ? { items: state.purchaseItems.filter(item => item.purchase_order_id === row.id).map(item => ({ ...item,
+        stock_batch: state.batches.find(batch => batch.purchase_item_id === item.id) ?? null,
+        return_items: state.supplierReturnItems.filter(entry => entry.purchase_item_id === item.id),
+      })) } : {}),
+      ...(key === "purchases" && include?.returns ? { returns: state.supplierReturns.filter(entry => entry.purchase_order_id === row.id).map(entry => ({ ...entry, items: state.supplierReturnItems.filter(item => item.return_id === entry.id) })) } : {}),
       ...(key === "invoices" && include?.items ? { items: state.invoiceItems.filter(item => item.invoice_id === row.id).map(item => ({ ...item,
         product: state.products.find(product => product.id === item.product_id) ?? null,
         return_items: state.returnItems.filter(entry => entry.invoice_item_id === item.id),
@@ -77,7 +86,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
           return 0;
         });
         if (take) rows = rows.slice(0, take);
-        return rows.map(row => select ? Object.fromEntries(Object.keys(select).map(field => [field, row[field]]))
+        return rows.map(row => select ? Object.fromEntries(Object.keys(select).map(field => [field, hydrate(row, select)[field]]))
           : { ...hydrate(row, include), ...(include?.stock_batch ? { stock_batch: state.batches.find(batch => batch.purchase_item_id === row.id) ?? null } : {}) });
       },
       async findUnique({ where, include }) { const row = state[key].find(row => matches(row, where)); return row ? hydrate(row, include) : null; },
@@ -117,6 +126,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     quickInvoice: { findMany: async () => [] }, user: { findUnique: async () => profile }, $queryRawUnsafe: async () => [],
     invoiceReturn: model("returns"), invoiceReturnItem: model("returnItems"), returnStockAllocation: model("returnAllocations"),
     cashbook: model("cashbook"), activityLog: model("activity"),
+    supplierReturn: model("supplierReturns"), supplierReturnItem: model("supplierReturnItems"),
   };
   prisma.$transaction = async callback => {
     if (Array.isArray(callback)) return Promise.all(callback);
@@ -131,6 +141,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     "@/lib/inventory": inventory, "@/lib/productValidation": productValidation, "@/lib/moduleAccess": moduleAccess,
     "@/lib/purchaseInventory": purchaseModule.exports,
     "@/lib/invoiceReturns": returnModule.exports,
+    "@/lib/supplierReturns": supplierReturnModule.exports,
   };
   new Function("require", "module", "exports", compiled)(name => dependencies[name] ?? require(name), module, module.exports);
   const returnRoute = { exports: {} };

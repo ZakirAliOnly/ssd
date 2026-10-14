@@ -44,8 +44,9 @@ export function buildSupplierStatements(
   for (const entry of cashbook) {
     if (seen.has(entry.id)) continue;
     seen.add(entry.id);
-    if (/^(opening balance|balance adjustment)/i.test(entry.description)
-      || entry.method?.trim().toLowerCase() === "adjustment") continue;
+    const returnCredit = /^supplier return\b/i.test(entry.description) && entry.method?.trim().toLowerCase() === "adjustment";
+    if (!returnCredit && (/^(opening balance|balance adjustment)/i.test(entry.description)
+      || entry.method?.trim().toLowerCase() === "adjustment")) continue;
     const reference = entry.reference?.trim();
     let owner = paymentOwner.get(entry.id)
       ?? (byId.has(reference) ? reference : purchaseOwner.get(reference));
@@ -61,7 +62,7 @@ export function buildSupplierStatements(
     const orders = purchases.filter(p => purchaseOwner.get(p.id) === supplier.id);
     const entries = payments.get(supplier.id) ?? [];
     const paid = orders.reduce((sum, p) => sum + Number(p.amount_paid), 0);
-    const cashPaid = entries.filter(e => e.type === "out").reduce((sum, e) => sum + Number(e.amount), 0);
+    const cashPaid = entries.filter(e => e.type === "out" && e.method?.trim().toLowerCase() !== "adjustment").reduce((sum, e) => sum + Number(e.amount), 0);
     const originalOpening = money(Number(supplier.opening_balance ?? 0) + Math.max(0, cashPaid - paid));
     const all: (Omit<SupplierStatementRow, "balance"> & { sortAt: string })[] = [];
     if (originalOpening) {

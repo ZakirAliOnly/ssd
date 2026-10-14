@@ -263,7 +263,7 @@ dated(db
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = row as any;
       const action = String(r.action ?? "");
-      if (action === "create" && r.entity_type === "invoice_return") {
+      if (action === "create" && ["invoice_return", "supplier_return"].includes(r.entity_type)) {
         all.push({ id: `return-${r.id}`, eventType: "invoice_return", title: r.title || "Invoice Return",
           subtitle: r.subtitle || "", amount: Number(r.amount), timestamp: r.created_at,
           badge: "Credit", userEmail: r.user_email, userName: r.user_name });

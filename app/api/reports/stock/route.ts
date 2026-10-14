@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const products = await prisma.$transaction(tx => tx.product.findMany({
       where: category === "all" ? {} : { category_id: category }, orderBy: { name: "asc" },
       include: { category: true,
-        stock_batches: { include: { purchase_item: true, allocations: { include: { invoice: { select: { invoice_date: true } }, returns: { include: { return_item: { include: { invoice_return: { select: { return_date: true } } } } } } } } } },
+        stock_batches: { include: { purchase_item: true, supplier_returns: { include: { supplier_return: { select: { return_date: true } } } }, allocations: { include: { invoice: { select: { invoice_date: true } }, returns: { include: { return_item: { include: { invoice_return: { select: { return_date: true } } } } } } } } } },
         invoice_items: { include: { invoice: { include: { items: true } } } },
         return_items: { include: { invoice_return: { select: { return_date: true } } } },
       },
@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
       created_at: p.created_at.toISOString(), cost_price: Number(p.cost_price),
       batches: p.stock_batches.map(b => ({ received_date: b.received_date.toISOString().slice(0, 10),
         received_qty: Number(b.received_qty), remaining_qty: Number(b.remaining_qty),
+        supplier_returns: b.supplier_returns.map(r => ({ qty: Number(r.stock_removed_qty), date: r.supplier_return.return_date.toISOString().slice(0, 10) })),
         allocations: b.allocations.map(a => ({ qty: Number(a.qty), date: a.invoice.invoice_date.toISOString().slice(0, 10),
           cost: b.purchase_item && Number(b.purchase_item.qty) > 0 ? Number(b.purchase_item.amount) / Number(b.purchase_item.qty) : null,
           returns: a.returns.map(r => ({ qty: Number(r.qty), date: r.return_item.invoice_return.return_date.toISOString().slice(0, 10) })) })),

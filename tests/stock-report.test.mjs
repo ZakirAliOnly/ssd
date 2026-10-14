@@ -68,3 +68,14 @@ test("returns restore historical stock on their date and reverse revenue and ori
   const later = buildStockReport([returned], "2026-03-03", "2026-03-03")[0];
   assert.equal(later.opening, 9); assert.equal(later.available, 9); assert.equal(later.sold, 0);
 });
+
+test("supplier returns reduce stock on the return date without being counted as sales", () => {
+  const p = { ...product, batches: [{ received_date: "2026-02-01", received_qty: 10, remaining_qty: 7,
+    allocations: [], supplier_returns: [{ date: "2026-02-10", qty: 3 }] }], sales: [] };
+  const before = buildStockReport([p], "2026-02-01", "2026-02-09")[0];
+  assert.equal(before.available, 10); assert.equal(before.received, 10); assert.equal(before.warning, null);
+  const day = buildStockReport([p], "2026-02-10", "2026-02-10")[0];
+  assert.equal(day.opening, 10); assert.equal(day.received, -3); assert.equal(day.available, 7);
+  assert.equal(day.sold, 0); assert.equal(day.revenue, 0); assert.equal(day.cost, 0); assert.equal(day.warning, null);
+  assert.equal(buildStockReport([p], "2026-02-11", "2026-02-11")[0].opening, 7);
+});

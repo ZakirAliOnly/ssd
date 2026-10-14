@@ -4,6 +4,7 @@ import { COOKIE_NAME, verifyToken } from "@/lib/auth";
 import { canAccessPath } from "@/lib/moduleAccess";
 import { InventoryError } from "@/lib/inventory";
 import { saveInvoiceReturn, uuidPattern } from "@/lib/invoiceReturns";
+import { saveSupplierReturn } from "@/lib/supplierReturns";
 
 async function authorize(request: NextRequest) {
   const token = request.cookies.get(COOKIE_NAME)?.value;
@@ -24,6 +25,38 @@ export async function GET(request: NextRequest) {
   try {
     if (!await authorize(request)) return NextResponse.json({ error: "Returns access required." }, { status: 403 });
     const id = request.nextUrl.searchParams.get("id");
+    const type = request.nextUrl.searchParams.get("type") ?? "sales";
+    if (!["sales", "supplier"].includes(type)) throw new InventoryError("Select a valid return tab.");
+    if (type === "supplier") {
+      if (id) {
+        if (!uuidPattern.test(id)) throw new InventoryError("Select a valid supplier invoice.");
+        const purchase = await prisma.purchaseOrder.findUnique({ where: { id }, include: {
+          items: { include: { stock_batch: { include: { product: { select: { name: true } } } }, return_items: true }, orderBy: { id: "asc" } },
+          returns: { include: { items: true }, orderBy: [{ created_at: "desc" }, { id: "desc" }] },
+        } });
+        if (!purchase) return NextResponse.json({ error: "Supplier invoice not found." }, { status: 404 });
+        return NextResponse.json({ invoice: { ...purchase, invoice_number: purchase.po_number, client_name: purchase.supplier_name,
+          invoice_date: purchase.order_date, is_walk_in: false,
+          discount_amount: purchase.items.reduce((sum, item) => sum + Number(item.amount), 0) - Number(purchase.grand_total),
+          items: purchase.items.map(item => ({ ...item, category: item.description, product: item.stock_batch?.product ?? null,
+            stock_deducted_qty: item.stock_received_qty, available_qty: item.stock_batch?.remaining_qty ?? null,
+            return_items: item.return_items.map(r => ({ ...r, invoice_item_id: r.purchase_item_id, stock_restored_qty: r.stock_removed_qty, revenue: r.amount })) })),
+          returns: purchase.returns.map(record => ({ ...record, items: record.items.map(item => ({ ...item, stock_restored_qty: item.stock_removed_qty })) })),
+        } }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const q = (request.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 100);
+      const rawPage = Number(request.nextUrl.searchParams.get("page") ?? 1);
+      const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+      const where = q ? { OR: [{ po_number: { contains: q, mode: "insensitive" as const } },
+        { supplier_name: { contains: q, mode: "insensitive" as const } }, ...(uuidPattern.test(q) ? [{ id: q }] : [])] } : {};
+      const [purchases, count] = await prisma.$transaction([
+        prisma.purchaseOrder.findMany({ where, take: 25, skip: (page - 1) * 25,
+          orderBy: [{ order_date: "desc" }, { created_at: "desc" }, { id: "desc" }],
+          select: { id: true, po_number: true, supplier_name: true, order_date: true, grand_total: true, returns: { select: { amount: true } } } }),
+        prisma.purchaseOrder.count({ where }),
+      ]);
+      return NextResponse.json({ invoices: purchases.map(p => ({ ...p, invoice_number: p.po_number, client_name: p.supplier_name, invoice_date: p.order_date, is_walk_in: false })), count, page }, { headers: { "Cache-Control": "no-store" } });
+    }
     if (id) {
       if (!uuidPattern.test(id)) throw new InventoryError("Select a valid invoice.");
       const invoice = await prisma.invoice.findUnique({ where: { id }, include: {
@@ -55,6 +88,7 @@ export async function POST(request: NextRequest) {
     const user = await authorize(request);
     if (!user) return NextResponse.json({ error: "Returns access required." }, { status: 403 });
     const body = await request.json();
+    if (body?.type !== undefined && !["sales", "supplier"].includes(body.type)) throw new InventoryError("Select a valid return tab.");
     if (!body || !uuidPattern.test(body.invoiceId ?? "") || !uuidPattern.test(body.requestId ?? "")) throw new InventoryError("Select an invoice and reload the return form.");
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
     if (typeof body.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) || !Number.isFinite(Date.parse(body.date))
@@ -63,7 +97,8 @@ export async function POST(request: NextRequest) {
     if (body.selections.some((line: { invoice_item_id?: unknown; qty?: unknown } | null) => !line || typeof line.invoice_item_id !== "string" || typeof line.qty !== "number")) throw new InventoryError("Invalid return items.");
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
-        const record = await prisma.$transaction(tx => saveInvoiceReturn(tx, {
+        const save = body.type === "supplier" ? saveSupplierReturn : saveInvoiceReturn;
+        const record = await prisma.$transaction(async tx => await save(tx, {
           invoiceId: body.invoiceId, requestId: body.requestId, date: body.date, reason: body.reason.trim(), selections: body.selections,
         }, user), { isolationLevel: "Serializable", timeout: 20000 });
         return NextResponse.json({ record });
