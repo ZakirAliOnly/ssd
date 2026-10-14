@@ -1,5 +1,23 @@
 # UI Registry
 
+### Returns module
+
+File: app/(dashboard)/returns/page.tsx
+Last updated: 2026-10-14
+
+| Property | Class / token |
+| --- | --- |
+| Background | bg-white panels; var(--gray-50) form fields |
+| Border | var(--gray-100) panels and table cells; var(--gray-200) inputs |
+| Radius | rounded-[14px] panels; rounded-[8px] inputs and buttons |
+| Text | text-2xl font-extrabold page title; text-lg font-bold invoice heading; text-sm body |
+| Secondary text | var(--gray-800) |
+| Spacing | p-4 / sm:p-5 panels; existing DT table cell padding |
+| Focus | focus-visible:outline-2 focus-visible:outline-[var(--blue)] |
+| Accent | var(--blue-deeper) table headers and confirm action; var(--blue-pale) selected invoice |
+
+**Pattern notes:** Paginate invoice search and keep the selected invoice's return editor below the list. Use visible labels for search, date, reason and quantities. Tables scroll horizontally on small screens, amounts align right and quantities align center. Review and confirm inline; show original, returned and remaining quantities and retain immutable return history. A whole-invoice return selects all remaining quantities. Cash refunds are separate. Do not show zero-stock products as unavailable for returns, since returns restore sold stock.
+
 ### Head Account Statement
 
 File: app/(dashboard)/reports/page.tsx and components/SupplierStatementReport.tsx

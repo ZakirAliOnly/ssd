@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/db";
 import { formatCurrency } from "@/lib/helpers";
 import { DT } from "@/lib/dataTableStyles";
+import { isLedgerOnlyEntry } from "@/lib/paymentMethods";
 import {
   FileText, TrendingUp, TrendingDown,
   Users, Truck, FileSignature, RefreshCw, Activity, Trash2,
@@ -13,6 +14,7 @@ import {
 
 type EventType =
   | "invoice"
+  | "invoice_return"
   | "payment_in"
   | "payment_out"
   | "salary"
@@ -35,6 +37,7 @@ interface ActivityEntry {
 // ─── Config maps ─────────────────────────────────────────────────────────────
 
 const EVENT_COLORS: Record<EventType, { bg: string; color: string; border: string }> = {
+  invoice_return: { bg: "var(--blue-pale)", color: "var(--blue-deeper)", border: "var(--gray-200)" },
   invoice:        { bg: "#EFF6FF", color: "#1D4ED8", border: "#BFDBFE" },
   payment_in:     { bg: "#F0F9FF", color: "#15803D", border: "#BBF7D0" },
   payment_out:    { bg: "#FEF2F2", color: "#B91C1C", border: "#FECACA" },
@@ -45,6 +48,7 @@ const EVENT_COLORS: Record<EventType, { bg: string; color: string; border: strin
 };
 
 const EVENT_ICONS: Record<EventType, React.ElementType> = {
+  invoice_return: RefreshCw,
   invoice:        FileText,
   payment_in:     TrendingUp,
   payment_out:    TrendingDown,
@@ -55,6 +59,7 @@ const EVENT_ICONS: Record<EventType, React.ElementType> = {
 };
 
 const EVENT_LABELS: Record<EventType, string> = {
+  invoice_return: "Return",
   invoice:        "Invoice",
   payment_in:     "Payment In",
   payment_out:    "Payment Out",
@@ -193,6 +198,7 @@ dated(db
 
     // Cashbook
     for (const cb of cashbook ?? []) {
+      if (isLedgerOnlyEntry(cb)) continue;
       all.push({
         id: `cb-${cb.id}`,
         eventType: cb.type === "in" ? "payment_in" : "payment_out",
@@ -257,6 +263,12 @@ dated(db
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = row as any;
       const action = String(r.action ?? "");
+      if (action === "create" && r.entity_type === "invoice_return") {
+        all.push({ id: `return-${r.id}`, eventType: "invoice_return", title: r.title || "Invoice Return",
+          subtitle: r.subtitle || "", amount: Number(r.amount), timestamp: r.created_at,
+          badge: "Credit", userEmail: r.user_email, userName: r.user_name });
+        continue;
+      }
       // For now we only render deletion rows here — the other rows are
       // already represented by the create-time queries above.
       if (action !== "delete" || ["laborer", "labor_task", "labor_advance"].includes(r.entity_type)) continue;
@@ -278,7 +290,10 @@ dated(db
     setLoading(false);
   }, [period]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => { void fetchData(); }, 0);
+    return () => window.clearTimeout(initialLoad);
+  }, [fetchData]);
 
   // Client-side filters
   const filtered = entries.filter((e) => {

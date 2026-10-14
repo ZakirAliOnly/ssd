@@ -53,3 +53,18 @@ test("invoice discounts are proportional across categories and never produce neg
   assert.equal(stockSaleRevenue(60, 100, 200), 0);
   assert.equal(stockSaleRevenue(0, 0, 0), 0);
 });
+
+test("returns restore historical stock on their date and reverse revenue and original cost", () => {
+  const returned = { ...product,
+    batches: [{ ...product.batches[0], remaining_qty: 6, allocations: [product.batches[0].allocations[0], { ...product.batches[0].allocations[1], returns: [{ date: "2026-03-02", qty: 1 }] }] }, product.batches[1]],
+    returns: [{ date: "2026-03-02", qty: 1, restored: 1, revenue: 18 }],
+  };
+  const february = buildStockReport([returned], "2026-02-01", "2026-02-28")[0];
+  assert.equal(february.available, 10); assert.equal(february.warning, null);
+  const day = buildStockReport([returned], "2026-03-02", "2026-03-02")[0];
+  assert.equal(day.opening, 8); assert.equal(day.available, 9);
+  assert.equal(day.sold, -1); assert.equal(day.revenue, -18); assert.equal(day.cost, -8);
+  assert.equal(day.profit, -10); assert.equal(day.warning, null);
+  const later = buildStockReport([returned], "2026-03-03", "2026-03-03")[0];
+  assert.equal(later.opening, 9); assert.equal(later.available, 9); assert.equal(later.sold, 0);
+});

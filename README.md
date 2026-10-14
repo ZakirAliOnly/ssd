@@ -2,6 +2,29 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Returns module deployment
+
+After deploying this source to the VPS, run these commands from the app folder
+with its production database configured in `.env`:
+
+```bash
+npm run db:upgrade:returns
+npm run db:generate
+npm run build
+```
+
+Then restart the app process. If older stock migrations have not been applied,
+use `npm run db:upgrade:inventory` instead of `db:upgrade:returns`; it installs
+the inventory prerequisites and return tables in one transaction.
+
+Grant sub-users the **Returns** module in Sub Users to give them access.
+Returns preserve the original invoice and record partial quantities, stock batch
+restoration and a ledger credit together. Invoices with returns cannot be edited
+or deleted. Cash refunds are recorded separately in Cash Book as an **out** entry
+linked to the party. Untracked historical invoice lines credit their value but
+do not invent stock; invoices with tracked deductions and missing batch history
+must be reviewed before returning those products.
+
 First, run the development server:
 
 ```bash

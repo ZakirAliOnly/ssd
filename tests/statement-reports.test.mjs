@@ -84,3 +84,16 @@ test("party statements include parties with no transactions", () => {
   assert.equal(statements.length, 1);
   assert.equal(statements[0].closing, 0);
 });
+
+test("return credits preserve cents, leave cash unchanged and separate refunds settle party credit", () => {
+  const accounts = [{ id: "a", name: "Client", phone: "" }];
+  const invoices = [{ id: "i", client_name: "Client", invoice_number: "INV-1", invoice_date: "2026-10-06", created_at: "2026-10-06", grand_total: 1.01, amount_received: 1.01 }];
+  const credit = { id: "r", account_name: "Client", date: "2026-10-10", type: "out", amount: 1.01, method: "Adjustment", reference: "return-id", description: "Sales return INV-1" };
+  const [returned] = buildPartyStatements(accounts, invoices, [credit], [], [], "2026-10-01", "2026-10-31");
+  assert.equal(returned.closing, -1.01);
+  const refund = { id: "refund", account_name: "Client", date: "2026-10-11", type: "out", amount: 1.01, method: "Cash", reference: "i", description: "Return refund" };
+  const [settled] = buildPartyStatements(accounts, invoices, [credit, refund], [], [], "2026-10-01", "2026-10-31");
+  assert.equal(settled.closing, 0);
+  const methods = load("paymentMethods").computeMethodBalances([credit, refund], [{ name: "Cash", opening_balance: 10 }]);
+  assert.equal(methods.Cash, 8.99);
+});

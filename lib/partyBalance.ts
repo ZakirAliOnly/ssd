@@ -2,16 +2,9 @@ import type { Invoice, CashbookEntry } from "@/lib/database.types";
 import type { LedgerRow } from "@/lib/ledger";
 import { isLedgerOnlyEntry, isOpeningBalanceEntry } from "@/lib/paymentMethods";
 
-/**
- * Business operates in whole rupees: rates × sqft can produce fractional
- * totals (e.g. 4,102.50) that display rounded as "Rs 4,103", while the
- * user enters the matching payment as the round figure 4,103 — leaving
- * a hidden -0.50 per invoice that compounds across the ledger. Rounding
- * each row's amount to whole rupees here makes the ledger arithmetic
- * match what the user sees row by row, and keeps the closing balance
- * honest to the whole-rupee view of the account.
- */
-const wholeRupees = (n: number): number => (n < 0 ? -Math.round(-n) : Math.round(n));
+/** Keep credits and invoices at their stored precision so partial returns
+ * neither lose cents nor leave a balance after a full return. */
+const ledgerMoney = (n: number): number => Math.round(n * 100) / 100;
 
 /** Invoices belonging to a named party (excludes walk-ins). */
 function partyInvoicesFor(accountName: string, invoices: Invoice[]): Invoice[] {
@@ -33,7 +26,7 @@ export function buildLedgerRows(
   /** Invoice IDs that already have a cashbook line (reference = invoice id) — avoids double-counting payment. */
   const invoiceIdsWithCashbookPayment = new Set(
     cashbook
-      .filter((c) => (c.account_name || "").toLowerCase() === nameLower)
+      .filter((c) => (c.account_name || "").toLowerCase() === nameLower && c.type === "in" && !isLedgerOnlyEntry(c))
       .map((c) => (c.reference || "").trim())
       .filter(Boolean)
   );
@@ -47,7 +40,7 @@ export function buildLedgerRows(
         const detail = [inv.job_notes, inv.job_name].map((s) => String(s || "").trim()).find(Boolean);
         return detail ? `Invoice — ${detail}` : "Invoice";
       })(),
-      debit: wholeRupees(Number(inv.grand_total)),
+      debit: ledgerMoney(Number(inv.grand_total)),
       credit: 0,
       method: inv.payment_method || "—",
       invoiceId: inv.id,
@@ -59,7 +52,7 @@ export function buildLedgerRows(
         doc: inv.invoice_number,
         desc: "Payment received (on invoice)",
         debit: 0,
-        credit: wholeRupees(Number(inv.amount_received)),
+        credit: ledgerMoney(Number(inv.amount_received)),
         method: inv.payment_method || "—",
       });
     }
@@ -68,7 +61,7 @@ export function buildLedgerRows(
   cashbook
     .filter((c) => (c.account_name || "").toLowerCase() === nameLower)
     .forEach((c) => {
-      const amt = wholeRupees(Number(c.amount));
+      const amt = ledgerMoney(Number(c.amount));
       const isOpening = isOpeningBalanceEntry(c);
       // Balance-adjustment rows (created when an account's opening balance is
       // edited) are also bookkeeping-only — their `type` carries the direction
@@ -84,9 +77,10 @@ export function buildLedgerRows(
         debit  = c.type === "in"  ? amt : 0;
         credit = c.type === "out" ? amt : 0;
       } else {
-        // Real cashbook entries linked to a party are payments — they reduce
-        // what the party owes us.
-        credit = amt;
+        // Receipts credit the party. A separately paid refund debits it,
+        // settling the credit created by a sales return.
+        debit = c.type === "out" ? amt : 0;
+        credit = c.type === "in" ? amt : 0;
       }
 
       rows.push({

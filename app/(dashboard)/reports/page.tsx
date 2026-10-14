@@ -12,7 +12,7 @@ import { DT } from "@/lib/dataTableStyles";
 import { PdfPrintBanner } from "@/components/PdfPrintBanner";
 import { PrintFooter } from "@/components/PrintFooter";
 import { SearchableSelect } from "@/components/SearchableSelect";
-import { usePaymentMethods, normalizePaymentMethod } from "@/lib/paymentMethods";
+import { usePaymentMethods, normalizePaymentMethod, isLedgerOnlyEntry } from "@/lib/paymentMethods";
 import { buildSupplierStatements } from "@/lib/supplierStatement";
 import { buildPartyStatements } from "@/lib/partyStatement";
 import { SupplierStatementReport } from "@/components/SupplierStatementReport";
@@ -196,7 +196,7 @@ export default function ReportsPage() {
       .order("date", { ascending: true })
       .order("created_at", { ascending: true });
     const [{ data: cbData }, { data: expPeriod }] = await Promise.all([cashbookQuery, expensesPeriodQuery]);
-    if (cbData) setCashbook(cbData);
+    if (cbData) setCashbook((cbData as CashbookEntry[]).filter(entry => !isLedgerOnlyEntry(entry)));
     setExpenses((expPeriod ?? []) as Expense[]);
     setLoading(false);
   }, [fromDate, toDate]);

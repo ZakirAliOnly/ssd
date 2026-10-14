@@ -14,7 +14,7 @@ import {
   Scale,
 } from "lucide-react";
 import type { Invoice, CashbookEntry } from "@/lib/database.types";
-import { computeMethodBalances, isOpeningBalanceEntry, usePaymentMethods } from "@/lib/paymentMethods";
+import { computeMethodBalances, isLedgerOnlyEntry, usePaymentMethods } from "@/lib/paymentMethods";
 
 type PeriodPreset = "week" | "month" | "all";
 
@@ -90,19 +90,22 @@ export default function DashboardPage() {
     }
     if (cbData) {
       setCashRows(cbData as CashbookEntry[]);
-      const cashInToday = (cbData as CashbookEntry[]).filter((c) => c.date === today && c.type === "in" && !isOpeningBalanceEntry(c));
+      const cashInToday = (cbData as CashbookEntry[]).filter((c) => c.date === today && c.type === "in" && !isLedgerOnlyEntry(c));
       setTodayReceived(cashInToday.reduce((s, c) => s + Number(c.amount), 0));
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => { void load(); }, 0);
     const onVisible = () => {
       if (document.visibilityState === "visible") void load();
     };
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearTimeout(initialLoad);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [load]);
 
   const { from, to, badge } = periodRange(period);
@@ -110,7 +113,7 @@ export default function DashboardPage() {
   const filtered = useMemo(() => {
     const invFiltered = invoices.filter((i) => dateInRange(i.invoice_date, from, to));
     const cbFiltered = cashRows.filter((c) => dateInRange(c.date, from, to));
-    const cbCash = cbFiltered.filter((c) => !isOpeningBalanceEntry(c));
+    const cbCash = cbFiltered.filter((c) => !isLedgerOnlyEntry(c));
     const totalBilled = invFiltered.reduce((s, i) => s + Number(i.grand_total), 0);
     const received = cbCash.filter((c) => c.type === "in").reduce((s, c) => s + Number(c.amount), 0);
     const spending = cbCash.filter((c) => c.type === "out").reduce((s, c) => s + Number(c.amount), 0);

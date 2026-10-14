@@ -2,6 +2,7 @@ export const MODULES = [
   { id: "dashboard", label: "Dashboard" },
   { id: "accounts", label: "Parties" },
   { id: "quick-invoice", label: "Walk-in Invoice" },
+  { id: "returns", label: "Returns" },
   { id: "products", label: "Products" },
   { id: "supplier", label: "Suppliers / Purchase Invoices" },
   { id: "cashbook", label: "Cash Book" },

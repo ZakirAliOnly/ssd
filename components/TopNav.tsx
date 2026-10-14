@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Monitor, FileText, LogOut,
-  Package, BarChart2, Users, FileSignature, Truck, ClipboardList, History, UserCog, Receipt,
+  Package, BarChart2, Users, FileSignature, Truck, ClipboardList, History, UserCog, Receipt, RotateCcw,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { getInitials } from "@/lib/helpers";
@@ -29,6 +29,7 @@ const adminToolbarItems: { name: string; href: string; icon: React.ElementType }
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Parties", href: "/accounts", icon: Monitor },
   { name: "Make Invoice Walk-In", href: "/quick-invoice", icon: FileText },
+  { name: "Returns", href: "/returns", icon: RotateCcw },
   { name: "Expense", href: "/expense", icon: Receipt },
   { name: "Workers", href: "/workers", icon: Users },
   { name: "Products", href: "/products", icon: Package },

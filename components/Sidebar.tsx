@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FolderOpen, Monitor, CreditCard,
-  FileText, Zap, LogOut, Package, BarChart2, Users, Receipt,
+  FileText, Zap, LogOut, Package, BarChart2, Users, Receipt, RotateCcw,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { useRouter } from "next/navigation";
@@ -32,6 +32,7 @@ const navItems = [
     { name: "New Invoice", href: "/invoices", icon: FileText },
     { name: "Quick Invoice", href: "/quick-invoice", icon: Zap, badge: "NEW" },
     { name: "Invoice Report", href: "/invoice-report", icon: BarChart2 },
+    { name: "Returns", href: "/returns", icon: RotateCcw },
   ]},
   { label: "Reports", items: [
     { name: "Reports", href: "/reports", icon: BarChart2 },

@@ -14,6 +14,9 @@ const compiled = compile("../../app/api/db/route.ts");
 const purchaseModule = { exports: {} };
 new Function("require", "module", "exports", compile("../../lib/purchaseInventory.ts"))(
   name => name === "./inventory" ? inventory : require(name), purchaseModule, purchaseModule.exports);
+const returnModule = { exports: {} };
+new Function("require", "module", "exports", compile("../../lib/invoiceReturns.ts"))(
+  name => name === "./inventory" ? inventory : require(name), returnModule, returnModule.exports);
 
 /** Rollback-capable adapter exercising the real route and batch algorithms. */
 export function harness(profile = { role: "super_admin", modules: [], is_active: true }, openingQty = 10) {
@@ -24,15 +27,18 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     batches: openingQty ? [{ id: openingId, product_id: productId, purchase_item_id: null,
       received_qty: openingQty, remaining_qty: openingQty, expiry_date: new Date("2027-12-31"), received_date: new Date("2026-01-01"), created_at: new Date("2026-01-01") }] : [],
     allocations: [], invoices: [], invoiceItems: [], purchases: [], purchaseItems: [],
+    returns: [], returnItems: [], returnAllocations: [], cashbook: [], activity: [],
     suppliers: [{ id: supplierId, name: "Supplier", phone: "" }],
   };
   let transactions = 0;
   const rowBatch = row => state.batches.find(batch => batch.id === row.batch_id);
   function matches(row, where = {}) {
     return Object.entries(where).every(([key, expected]) => {
+      if (key === "OR") return expected.some(condition => matches(row, condition));
       if (key === "batch") return matches(rowBatch(row) ?? {}, expected);
       if (key === "invoice_id_batch_id") return matches(row, expected);
       if (expected && typeof expected === "object") {
+        if (expected.contains != null) return String(row[key]).toLowerCase().includes(expected.contains.toLowerCase());
         if (expected.in) return expected.in.includes(row[key]);
         if (expected.gte != null) return row[key] >= expected.gte;
         if (expected.gt != null) return row[key] > expected.gt;
@@ -48,6 +54,14 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     }
   }
   function model(key) {
+    const hydrate = (row, include) => ({ ...row,
+      ...(key === "invoices" && include?.items ? { items: state.invoiceItems.filter(item => item.invoice_id === row.id).map(item => ({ ...item,
+        product: state.products.find(product => product.id === item.product_id) ?? null,
+        return_items: state.returnItems.filter(entry => entry.invoice_item_id === item.id),
+      })) } : {}),
+      ...(key === "invoices" && include?.returns ? { returns: state.returns.filter(entry => entry.invoice_id === row.id).map(entry => ({ ...entry, items: state.returnItems.filter(item => item.return_id === entry.id) })) } : {}),
+      ...(key === "allocations" && include?.returns ? { returns: state.returnAllocations.filter(entry => entry.stock_allocation_id === row.id) } : {}),
+    });
     const api = {
       async findMany({ where, select, include, orderBy, take } = {}) {
         let rows = state[key].filter(row => matches(row, where));
@@ -64,17 +78,19 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
         });
         if (take) rows = rows.slice(0, take);
         return rows.map(row => select ? Object.fromEntries(Object.keys(select).map(field => [field, row[field]]))
-          : { ...row, ...(include?.stock_batch ? { stock_batch: state.batches.find(batch => batch.purchase_item_id === row.id) ?? null } : {}) });
+          : { ...hydrate(row, include), ...(include?.stock_batch ? { stock_batch: state.batches.find(batch => batch.purchase_item_id === row.id) ?? null } : {}) });
       },
-      async findUnique({ where }) { return state[key].find(row => matches(row, where)) ?? null; },
+      async findUnique({ where, include }) { const row = state[key].find(row => matches(row, where)); return row ? hydrate(row, include) : null; },
+      async count({ where } = {}) { return state[key].filter(row => matches(row, where)).length; },
       async findUniqueOrThrow(args) { const row = await api.findUnique(args); if (!row) throw new Error("Not found"); return row; },
       async create({ data }) {
         const row = { id: randomUUID(), created_at: new Date(Date.UTC(2026, 9, 6) + ticks++),
           ...(key === "purchaseItems" ? { stock_received_qty: 0 } : {}),
           ...(key === "batches" ? { purchase_item_id: null } : {}), ...data };
+        if (key === "invoices") Object.assign(row, { discount_amount: 0, amount_received: 0, is_walk_in: false, ...row });
         state[key].push(row); return { ...row };
       },
-      async update({ where, data }) { const row = await api.findUniqueOrThrow({ where }); apply(row, data); return { ...row }; },
+      async update({ where, data }) { const row = state[key].find(row => matches(row, where)); if (!row) throw new Error("Not found"); apply(row, data); return { ...row }; },
       async updateMany({ where, data }) {
         const rows = state[key].filter(row => matches(row, where));
         for (const row of rows) apply(row, data);
@@ -99,8 +115,11 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     product: model("products"), invoice: model("invoices"), invoiceItem: model("invoiceItems"), stockBatch: model("batches"),
     stockAllocation: model("allocations"), purchaseOrder: model("purchases"), purchaseOrderItem: model("purchaseItems"), supplier: model("suppliers"),
     quickInvoice: { findMany: async () => [] }, user: { findUnique: async () => profile }, $queryRawUnsafe: async () => [],
+    invoiceReturn: model("returns"), invoiceReturnItem: model("returnItems"), returnStockAllocation: model("returnAllocations"),
+    cashbook: model("cashbook"), activityLog: model("activity"),
   };
   prisma.$transaction = async callback => {
+    if (Array.isArray(callback)) return Promise.all(callback);
     transactions++;
     const before = structuredClone(state);
     try { return await callback(prisma); } catch (error) { state = before; throw error; }
@@ -111,8 +130,13 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     "@/lib/prisma": { prisma }, "@/lib/auth": { COOKIE_NAME: "auth", verifyToken: async () => ({ sub: randomUUID(), email: "test@example.com", full_name: "Test" }) },
     "@/lib/inventory": inventory, "@/lib/productValidation": productValidation, "@/lib/moduleAccess": moduleAccess,
     "@/lib/purchaseInventory": purchaseModule.exports,
+    "@/lib/invoiceReturns": returnModule.exports,
   };
   new Function("require", "module", "exports", compiled)(name => dependencies[name] ?? require(name), module, module.exports);
+  const returnRoute = { exports: {} };
+  new Function("require", "module", "exports", compile("../../app/api/returns/route.ts"))(name => dependencies[name] ?? require(name), returnRoute, returnRoute.exports);
+  const returnCall = body => returnRoute.exports.POST({ cookies: { get: () => ({ value: "test" }) }, json: async () => body });
+  const returnGet = params => returnRoute.exports.GET({ cookies: { get: () => ({ value: "test" }) }, nextUrl: new URL(`http://localhost/api/returns?${new URLSearchParams(params)}`) });
   const call = body => module.exports.POST({ cookies: { get: () => ({ value: "test" }) }, json: async () => body });
   const save = (qty, invoiceId, total = qty * 100) => call({ table: "invoices", operation: "save_invoice", invoiceId,
     data: { client_name: "Test", invoice_date: "2026-10-06", grand_total: total },
@@ -121,5 +145,6 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     purchaseId: options.purchaseId, requestId: options.requestId ?? randomUUID(),
     data: { supplier_id: supplierId, order_date: options.date ?? "2026-10-06", amount_paid: options.paid ?? 0 },
     items: [{ id: options.lineId, product_id: productId, description: "Sign", qty, rate: 100, expiry_date: options.expiryDate === undefined ? "2027-01-01" : options.expiryDate }] });
-  return { call, save, purchase, productId, supplierId, openingId, state: () => state, transactions: () => transactions };
+  return { call, save, purchase, returnCall, returnGet, planReturn: returnModule.exports.planInvoiceReturn,
+    productId, supplierId, openingId, state: () => state, transactions: () => transactions };
 }

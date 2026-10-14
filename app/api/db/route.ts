@@ -483,6 +483,11 @@ export async function POST(req: NextRequest) {
         try {
           const saved = await prisma.$transaction(async tx => {
             // Updating the header locks the invoice before reading its old items.
+            if (body.invoiceId) {
+              await tx.$queryRawUnsafe('SELECT id FROM invoices WHERE id = $1::uuid FOR UPDATE', body.invoiceId);
+              const returns = await tx.invoiceReturn.findMany({ where: { invoice_id: body.invoiceId }, take: 1 });
+              if (returns.length) throw new InventoryError("This invoice has returns and cannot be edited. Its original items must remain unchanged.");
+            }
             const invoice = body.invoiceId
               ? await tx.invoice.update({ where: { id: body.invoiceId }, data: header as Prisma.InvoiceUpdateInput })
               : await createInvoiceWithUniqueNumber(stampUserFields(header, "invoices", authUser), tx);
@@ -607,6 +612,26 @@ export async function POST(req: NextRequest) {
     if (operation === "update") {
       const where = buildWhere(filters, table);
       const updateData = await prepareData((data ?? {}) as Record<string, unknown>, false);
+      if (table === "invoices") {
+        await prisma.$transaction(async tx => {
+          const invoices = await tx.invoice.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
+          for (const invoice of invoices) await tx.$queryRawUnsafe('SELECT id FROM invoices WHERE id = $1::uuid FOR UPDATE', invoice.id);
+          const returns = await tx.invoiceReturn.findMany({ where: { invoice_id: { in: invoices.map(invoice => invoice.id) } }, take: 1 });
+          if (returns.length) throw new InventoryError("This invoice has returns and cannot be edited. Record further payments separately in Cash Book.");
+          await tx.invoice.updateMany({ where: { id: { in: invoices.map(invoice => invoice.id) } }, data: coerceDates(updateData, table) });
+        });
+        return NextResponse.json({ data: null, error: null });
+      }
+      if (table === "cashbook") {
+        await prisma.$transaction(async tx => {
+          const entries = await tx.cashbook.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
+          for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
+          const returns = await tx.invoiceReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
+          if (returns.length) throw new InventoryError("Return credits cannot be edited. Record a separate adjustment if needed.");
+          await tx.cashbook.updateMany({ where: { id: { in: entries.map(entry => entry.id) } }, data: coerceDates(updateData, table) });
+        });
+        return NextResponse.json({ data: null, error: null });
+      }
       if (table === "products" && "quantity" in updateData) {
         const { quantity, expected_quantity, ...fields } = updateData;
         await prisma.$transaction(async tx => {
@@ -627,6 +652,16 @@ export async function POST(req: NextRequest) {
 
     if (operation === "delete") {
       const where = buildWhere(filters, table);
+      if (table === "cashbook") {
+        await prisma.$transaction(async tx => {
+          const entries = await tx.cashbook.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
+          for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
+          const returns = await tx.invoiceReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
+          if (returns.length) throw new InventoryError("Return credits cannot be deleted. Return history must remain intact.");
+          await tx.cashbook.deleteMany({ where: { id: { in: entries.map(entry => entry.id) } } });
+        });
+        return NextResponse.json({ data: null, error: null });
+      }
       if (["purchase_orders", "purchase_order_items", "stock_batches"].includes(table)) throw new InventoryError("Purchase batches cannot be deleted directly. Edit the purchase invoice instead.");
       if (table === "products") {
         await prisma.$transaction(async tx => {
@@ -648,6 +683,8 @@ export async function POST(req: NextRequest) {
             : await tx.invoiceItem.findMany({ where, select: { invoice_id: true } });
           const ids = matches.map(row => "id" in row ? row.id : row.invoice_id).filter((id): id is string => !!id);
           for (const id of [...new Set(ids)].sort()) await tx.$queryRawUnsafe('SELECT id FROM invoices WHERE id = $1::uuid FOR UPDATE', id);
+          const returns = await tx.invoiceReturn.findMany({ where: { invoice_id: { in: ids } }, take: 1 });
+          if (returns.length) throw new InventoryError("Invoices with returns cannot be deleted. Return history must remain intact.");
           const itemWhere = table === "invoices" ? { invoice_id: { in: ids } } : where;
           const lines = await tx.invoiceItem.findMany({ where: itemWhere });
           for (const id of [...new Set(ids)].sort()) await applyStockChange(tx, lines.filter(line => line.invoice_id === id).map(line => ({ ...line, qty: Number(line.qty), stock_deducted_qty: Number(line.stock_deducted_qty) })), [], id);
