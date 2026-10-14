@@ -16,6 +16,8 @@ Last updated: 2026-10-14
 | Focus | focus-visible:outline-2 focus-visible:outline-[var(--blue)] |
 | Accent | var(--blue-deeper) table headers and confirm action; var(--blue-pale) selected invoice |
 
+Use separate neutral and primary button color classes. Neutral buttons use white backgrounds and var(--gray-900) text; primary return action buttons use var(--red) backgrounds and white text. Disabled return action buttons use var(--gray-200) backgrounds and var(--gray-800) text at full opacity, including on hover. Share only spacing, borders and interaction classes so conflicting background utilities cannot hide the label.
+
 **Pattern notes:** Sales Invoice Return and Supplier Invoice Return use matching tab buttons with a blue active state. Paginate invoice search; the Return button opens a native dialog with a labeled title, keyboard focus containment, a sticky header and Close action. Dialog width is viewport minus 24px (maximum 5xl), maximum height 90dvh, with vertical scrolling and a translucent backdrop. Block closing while saving or while the save result is uncertain. Use visible labels for search, date, reason and quantities. Tables scroll horizontally on small screens, amounts align right and quantities align center. Review and confirm inline in the modal; show original, returned and remaining quantities and immutable return history. A whole-invoice return selects all remaining quantities. Sales returns restore stock; supplier returns remove unsold stock from the original purchase batch. Cash refunds are separate.
 
 ### Head Account Statement

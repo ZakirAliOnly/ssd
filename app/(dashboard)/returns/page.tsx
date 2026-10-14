@@ -15,7 +15,9 @@ type InvoiceDetail = Omit<InvoiceSummary, "returns"> & { discount_amount: string
   returns: ReturnRecord[] };
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
 const inputClass = "border border-[var(--gray-200)] rounded-[8px] px-3 py-2 text-sm bg-[var(--gray-50)] text-[var(--gray-900)] focus-visible:outline-2 focus-visible:outline-[var(--blue)] disabled:opacity-60";
-const buttonClass = "px-4 py-2 rounded-[8px] text-sm font-semibold border border-[var(--gray-200)] bg-white hover:bg-[var(--blue-pale)] focus-visible:outline-2 focus-visible:outline-[var(--blue)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
+const buttonBaseClass = "px-4 py-2 rounded-[8px] text-sm font-semibold border border-[var(--gray-200)] focus-visible:outline-2 focus-visible:outline-[var(--blue)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
+const buttonClass = `${buttonBaseClass} bg-white text-[var(--gray-900)] hover:bg-[var(--blue-pale)]`;
+const primaryButtonClass = `${buttonBaseClass} bg-[var(--red)] text-white hover:bg-[var(--red)] disabled:bg-[var(--gray-200)] disabled:text-[var(--gray-800)] disabled:opacity-100 disabled:hover:bg-[var(--gray-200)]`;
 const remaining = (line: InvoiceDetail["items"][number]) => Math.round((Number(line.qty) - line.return_items.reduce((sum, item) => sum + Number(item.qty), 0)) * 100) / 100;
 
 export default function ReturnsPage() {
@@ -193,10 +195,10 @@ export default function ReturnsPage() {
       </div>
       {preview.error && <p role="alert" className="text-sm text-[var(--red)] mb-3">{preview.error}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--gray-100)] pt-4"><div><span className="text-sm font-semibold">Return credit</span><strong className="block text-lg font-mono">{formatCurrency(preview.plan?.amount ?? 0)}</strong></div>
-        {!reviewing ? <button type="button" disabled={!preview.plan || locked || !date} onClick={() => setReviewing(true)} className={`${buttonClass} bg-[var(--blue-deeper)] text-white hover:bg-[var(--blue)]`}>Review return</button>
+        {!reviewing ? <button type="button" disabled={!preview.plan || locked || !date} onClick={() => setReviewing(true)} className={primaryButtonClass}>Review return</button>
           : <div className="flex flex-wrap gap-2 items-center"><span className="text-sm">Confirm {preview.plan?.lines.length} item(s) for {formatCurrency(preview.plan?.amount ?? 0)}?</span>
             <button disabled={locked} type="button" className={buttonClass} onClick={() => setReviewing(false)}>Back</button>
-            <button type="button" disabled={saving || !preview.plan} className={`${buttonClass} bg-[var(--blue-deeper)] text-white hover:bg-[var(--blue)]`} onClick={() => void submitReturn()}>{saving ? "Saving..." : uncertain ? "Retry same return" : "Confirm return"}</button></div>}
+            <button type="button" disabled={saving || !preview.plan} className={primaryButtonClass} onClick={() => void submitReturn()}>{saving ? "Saving..." : uncertain ? "Retry same return" : "Confirm return"}</button></div>}
       </div>
       {uncertain && <p role="status" className="text-sm mt-3">The save response was interrupted. Retry the same return safely, or <button type="button" disabled={saving} className="underline font-semibold" onClick={() => setRefresh(value => value + 1)}>reload this invoice</button> to check its history.</p>}
       </>}
