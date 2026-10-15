@@ -120,6 +120,19 @@ export default function DeliveryChallanPage() {
         showToast(itemErr.message, "err");
         return;
       }
+      // Party contact details can be updated after the invoice was created.
+      const partyName = String(inv.client_name ?? "").trim();
+      let partyCell = "";
+      if (partyName) {
+        const { data: parties, error: partyErr } = await db
+          .from("accounts")
+          .select("phone, whatsapp")
+          .eq("name", partyName)
+          .limit(1);
+        if (partyErr) showToast(partyErr.message, "err");
+        const party = parties?.[0];
+        partyCell = String(party?.whatsapp ?? "").trim() || String(party?.phone ?? "").trim();
+      }
       const items = (rows ?? []) as InvoiceItem[];
       // Linked invoices may be older than the initial 300-row picker list.
       setInvoices(current => current.some(row => row.id === id) ? current : [...current, {
@@ -132,7 +145,7 @@ export default function DeliveryChallanPage() {
       setHeaderParty(String(inv.client_name ?? ""));
       setChallanDate(String(inv.invoice_date ?? ""));
       setChallanTime(nowTimeStr());
-      setCell(String(inv.client_phone ?? "").trim());
+      setCell(partyCell || String(inv.client_phone ?? "").trim());
       setInvoiceRef(String(inv.invoice_number ?? ""));
       setLineItems(items);
       if (String(inv.job_notes ?? "").trim()) {
