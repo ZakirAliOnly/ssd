@@ -1491,13 +1491,13 @@ export default function InvoicePage() {
               {invoicePdfData.invoice.description && <div style={{ whiteSpace: "pre-wrap" }}>{invoicePdfData.invoice.description}</div>}
             </div>
             <div style={{ borderTop: "1px dashed #000", borderBottom: "1px dashed #000", marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontWeight: 700 }}><span>Product / Qty ? Rate</span><span>Amount</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontWeight: 700 }}><span>Product / Qty / Rate</span><span>Amount</span></div>
               {invoicePdfData.items.map((it, idx) => (
                 <div key={idx} style={{ padding: "6px 0", borderTop: "1px dotted #000", breakInside: "avoid", overflowWrap: "anywhere" }}>
                   <div style={{ fontWeight: 700 }}>{it.category}</div>
                   {it.description && <div style={{ whiteSpace: "pre-wrap" }}>{it.description}</div>}
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontVariantNumeric: "tabular-nums" }}>
-                    <span>{it.qty} ? {formatCurrency(invoiceUnitRate(it))}</span><strong>{formatCurrency(it.amount)}</strong>
+                    <span>{it.qty} x {formatCurrency(invoiceUnitRate(it))}</span><strong>{formatCurrency(it.amount)}</strong>
                   </div>
                   <InvoiceLineDiscount line={it} />
                 </div>
@@ -1545,6 +1545,7 @@ export default function InvoicePage() {
             </div>
 
             <div style={{ textAlign: "center", borderTop: "1px dashed #000", paddingTop: 8 }}>Thank you for your business.</div>
+            <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, breakInside: "avoid" }}>Software developed by addsmint</div>
           </>
         ) : null}
       </div>

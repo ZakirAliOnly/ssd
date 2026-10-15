@@ -198,3 +198,10 @@ Files: components/PrintHeader.tsx, public/brand/letterhead.svg, app/(dashboard)/
 Last updated: 2026-10-15
 
 Use the shared inline SVG for all print and PDF headers. Reference proportions use a 700 x 152 viewBox, 1.3-scale triangular logo on the left, centered Georgia/Times bold 34px business name, Arial bold 13px contact lines and a 2px blue rule. Thermal variant uses a 700 x 170 viewBox with 38px name and 18px contacts. Correct middle mobile: 03342427408. Keep the static SVG asset identical to the default component. Email and sales-manager details are absent throughout.
+
+### Stock report category filter
+
+Files: app/(dashboard)/reports/page.tsx, app/api/reports/stock/route.ts
+Last updated: 2026-10-15
+
+Use SearchableSelect beside Product with the same gray-50 background, gray-200 border, 8px corners and blue focus outline. Search all categories, with All categories and Uncategorized options. Category changes reset Product and invalidate the generated report; product choices narrow to the category. Apply both filters on the server and identify the category in screen and printed report headings.

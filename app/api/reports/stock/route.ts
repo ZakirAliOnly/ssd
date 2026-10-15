@@ -16,13 +16,16 @@ export async function GET(request: NextRequest) {
   const from = request.nextUrl.searchParams.get("from") ?? "";
   const to = request.nextUrl.searchParams.get("to") ?? "";
   const product = request.nextUrl.searchParams.get("product") ?? "all";
+  const category = request.nextUrl.searchParams.get("category") ?? "all";
+  const validCategory = category === "all" || category === "uncategorized" || /^[0-9a-f-]{36}$/i.test(category);
   const validDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s;
-  if (!validDate(from) || !validDate(to) || from > to || (product !== "all" && !/^[0-9a-f-]{36}$/i.test(product))) {
+  if (!validCategory || !validDate(from) || !validDate(to) || from > to || (product !== "all" && !/^[0-9a-f-]{36}$/i.test(product))) {
     return NextResponse.json({ error: "Select a valid date range and product." }, { status: 400 });
   }
   try {
     const products = await prisma.$transaction(tx => tx.product.findMany({
-      where: product === "all" ? {} : { id: product }, orderBy: { name: "asc" },
+      where: { ...(product === "all" ? {} : { id: product }),
+        ...(category === "all" ? {} : { category_id: category === "uncategorized" ? null : category }) }, orderBy: { name: "asc" },
       include: { category: true,
         stock_batches: { include: { purchase_item: true, supplier_returns: { include: { supplier_return: { select: { return_date: true } } } }, allocations: { include: { invoice: { select: { invoice_date: true } }, returns: { include: { return_item: { include: { invoice_return: { select: { return_date: true } } } } } } } } } },
         invoice_items: { include: { invoice: { include: { items: true } } } },

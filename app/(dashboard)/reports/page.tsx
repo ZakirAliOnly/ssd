@@ -121,7 +121,10 @@ export default function ReportsPage() {
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [stockProduct, setStockProduct] = useState("all");
-  const [stockProducts, setStockProducts] = useState<{ id: string; name: string }[]>([]);
+  const [stockCategory, setStockCategory] = useState("all");
+  const [stockCategories, setStockCategories] = useState<{ id: string; name: string }[]>([]);
+  const stockCategoryLabel = stockCategories.find(c => c.id === stockCategory)?.name ?? (stockCategory === "uncategorized" ? "Uncategorized" : "All categories");
+  const [stockProducts, setStockProducts] = useState<{ id: string; name: string; category_id: string | null }[]>([]);
   const [dailyStatement, setDailyStatement] = useState<DailyStatementData | null>(null);
   const [stockRows, setStockRows] = useState<StockReportRow[]>([]);
 
@@ -206,7 +209,11 @@ export default function ReportsPage() {
   }, [fromDate, toDate]);
 
   useEffect(() => {
-    db.from("products").select("id, name").order("created_at", { ascending: false }).then(({ data, error }) => {
+    db.from("product_categories").select("id, name").order("name").then(({ data, error }) => {
+      if (error) setGenerateError(error.message);
+      if (data) setStockCategories(data);
+    });
+    db.from("products").select("id, name, category_id").order("created_at", { ascending: false }).then(({ data, error }) => {
       if (error) setGenerateError(error.message);
       if (data) setStockProducts(data);
     });
@@ -261,7 +268,7 @@ export default function ReportsPage() {
       setLoading(true);
       setReportGenerated(false);
       try {
-        const response = await fetch(`/api/reports/stock?${new URLSearchParams({ from: fromDate, to: toDate, product: stockProduct })}`);
+        const response = await fetch(`/api/reports/stock?${new URLSearchParams({ from: fromDate, to: toDate, product: stockProduct, category: stockCategory })}`);
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Could not load stock report.");
         setStockRows(result.rows);
@@ -332,7 +339,7 @@ export default function ReportsPage() {
   const methodCashOut = useMemo(() => methodCashbook.filter((c) => c.type === "out").reduce((s, c) => s + Number(c.amount), 0), [methodCashbook]);
 
   // ── Filter label ──────────────────────────────────────────
-  const filterLabel = `${formatDate(fromDate)} - ${formatDate(toDate)}${activeTab === "account" && selectedHeadAccount ? ` / ${selectedHeadAccount.name}` : ""}${activeTab === "paymentmethod" && methodFilter !== "all" ? ` / ${methodFilter}` : ""}${activeTab === "stock" ? ` / ${stockProducts.find(c => c.id === stockProduct)?.name ?? "All products"}` : ""}`;
+  const filterLabel = `${formatDate(fromDate)} - ${formatDate(toDate)}${activeTab === "account" && selectedHeadAccount ? ` / ${selectedHeadAccount.name}` : ""}${activeTab === "paymentmethod" && methodFilter !== "all" ? ` / ${methodFilter}` : ""}${activeTab === "stock" ? ` / ${stockCategoryLabel} / ${stockProducts.find(c => c.id === stockProduct)?.name ?? "All products"}` : ""}`;
 
   // ──────────────────────────────────────────────────────────
   return (
@@ -417,14 +424,24 @@ export default function ReportsPage() {
               ) : (
                 <>
                   {activeTab === "stock" ? (
+                    <>
                     <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
-                      <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Product</label>
-                      <SearchableSelect value={stockProduct} onChange={value => { setReportGenerated(false); setStockProduct(value); }}
-                        options={stockProducts.map(p => ({ value: p.id, label: p.name, searchText: p.name }))}
-                        maxResults={10} emptyValue="all" placeholder="All products ? search product"
+                      <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Category</label>
+                      <SearchableSelect value={stockCategory} onChange={value => { setReportGenerated(false); setStockCategory(value); setStockProduct("all"); }}
+                        options={[...stockCategories.map(c => ({ value: c.id, label: c.name })), { value: "uncategorized", label: "Uncategorized" }]}
+                        maxResults={10} emptyValue="all" placeholder="All categories / search category"
                         inputClassName="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] w-full focus-visible:outline-2 focus-visible:outline-[var(--blue)]"
                         inputStyle={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }} />
                     </div>
+                    <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
+                      <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Product</label>
+                      <SearchableSelect value={stockProduct} onChange={value => { setReportGenerated(false); setStockProduct(value); }}
+                        options={stockProducts.filter(p => stockCategory === "all" || (stockCategory === "uncategorized" ? !p.category_id : p.category_id === stockCategory)).map(p => ({ value: p.id, label: p.name, searchText: p.name }))}
+                        maxResults={10} emptyValue="all" placeholder="All products / search product"
+                        inputClassName="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] w-full focus-visible:outline-2 focus-visible:outline-[var(--blue)]"
+                        inputStyle={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }} />
+                    </div>
+                    </>
                   ) : activeTab === "paymentmethod" ? (
                     <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
                       <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
@@ -877,7 +894,7 @@ export default function ReportsPage() {
         </div>
 
         {activeTab === "dailystatement" && dailyStatement && <DailyStatementReport data={dailyStatement} />}
-        {activeTab === "stock" && <><p className="text-xs mb-3">Product: {stockProducts.find(c => c.id === stockProduct)?.name ?? "All products"}</p><StockReport rows={stockRows} /></>}
+        {activeTab === "stock" && <><p className="text-xs mb-3">Category: {stockCategoryLabel} / Product: {stockProducts.find(c => c.id === stockProduct)?.name ?? "All products"}</p><StockReport rows={stockRows} /></>}
         {activeTab === "party" && <SupplierStatementReport statements={partyStatements} selectedId={selectedSupplierId} print party />}
 
         {activeTab === "supplier" && <SupplierStatementReport statements={supplierStatements} selectedId={selectedSupplierId} print />}
