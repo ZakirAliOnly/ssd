@@ -1,5 +1,12 @@
 # UI Registry
 
+### Party list pagination
+
+File: app/(dashboard)/accounts/page.tsx
+Last updated: 2026-10-15
+
+Use a wrapping footer inside the existing white account-list card, with a gray-100 top border, px-5 py-4 spacing and gray-800 text-sm labels. Controls use white backgrounds, gray-200 borders, rounded-[8px], px-3 py-2, gray-50 hover and a blue focus-visible outline. Disabled navigation uses opacity-50 and cursor-not-allowed. Show the record range and total, page count, Previous/Next and labelled 10/25/50/100 rows-per-page selector (default 25). Filter before slicing, reset on search/head/page-size changes, clamp the page after deletion and preserve continuous row numbering.
+
 ### Returns module
 
 File: app/(dashboard)/returns/page.tsx

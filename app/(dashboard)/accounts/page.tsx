@@ -76,6 +76,8 @@ export default function AccountsPage() {
   const [heads, setHeads] = useState<HeadAccount[]>([]);
   const [search, setSearch] = useState("");
   const [selectedHead, setSelectedHead] = useState("");
+  const [partyPage, setPartyPage] = useState(1);
+  const [partyPageSize, setPartyPageSize] = useState(25);
 
   // Party Invoices modal state
   const [showPartyInvoicesModal, setShowPartyInvoicesModal] = useState(false);
@@ -275,6 +277,10 @@ export default function AccountsPage() {
     const matchesHead = !selectedHead || (a as Account & { head_id?: string }).head_id === selectedHead;
     return matchesSearch && matchesHead;
   });
+  const partyPageCount = Math.max(1, Math.ceil(filtered.length / partyPageSize));
+  const currentPartyPage = Math.min(partyPage, partyPageCount);
+  const partyPageStart = (currentPartyPage - 1) * partyPageSize;
+  const visibleParties = filtered.slice(partyPageStart, partyPageStart + partyPageSize);
 
   // WhatsApp number: only numbers, exactly 11 digits
   function validatePhone(val: string): string {
@@ -1544,7 +1550,7 @@ export default function AccountsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <select
               value={selectedHead}
-              onChange={(e) => setSelectedHead(e.target.value)}
+              onChange={(e) => { setSelectedHead(e.target.value); setPartyPage(1); }}
               className="border-[1.5px] rounded-full py-1.5 px-3 text-[12.5px] outline-none"
               style={{ ...inputStyle, minWidth: 140 }}
             >
@@ -1559,7 +1565,7 @@ export default function AccountsPage() {
               </span>
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setPartyPage(1); }}
                 placeholder="Search accounts..."
                 className="w-full border-[1.5px] rounded-full py-1.5 pl-8 pr-3 text-[12.5px] outline-none"
                 style={{ ...inputStyle }}
@@ -1592,12 +1598,12 @@ export default function AccountsPage() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={userProfile?.isAdmin ? 12 : 11} className={DT.empty} style={DT.emptyStyle}>No accounts found</td></tr>
               ) : (
-                filtered.map((a, idx) => {
+                visibleParties.map((a, idx) => {
                   const signed = effectivePartySigned.get(a.id) ?? 0;
                   return (
                     <tr key={a.id} className={DT.row}>
                       <td className={`${DT.td} text-center font-mono text-[13px] font-semibold tabular-nums`} style={{ color: "var(--gray-600)" }}>
-                        {idx + 1}
+                        {partyPageStart + idx + 1}
                       </td>
                       <td className={`${DT.td} ${DT.cellPrimary}`} style={{ color: "var(--gray-900)" }}>{a.name}</td>
                       <td className={`${DT.td} ${DT.cellMono}`} style={{ color: "var(--gray-900)" }}>{a.whatsapp || a.phone || "—"}</td>
@@ -1692,6 +1698,29 @@ export default function AccountsPage() {
             </tbody>
           </table>
         </div>
+        <nav aria-label="Party list pagination" className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--gray-100)] px-5 py-4 text-sm text-[var(--gray-800)]">
+          <span role="status" aria-live="polite">
+            Showing {filtered.length ? partyPageStart + 1 : 0}–{Math.min(partyPageStart + partyPageSize, filtered.length)} of {filtered.length} parties
+          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2">
+              Rows per page
+              <select value={partyPageSize} onChange={(e) => { setPartyPageSize(Number(e.target.value)); setPartyPage(1); }}
+                className="rounded-[8px] border border-[var(--gray-200)] bg-white px-2 py-2 focus-visible:outline-2 focus-visible:outline-[var(--blue)]">
+                {[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
+            <span>Page {currentPartyPage} of {partyPageCount}</span>
+            <button type="button" disabled={currentPartyPage <= 1} onClick={() => setPartyPage(currentPartyPage - 1)}
+              className="rounded-[8px] border border-[var(--gray-200)] bg-white px-3 py-2 font-semibold hover:bg-[var(--gray-50)] focus-visible:outline-2 focus-visible:outline-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">
+              Previous
+            </button>
+            <button type="button" disabled={currentPartyPage >= partyPageCount} onClick={() => setPartyPage(currentPartyPage + 1)}
+              className="rounded-[8px] border border-[var(--gray-200)] bg-white px-3 py-2 font-semibold hover:bg-[var(--gray-50)] focus-visible:outline-2 focus-visible:outline-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">
+              Next
+            </button>
+          </div>
+        </nav>
       </div>
 
       {/* Ledger Modal */}
