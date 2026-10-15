@@ -1899,7 +1899,10 @@ export default function AccountsPage() {
                                 {items.map((it) => (
                                   <tr key={it.id}>
                                     <td className="px-2 py-1 text-[11px]" style={{ color: "var(--gray-700)" }}>
-                                      {String(it.description || it.category || "Item").trim() || "Item"}
+                                      <div className="font-semibold">{it.category?.trim() || it.description?.trim() || "Item"}</div>
+                                      {it.category?.trim() && it.description?.trim() && it.category.trim() !== it.description.trim() ? (
+                                        <div className="whitespace-normal break-words">{it.description}</div>
+                                      ) : null}
                                     </td>
 
                                     <td className="px-2 py-1 text-[11px] font-mono text-right" style={{ color: "var(--gray-700)" }}>{Number(it.qty) || "—"}</td>
@@ -3161,7 +3164,12 @@ export default function AccountsPage() {
                       {/* Product rows */}
                       {items.map((it, ii) => (
                         <div key={it.id} style={{ display: "grid", gridTemplateColumns: itemCols, fontSize: 10, borderBottom: ii === items.length - 1 ? "none" : "1px solid #ddd" }}>
-                          <div style={{ padding: "2px 5px", color: "#222" }}>{String(it.description || it.category || "Item").trim() || "Item"}</div>
+                          <div style={{ padding: "2px 5px", color: "#222" }}>
+                            <div style={{ fontWeight: 600 }}>{it.category?.trim() || it.description?.trim() || "Item"}</div>
+                            {it.category?.trim() && it.description?.trim() && it.category.trim() !== it.description.trim() ? (
+                              <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{it.description}</div>
+                            ) : null}
+                          </div>
 
                           <div style={{ padding: "2px 5px", textAlign: "right", fontFamily: "monospace", color: "#222", borderLeft: "1px solid #eee" }}>{Number(it.qty) || "—"}</div>
                           <div style={{ padding: "2px 5px", textAlign: "right", fontFamily: "monospace", color: "#222", borderLeft: "1px solid #eee" }}>{invoiceUnitRate(it) ? formatCurrency(invoiceUnitRate(it)) : "—"}</div>

@@ -1,5 +1,12 @@
 # UI Registry
 
+### Party ledger product details
+
+File: app/(dashboard)/accounts/page.tsx
+Last updated: 2026-10-15
+
+In screen and printed/PDF ledgers, show the saved product name (invoice item category) in semibold with the description wrapping beneath it. Fall back to description or Item for missing names; omit duplicate descriptions. Preserve existing 11px screen and 10px print product-row typography and numeric columns.
+
 ### Party list pagination
 
 File: app/(dashboard)/accounts/page.tsx
