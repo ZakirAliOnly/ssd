@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS delivery_challans (
+  id SERIAL PRIMARY KEY,
+  invoice_id UUID NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

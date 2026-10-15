@@ -58,6 +58,7 @@ const DEFAULT_TERMS =
 
 export default function DeliveryChallanPage() {
   const docRef = useRef<HTMLDivElement>(null);
+  const loadVersion = useRef(0);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
@@ -71,6 +72,7 @@ export default function DeliveryChallanPage() {
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [lineItems, setLineItems] = useState<InvoiceItem[]>([]);
   const [invoiceRef, setInvoiceRef] = useState("");
+  const [challanNumber, setChallanNumber] = useState("");
 
   const fetchInvoices = useCallback(async () => {
     setLoadingList(true);
@@ -94,7 +96,10 @@ export default function DeliveryChallanPage() {
   }, [fetchInvoices]);
 
   const loadInvoice = useCallback(async (id: string) => {
+    const version = ++loadVersion.current;
+    setChallanNumber("");
     if (!id) {
+      setLoadingInvoice(false);
       setHeaderParty("");
       setChallanDate("");
       setChallanTime(nowTimeStr());
@@ -134,6 +139,15 @@ export default function DeliveryChallanPage() {
         partyCell = String(party?.whatsapp ?? "").trim() || String(party?.phone ?? "").trim();
       }
       const items = (rows ?? []) as InvoiceItem[];
+      const response = await fetch("/api/delivery-challans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId: id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not assign challan number.");
+      if (version !== loadVersion.current) return;
+      setChallanNumber(result.number);
       // Linked invoices may be older than the initial 300-row picker list.
       setInvoices(current => current.some(row => row.id === id) ? current : [...current, {
         id,
@@ -153,8 +167,10 @@ export default function DeliveryChallanPage() {
       } else {
         setTerms(DEFAULT_TERMS);
       }
+    } catch (error) {
+      if (version === loadVersion.current) showToast(error instanceof Error ? error.message : "Could not load challan.", "err");
     } finally {
-      setLoadingInvoice(false);
+      if (version === loadVersion.current) setLoadingInvoice(false);
     }
   }, []);
 
@@ -175,7 +191,7 @@ export default function DeliveryChallanPage() {
 
   async function downloadPdf() {
     const node = docRef.current;
-    if (!node || pdfBusy || !invoiceId) return;
+    if (!node || pdfBusy || !invoiceId || !challanNumber || loadingInvoice) return;
     setPdfBusy(true);
     const prev = {
       display: node.style.display,
@@ -211,7 +227,7 @@ export default function DeliveryChallanPage() {
         const y = -pageHeight * i;
         pdf.addImage(imgData, "PNG", 0, y, imgWidth, imgHeight);
       }
-      const safe = (invoiceRef || "challan").replace(/[^\w.-]+/g, "_");
+      const safe = (challanNumber || "challan").replace(/[^\w.-]+/g, "_");
       const party = (headerParty || "Client").slice(0, 40).replace(/[^\w\s.-]+/g, "").replace(/\s+/g, "_");
       pdf.save(`DeliveryChallan_${safe}_${party || "SSDiagnostics"}.pdf`);
       showToast("PDF downloaded", "ok");
@@ -229,14 +245,14 @@ export default function DeliveryChallanPage() {
   }
 
   function handlePrint() {
-    if (!invoiceId) {
+    if (!invoiceId || !challanNumber || loadingInvoice) {
       showToast("Select an invoice first", "err");
       return;
     }
     window.print();
   }
 
-  const canPrint = Boolean(invoiceId) && !loadingInvoice;
+  const canPrint = Boolean(invoiceId && challanNumber) && !loadingInvoice;
 
   return (
     <>
@@ -310,6 +326,7 @@ export default function DeliveryChallanPage() {
               Edit challan header (optional)
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="text-sm font-bold sm:col-span-2" role="status">Challan No: {challanNumber || (loadingInvoice ? "Assigning…" : "Unavailable")}</div>
               <label className="flex flex-col gap-1">
                 <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--blue-deeper)" }}>
                   Party / consignee
@@ -417,6 +434,7 @@ export default function DeliveryChallanPage() {
         {/* Title bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", background: "#0369a1", color: "#fff", marginBottom: 10 }}>
           <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Delivery Challan</span>
+          <span style={{ fontSize: 11, fontWeight: 700 }}>{challanNumber}</span>
           {invoiceRef ? <span style={{ fontSize: 11, fontWeight: 700 }}>Ref: {invoiceRef}</span> : null}
         </div>
 

@@ -2935,9 +2935,6 @@ export default function AccountsPage() {
                   <span style={{ fontSize: 8, color: "#111", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>Date:</span>
                   <span style={{ fontWeight: 700, fontSize: 12 }}>{formatDate(inv.invoice_date)}</span>
                 </div>
-                <div style={{ marginTop: 4, textAlign: "right" }}>
-                  <div style={{ fontWeight: 700, fontSize: 10, color: "#111" }}>S.S. Diagnostics</div>
-                </div>
               </div>
             </div>
             {(() => {

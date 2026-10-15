@@ -7,6 +7,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model DeliveryChallan {
+  id         Int      @id @default(autoincrement())
+  invoice_id String   @unique @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("delivery_challans")
+}
+
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   email         String   @unique

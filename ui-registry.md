@@ -1,5 +1,12 @@
 # UI Registry
 
+### Delivery challan serial numbers
+
+Files: app/(dashboard)/delivery-challan/page.tsx, app/api/delivery-challans/route.ts
+Last updated: 2026-10-15
+
+Show a read-only Challan No in the editor using text-sm font-bold, and its DC001-style number in the existing blue print title bar using white 11px bold text. Allocate one persisted serial per invoice, preserve it on reprints and include it in PDF filenames. Keep the invoice reference separate. Disable output until assignment succeeds. Apply scripts/migration-v35-delivery-challans.sql on other databases before deploying.
+
 ### Shared print credit
 
 Files: components/PrintFooter.tsx, public/brand/footer.svg

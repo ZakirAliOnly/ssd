@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "db:upgrade:challans": "prisma db execute --file scripts/migration-v35-delivery-challans.sql --schema prisma/schema.prisma",
     "db:upgrade:supplier-returns": "prisma db execute --file scripts/migration-v34-supplier-returns.sql --schema prisma/schema.prisma",
     "db:upgrade:returns": "prisma db execute --file scripts/migration-v33-invoice-returns.sql --schema prisma/schema.prisma",
     "db:upgrade:inventory": "node scripts/upgrade-inventory.cjs",
