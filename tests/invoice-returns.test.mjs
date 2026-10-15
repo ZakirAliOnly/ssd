@@ -24,7 +24,7 @@ test("partial return restores original batch stock and credits the party without
   assert.equal(h.state().batches[0].remaining_qty, 7.5);
   assert.equal(h.state().allocations[0].qty, 4);
   assert.equal(h.state().returnAllocations[0].qty, 1.5);
-  assert.deepEqual(h.state().invoices, original);
+  assert.deepEqual(h.state().invoices, original.map(invoice => ({ ...invoice, balance_due: 250, payment_status: "partial" })));
   assert.deepEqual(h.state().invoiceItems, items);
   assert.equal(h.state().cashbook[0].method, "Adjustment");
   assert.equal(h.state().cashbook[0].account_name, "Test");

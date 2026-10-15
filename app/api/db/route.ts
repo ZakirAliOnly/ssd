@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { settlePartyInvoices, partySettlementTransaction } from "@/lib/partyInvoiceSettlement";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { normalizeCategory, normalizeProduct, ProductValidationError } from "@/lib/productValidation";
@@ -505,7 +506,8 @@ export async function POST(req: NextRequest) {
             const stockLines = await applyStockChange(tx, previous.map(line => ({ ...line, qty: Number(line.qty), stock_deducted_qty: Number(line.stock_deducted_qty) })), items, invoice.id);
             await tx.invoiceItem.deleteMany({ where: { invoice_id: invoice.id } });
             await tx.invoiceItem.createMany({ data: items.map((line, index) => ({ ...line, invoice_id: invoice.id, stock_deducted_qty: stockLines[index].stock_deducted_qty })) as Prisma.InvoiceItemCreateManyInput[] });
-            return invoice;
+            if (!invoice.is_walk_in) await settlePartyInvoices(tx, String(invoice.client_name ?? ""));
+            return await tx.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
           }, { timeout: 15000 });
           return NextResponse.json({ data: serializeForTable(saved, "invoices"), error: null });
         } catch (err) {
@@ -565,6 +567,14 @@ export async function POST(req: NextRequest) {
 
     if (operation === "insert") {
       if (Array.isArray(data)) {
+        if (table === "cashbook") {
+          const rows = await Promise.all(data.map(async row => coerceDates(stampUserFields(await prepareData(row, true), table, authUser), table)));
+          await partySettlementTransaction(prisma, async tx => {
+            await tx.cashbook.createMany({ data: rows as Prisma.CashbookCreateManyInput[] });
+            for (const name of new Set(rows.map(row => String(row.account_name ?? "")))) await settlePartyInvoices(tx, name);
+          });
+          return NextResponse.json({ data: null, error: null });
+        }
         if (table === "products") {
           const rows = await Promise.all(data.map(async row => coerceDates(await prepareData(row, true), table)));
           await prisma.$transaction(async tx => {
@@ -582,7 +592,13 @@ export async function POST(req: NextRequest) {
       }
       const stampedRow = coerceDates(stampUserFields(await prepareData(data ?? {}, true), table, authUser), table);
       const inserted =
-        table === "products"
+        table === "cashbook"
+          ? await partySettlementTransaction(prisma, async tx => {
+              const entry = await tx.cashbook.create({ data: stampedRow as Prisma.CashbookUncheckedCreateInput });
+              await settlePartyInvoices(tx, entry.account_name);
+              return entry;
+            })
+          : table === "products"
           ? await prisma.$transaction(async tx => {
               const product = await tx.product.create({ data: stampedRow as Prisma.ProductUncheckedCreateInput });
               await createOpeningBatch(tx, product);
@@ -636,22 +652,24 @@ export async function POST(req: NextRequest) {
       }
       if (table === "invoices") {
         await prisma.$transaction(async tx => {
-          const invoices = await tx.invoice.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
+          const invoices = await tx.invoice.findMany({ where, select: { id: true, client_name: true }, orderBy: { id: "asc" } });
           for (const invoice of invoices) await tx.$queryRawUnsafe('SELECT id FROM invoices WHERE id = $1::uuid FOR UPDATE', invoice.id);
           const returns = await tx.invoiceReturn.findMany({ where: { invoice_id: { in: invoices.map(invoice => invoice.id) } }, take: 1 });
           if (returns.length) throw new InventoryError("This invoice has returns and cannot be edited. Record further payments separately in Cash Book.");
           await tx.invoice.updateMany({ where: { id: { in: invoices.map(invoice => invoice.id) } }, data: coerceDates(updateData, table) });
+          for (const name of new Set([...invoices.map(i => i.client_name), String((updateData as Record<string, unknown>).client_name ?? "")])) await settlePartyInvoices(tx, name);
         });
         return NextResponse.json({ data: null, error: null });
       }
       if (table === "cashbook") {
-        await prisma.$transaction(async tx => {
-          const entries = await tx.cashbook.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
+        await partySettlementTransaction(prisma, async tx => {
+          const entries = await tx.cashbook.findMany({ where, select: { id: true, account_name: true }, orderBy: { id: "asc" } });
           for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
           const returns = await tx.invoiceReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
           const supplierReturns = await tx.supplierReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
           if (returns.length || supplierReturns.length) throw new InventoryError("Return credits cannot be edited. Record a separate adjustment if needed.");
           await tx.cashbook.updateMany({ where: { id: { in: entries.map(entry => entry.id) } }, data: coerceDates(updateData, table) });
+          for (const name of new Set([...entries.map(e => e.account_name), String((updateData as Record<string, unknown>).account_name ?? "")])) await settlePartyInvoices(tx, name);
         });
         return NextResponse.json({ data: null, error: null });
       }
@@ -676,13 +694,14 @@ export async function POST(req: NextRequest) {
     if (operation === "delete") {
       const where = buildWhere(filters, table);
       if (table === "cashbook") {
-        await prisma.$transaction(async tx => {
-          const entries = await tx.cashbook.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
+        await partySettlementTransaction(prisma, async tx => {
+          const entries = await tx.cashbook.findMany({ where, select: { id: true, account_name: true }, orderBy: { id: "asc" } });
           for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
           const returns = await tx.invoiceReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
           const supplierReturns = await tx.supplierReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
           if (returns.length || supplierReturns.length) throw new InventoryError("Return credits cannot be deleted. Return history must remain intact.");
           await tx.cashbook.deleteMany({ where: { id: { in: entries.map(entry => entry.id) } } });
+          for (const name of new Set(entries.map(e => e.account_name))) await settlePartyInvoices(tx, name);
         });
         return NextResponse.json({ data: null, error: null });
       }
@@ -706,6 +725,7 @@ export async function POST(req: NextRequest) {
             ? await tx.invoice.findMany({ where, select: { id: true } })
             : await tx.invoiceItem.findMany({ where, select: { invoice_id: true } });
           const ids = matches.map(row => "id" in row ? row.id : row.invoice_id).filter((id): id is string => !!id);
+          const parties = await tx.invoice.findMany({ where: { id: { in: ids } }, select: { client_name: true } });
           for (const id of [...new Set(ids)].sort()) await tx.$queryRawUnsafe('SELECT id FROM invoices WHERE id = $1::uuid FOR UPDATE', id);
           const returns = await tx.invoiceReturn.findMany({ where: { invoice_id: { in: ids } }, take: 1 });
           if (returns.length) throw new InventoryError("Invoices with returns cannot be deleted. Return history must remain intact.");
@@ -714,6 +734,7 @@ export async function POST(req: NextRequest) {
           for (const id of [...new Set(ids)].sort()) await applyStockChange(tx, lines.filter(line => line.invoice_id === id).map(line => ({ ...line, qty: Number(line.qty), stock_deducted_qty: Number(line.stock_deducted_qty) })), [], id);
           if (table === "invoices") await tx.invoice.deleteMany({ where: { id: { in: ids } } });
           else await tx.invoiceItem.deleteMany({ where: { id: { in: lines.map(line => line.id) } } });
+          for (const name of new Set(parties.map(p => p.client_name))) await settlePartyInvoices(tx, name);
         }, { timeout: 15000 });
         return NextResponse.json({ data: null, error: null });
       }

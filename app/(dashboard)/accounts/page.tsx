@@ -1,6 +1,7 @@
 "use client";
 
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
+import { InvoiceDiscountSummary } from "@/components/InvoiceDiscountSummary";
 import { InvoiceLineDiscount } from "@/components/InvoiceLineDiscount";
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
@@ -639,6 +640,15 @@ export default function AccountsPage() {
     setPartyInvoicesList([]);
     setViewingInvoice(null);
     setViewingInvoiceItems([]);
+    try {
+      const response = await fetch("/api/accounts/settle-invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accountId: a.id }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not refresh invoice statuses.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not refresh invoice statuses.", "err");
+      setPartyInvoicesLoading(false);
+      return;
+    }
     const { data, error } = await db
       .from("invoices")
       .select("*")
@@ -691,11 +701,11 @@ export default function AccountsPage() {
     if (a4El) {
       a4El.style.setProperty("display", "flex", "important");
       a4El.style.setProperty("flex-direction", "column", "important");
-      a4El.style.setProperty("min-height", "273mm", "important");
+      a4El.style.setProperty("min-height", "198mm", "important");
     }
     const el = document.createElement("style");
     el.id = "__inv_a4_page_style";
-    el.textContent = "@page { size: A4 portrait; margin: 12mm 14mm; }";
+    el.textContent = "@page { size: A5 portrait; margin: 6mm; }";
     document.head.appendChild(el);
   }
 
@@ -732,15 +742,17 @@ export default function AccountsPage() {
       const a4El = document.querySelector(".inv-a4-print-only") as HTMLElement | null;
       if (!a4El) { setInvPrinting(false); return; }
 
-      // Temporarily make visible for capture — flex column with A4 min-height
+      // Temporarily make visible for capture — flex column with A5 min-height
       // matches the print layout so the footer sits at the bottom of the page.
       a4El.style.setProperty("display", "flex", "important");
       a4El.style.setProperty("flex-direction", "column", "important");
-      a4El.style.setProperty("min-height", "1031px", "important"); // 273mm @ 96dpi
+      a4El.style.setProperty("min-height", "210mm", "important");
+      a4El.style.padding = "6mm";
+      a4El.style.boxSizing = "border-box";
       a4El.style.position = "fixed";
       a4El.style.top = "-9999px";
       a4El.style.left = "0";
-      a4El.style.width = "794px"; // A4 width at 96dpi
+      a4El.style.width = "148mm"; // A5 portrait
 
       await new Promise((r) => setTimeout(r, 120));
 
@@ -753,9 +765,11 @@ export default function AccountsPage() {
       a4El.style.top = "";
       a4El.style.left = "";
       a4El.style.width = "";
+      a4El.style.padding = "";
+      a4El.style.boxSizing = "";
 
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
       const imgW = pageW;
@@ -763,7 +777,7 @@ export default function AccountsPage() {
       let y = 0;
       let remaining = imgH;
       let first = true;
-      while (remaining > 0) {
+      while (remaining > 0.5) {
         if (!first) pdf.addPage();
         pdf.addImage(imgData, "JPEG", 0, -y, imgW, imgH);
         y += pageH;
@@ -2508,7 +2522,7 @@ export default function AccountsPage() {
                   <table className={`${DT.table} min-w-[600px]`}>
                     <thead>
                       <tr>
-                        {["#", "Invoice #", "Date", "Description", "Total", "Received", "Status", ""].map((h, i) => (
+                        {["#", "Invoice #", "Date", "Description", "Total", "Received on invoice", "Remaining", "Status", ""].map((h, i) => (
                           <th
                             key={`pi-h-${i}`}
                             className={`${DT.th} ${i === 0 ? "text-center w-10" : "text-left"}`}
@@ -2548,6 +2562,7 @@ export default function AccountsPage() {
                             <td className={`${DT.td} font-mono font-semibold text-[13px] text-right`} style={{ color: "var(--green)" }}>
                               {formatCurrency(inv.amount_received)}
                             </td>
+                            <td className={`${DT.td} font-mono text-right`}>{formatCurrency(Math.max(0, inv.balance_due))}</td>
                             <td className={DT.td}>
                               <span className={DT.badge} style={{ background: statusColor.bg, color: statusColor.color }}>
                                 {inv.payment_status}
@@ -2870,7 +2885,7 @@ export default function AccountsPage() {
             <PrintHeader variant="invoice" />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px", background: "#075985", color: "#fff", marginBottom: 10 }}>
               <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Invoice</span>
-              <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 13 }}>{inv.invoice_number}</span>
+              <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 11 }}>{inv.invoice_number}</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "0 12px", marginBottom: 12 }}>
               <div>
@@ -2883,7 +2898,7 @@ export default function AccountsPage() {
                   </div>
                 ) : null}
               </div>
-              <div style={{ textAlign: "right", minWidth: 160 }}>
+              <div style={{ textAlign: "right", minWidth: 110 }}>
                 <div style={{ marginBottom: 5, display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 6 }}>
                   <span style={{ fontSize: 8, color: "#111", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>Date:</span>
                   <span style={{ fontWeight: 700, fontSize: 12 }}>{formatDate(inv.invoice_date)}</span>
@@ -2896,10 +2911,10 @@ export default function AccountsPage() {
             {(() => {
               // CSS-grid layout (instead of <table>) so the items area can flex-grow
               // and the filler block stretches the column lines to the totals block.
-              const gridCols = "5% 55% 8% 14% 18%";
-              const cellPad = "6px 8px";
+              const gridCols = "6% 42% 10% 20% 22%";
+              const cellPad = "5px 3px";
               return (
-                <div style={{ padding: "0 12px", marginBottom: 12, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: 13 }}>
+                <div style={{ padding: "0 12px", marginBottom: 12, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: 11 }}>
                   {/* Header row */}
                   <div style={{ display: "grid", gridTemplateColumns: gridCols, background: "#075985", color: "#fff" }}>
                     {[
@@ -2909,7 +2924,7 @@ export default function AccountsPage() {
                       { label: "Rate", align: "right" as const },
                       { label: "Amount", align: "right" as const },
                     ].map((h, i, arr) => (
-                      <div key={h.label} style={{ padding: "6px 8px", fontSize: 11, fontWeight: 700, textAlign: h.align, textTransform: "uppercase", letterSpacing: 0.7, borderLeft: "1px solid #000", ...(i === arr.length - 1 ? { borderRight: "1px solid #000" } : {}) }}>
+                      <div key={h.label} style={{ padding: "5px 3px", fontSize: 9, fontWeight: 700, textAlign: h.align, textTransform: "uppercase", letterSpacing: 0.2, borderLeft: "1px solid #000", ...(i === arr.length - 1 ? { borderRight: "1px solid #000" } : {}) }}>
                         {h.label}
                       </div>
                     ))}
@@ -2940,11 +2955,7 @@ export default function AccountsPage() {
             })()}
             <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 12px", marginBottom: 16 }}>
               <div style={{ width: 230 }}>
-                {inv.discount_amount > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px" }}>
-                  <span>Invoice discount{inv.discount_type === "pct" ? ` (${inv.discount_value}%)` : ""}</span>
-                  <span>− {formatCurrency(inv.discount_amount)}</span>
-                </div>}
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
+                <InvoiceDiscountSummary invoice={inv} items={items} />                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>Previous Balance</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(inv.previous_balance)}</span>
                 </div>

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { COOKIE_NAME, verifyToken } from "@/lib/auth";
 import { canAccessPath } from "@/lib/moduleAccess";
 import { buildStockReport } from "@/lib/stockReport";
+import { invoiceUnitRate } from "@/lib/invoicePricing";
 import { invoiceLineRevenues } from "@/lib/invoiceReturns";
 
 export async function GET(request: NextRequest) {
@@ -14,14 +15,14 @@ export async function GET(request: NextRequest) {
   if (!canAccessPath(user, "/reports")) return NextResponse.json({ error: "Reports access required" }, { status: 403 });
   const from = request.nextUrl.searchParams.get("from") ?? "";
   const to = request.nextUrl.searchParams.get("to") ?? "";
-  const category = request.nextUrl.searchParams.get("category") ?? "all";
+  const product = request.nextUrl.searchParams.get("product") ?? "all";
   const validDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s;
-  if (!validDate(from) || !validDate(to) || from > to || (category !== "all" && !/^[0-9a-f-]{36}$/i.test(category))) {
-    return NextResponse.json({ error: "Select a valid date range and category." }, { status: 400 });
+  if (!validDate(from) || !validDate(to) || from > to || (product !== "all" && !/^[0-9a-f-]{36}$/i.test(product))) {
+    return NextResponse.json({ error: "Select a valid date range and product." }, { status: 400 });
   }
   try {
     const products = await prisma.$transaction(tx => tx.product.findMany({
-      where: category === "all" ? {} : { category_id: category }, orderBy: { name: "asc" },
+      where: product === "all" ? {} : { id: product }, orderBy: { name: "asc" },
       include: { category: true,
         stock_batches: { include: { purchase_item: true, supplier_returns: { include: { supplier_return: { select: { return_date: true } } } }, allocations: { include: { invoice: { select: { invoice_date: true } }, returns: { include: { return_item: { include: { invoice_return: { select: { return_date: true } } } } } } } } } },
         invoice_items: { include: { invoice: { include: { items: true } } } },
@@ -42,7 +43,9 @@ export async function GET(request: NextRequest) {
         if (!line.invoice) return [];
         const revenue = invoiceLineRevenues(line.invoice.items, line.invoice.discount_amount).get(line.id) ?? 0;
         return [{ date: line.invoice.invoice_date.toISOString().slice(0, 10), qty: Number(line.qty),
-          deducted: Number(line.stock_deducted_qty), revenue }];
+          deducted: Number(line.stock_deducted_qty), revenue,
+          lineId: line.id, invoiceId: line.invoice.id, invoiceNumber: line.invoice.invoice_number,
+          customer: line.invoice.client_name, unitPrice: invoiceUnitRate(line), amount: Number(line.amount) }];
       }),
       returns: p.return_items.map(line => ({ date: line.invoice_return.return_date.toISOString().slice(0, 10),
         qty: Number(line.qty), restored: Number(line.stock_restored_qty), revenue: Number(line.revenue) })),

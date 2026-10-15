@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { settlePartyInvoices } from "@/lib/partyInvoiceSettlement";
 import { prisma } from "@/lib/prisma";
 import { COOKIE_NAME, verifyToken } from "@/lib/auth";
 import { canAccessPath } from "@/lib/moduleAccess";
@@ -98,9 +99,16 @@ export async function POST(request: NextRequest) {
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
         const save = body.type === "supplier" ? saveSupplierReturn : saveInvoiceReturn;
-        const record = await prisma.$transaction(async tx => await save(tx, {
+        const record = await prisma.$transaction(async tx => {
+          const saved = await save(tx, {
           invoiceId: body.invoiceId, requestId: body.requestId, date: body.date, reason: body.reason.trim(), selections: body.selections,
-        }, user), { isolationLevel: "Serializable", timeout: 20000 });
+          }, user);
+          if (body.type !== "supplier") {
+            const invoice = await tx.invoice.findUnique({ where: { id: body.invoiceId } });
+            if (invoice && !invoice.is_walk_in) await settlePartyInvoices(tx, invoice.client_name);
+          }
+          return saved;
+        }, { isolationLevel: "Serializable", timeout: 20000 });
         return NextResponse.json({ record });
       } catch (error) {
         if (attempt < 3 && ["P2034", "P2002"].includes((error as { code?: string }).code ?? "")) continue;

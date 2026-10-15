@@ -5,6 +5,7 @@ import ts from "typescript";
 import * as inventory from "../../lib/inventory.ts";
 import * as productValidation from "../../lib/productValidation.ts";
 import * as moduleAccess from "../../lib/moduleAccess.ts";
+import * as partyInvoiceSettlement from "../../lib/partyInvoiceSettlement.ts";
 
 const require = createRequire(import.meta.url);
 const compile = path => ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
@@ -42,6 +43,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
       if (key === "batch") return matches(rowBatch(row) ?? {}, expected);
       if (key === "invoice_id_batch_id") return matches(row, expected);
       if (expected && typeof expected === "object") {
+        if (expected.equals != null) return expected.mode === "insensitive" ? String(row[key]).toLowerCase() === String(expected.equals).toLowerCase() : row[key] === expected.equals;
         if (expected.contains != null) return String(row[key]).toLowerCase().includes(expected.contains.toLowerCase());
         if (expected.in) return expected.in.includes(row[key]);
         if (expected.gte != null) return row[key] >= expected.gte;
@@ -136,6 +138,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
   };
   const module = { exports: {} };
   const dependencies = {
+    "@/lib/partyInvoiceSettlement": partyInvoiceSettlement,
     "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
     "@/lib/prisma": { prisma }, "@/lib/auth": { COOKIE_NAME: "auth", verifyToken: async () => ({ sub: randomUUID(), email: "test@example.com", full_name: "Test" }) },
     "@/lib/inventory": inventory, "@/lib/productValidation": productValidation, "@/lib/moduleAccess": moduleAccess,

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, RotateCcw, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Search, RotateCcw, ChevronLeft, ChevronRight, X, Printer } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/helpers";
+import { PrintHeader } from "@/components/PrintHeader";
 import { DT } from "@/lib/dataTableStyles";
+import { ReturnHistory } from "@/components/ReturnHistory";
 import { planInvoiceReturn, type ReturnLineSource, type ReturnedLine } from "@/lib/invoiceReturns";
 
 type InvoiceSummary = { id: string; invoice_number: string; client_name: string; invoice_date: string;
@@ -22,6 +24,7 @@ const remaining = (line: InvoiceDetail["items"][number]) => Math.round((Number(l
 
 export default function ReturnsPage() {
   const [type, setType] = useState<"sales" | "supplier">("sales");
+  const [historyOpen, setHistoryOpen] = useState(false);
   const supplier = type === "supplier";
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
@@ -43,8 +46,43 @@ export default function ReturnsPage() {
   const [uncertain, setUncertain] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const requestId = useRef("");
+  const pendingPrintId = useRef<string | null>(null);
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const [receipt, setReceipt] = useState<{ record: ReturnRecord; invoiceNumber: string; party: string; supplier: boolean } | null>(null);
+
+  function printReceipt(record: ReturnRecord, source: InvoiceDetail) {
+    setReceipt({ record, invoiceNumber: source.invoice_number, party: source.client_name || "Walk-in", supplier });
+  }
 
   useEffect(() => {
+    if (!invoice || !pendingPrintId.current) return;
+    const record = invoice.returns.find(record => record.id === pendingPrintId.current);
+    if (record) {
+      pendingPrintId.current = null;
+      setReceipt({ record, invoiceNumber: invoice.invoice_number, party: invoice.client_name || "Walk-in", supplier });
+    }
+  }, [invoice, supplier]);
+
+  useEffect(() => {
+    if (!receipt) return;
+    const style = document.createElement("style");
+    const frame = requestAnimationFrame(() => {
+      // The template stays hidden on screen; measure it briefly before printing.
+      const node = receiptRef.current;
+      if (!node) return;
+      node.style.display = "block";
+      const height = Math.max(100, Math.ceil(node.scrollHeight * 25.4 / 96) + 2);
+      node.style.display = "";
+      style.textContent = `@page return-receipt { size: 80mm ${height}mm; margin: 0; } @media print { .return-thermal-receipt { page: return-receipt; } dialog::backdrop { display: none !important; } }`;
+      document.head.appendChild(style);
+      try { window.print(); }
+      catch { setError("Return is saved. Use Print receipt in return history to try printing again."); }
+    });
+    return () => { cancelAnimationFrame(frame); style.remove(); };
+  }, [receipt]);
+
+  useEffect(() => {
+    if (historyOpen) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setLoading(true); setListError("");
@@ -58,7 +96,7 @@ export default function ReturnsPage() {
       } finally { if (!controller.signal.aborted) setLoading(false); }
     }, 250);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [type, query, page, refresh]);
+  }, [type, query, page, refresh, historyOpen]);
 
   useEffect(() => {
     if (!selectedId) { setInvoice(null); return; }
@@ -114,6 +152,7 @@ export default function ReturnsPage() {
       const result = await response.json();
       if (!response.ok) { definiteFailure = true; setUncertain(false); throw new Error(result.error || "Could not save this return."); }
       setSuccess(`Return saved. ${formatCurrency(Number(result.record.amount))} credit recorded. ${supplier ? "Stock has been removed where tracked and the supplier balance reduced." : "Stock has been restored where tracked."} No cash refund was recorded.`);
+      pendingPrintId.current = result.record.id;
       setRefresh(value => value + 1);
     } catch (err) {
       // Keep the same request ID on retry, so a lost response cannot create a second return.
@@ -122,16 +161,19 @@ export default function ReturnsPage() {
     } finally { setSaving(false); }
   }
 
-  return <div style={{ color: "var(--gray-900)" }}>
+  return <><div className="no-print" style={{ color: "var(--gray-900)" }}>
     <div className="mb-5"><h1 className="text-2xl font-extrabold">Returns</h1>
       <p className="text-sm mt-1 text-[var(--gray-800)]">{supplier ? "Return purchased products to a supplier. Stock is removed and the supplier balance is reduced; cash received is recorded separately." : "Return an entire invoice or selected quantities. Returned stock is restored and the value is credited; cash refunds are recorded separately."}</p></div>
     <div role="group" aria-label="Return type" className="flex flex-wrap gap-2 mb-5">
-      {(["sales", "supplier"] as const).map(tab => <button type="button" key={tab} aria-pressed={type === tab} disabled={locked}
-        className={buttonClass} style={type === tab ? { background: "var(--blue-deeper)", color: "white" } : undefined}
-        onClick={() => { setSelectedId(null); setInvoice(null); setType(tab); setQuery(""); setPage(1); setList([]); setLoading(true); setError(""); setSuccess(""); }}>
+      {(["sales", "supplier"] as const).map(tab => <button type="button" key={tab} aria-pressed={!historyOpen && type === tab} disabled={locked}
+        className={buttonClass} style={!historyOpen && type === tab ? { background: "var(--blue-deeper)", color: "white" } : undefined}
+        onClick={() => { setHistoryOpen(false); setSelectedId(null); setInvoice(null); setType(tab); setQuery(""); setPage(1); setList([]); setLoading(true); setError(""); setSuccess(""); }}>
         {tab === "sales" ? "Sales Invoice Return" : "Supplier Invoice Return"}
       </button>)}
+      <button type="button" aria-pressed={historyOpen} disabled={locked} className={buttonClass} style={historyOpen ? { background: "var(--blue-deeper)", color: "white" } : undefined}
+        onClick={() => { setSelectedId(null); setInvoice(null); setHistoryOpen(true); }}>Return History</button>
     </div>
+    {historyOpen ? <ReturnHistory onPrint={entry => setReceipt({ record: entry, invoiceNumber: entry.invoice_number, party: entry.party, supplier: entry.type === "supplier" })} /> : <>
     {!selectedId && success && <p role="status" className="mb-4 rounded-[8px] border border-[var(--green)] bg-[var(--green-light)] p-3 text-sm">{success}</p>}
     <div className="bg-white border border-[var(--gray-100)] rounded-[14px] mb-6 overflow-hidden">
       <div className="p-4 border-b border-[var(--gray-100)]">
@@ -206,6 +248,7 @@ export default function ReturnsPage() {
         {!invoice.returns.length ? <p className="text-sm text-[var(--gray-800)]">No returns recorded for this invoice.</p> : <div className="space-y-3">{invoice.returns.map(record => <div key={record.id} className="border border-[var(--gray-100)] rounded-[8px] p-3 text-sm">
           <div className="flex flex-wrap justify-between gap-2"><strong>{formatDate(record.return_date)}</strong><strong className="font-mono">{formatCurrency(Number(record.amount))}</strong></div>
           <p className="text-xs text-[var(--gray-800)] break-all">Return ID: {record.id} · {record.created_by_name}</p>
+          <button type="button" className={`${buttonClass} my-2`} disabled={locked} onClick={() => printReceipt(record, invoice)}><Printer size={15} className="inline mr-2" />Print receipt</button>
           {record.reason && <p className="mt-1 whitespace-pre-wrap">{record.reason}</p>}
           <ul className="mt-2 list-disc pl-5">{record.items.map(item => <li key={item.id}>{item.product_name}: {Number(item.qty)} returned · {Number(item.stock_restored_qty)} {supplier ? "removed from stock" : "restored to stock"} · {formatCurrency(Number(item.amount))}</li>)}</ul>
         </div>)}</div>}
@@ -213,5 +256,27 @@ export default function ReturnsPage() {
     </section>}
       </div>
     </dialog>}
-  </div>;
+    </>}
+  </div>
+    {receipt && <div ref={receiptRef} className="print-only return-thermal-receipt" style={{ width: "80mm", boxSizing: "border-box", padding: "3mm", background: "#fff", color: "#000", fontFamily: "Arial, Helvetica, sans-serif", fontSize: 11, lineHeight: 1.4 }}>
+      <PrintHeader variant="thermal" />
+            <div style={{ textAlign: "center", fontWeight: 700, marginBottom: 8 }}>{receipt.supplier ? "SUPPLIER RETURN" : "SALES RETURN"}</div>
+      <div style={{ overflowWrap: "anywhere" }}>
+        <div><strong>Return ID:</strong> {receipt.record.id}</div>
+        <div><strong>Invoice:</strong> {receipt.invoiceNumber}</div>
+        <div><strong>Date:</strong> {formatDate(receipt.record.return_date)}</div>
+        <div><strong>{receipt.supplier ? "Supplier" : "Customer"}:</strong> {receipt.party}</div>
+        {receipt.record.reason && <div style={{ whiteSpace: "pre-wrap" }}><strong>Reason:</strong> {receipt.record.reason}</div>}
+      </div>
+      <div style={{ margin: "8px 0", borderTop: "1px dashed #000", borderBottom: "1px dashed #000" }}>
+        {receipt.record.items.map(item => <div key={item.id} style={{ padding: "6px 0", breakInside: "avoid", overflowWrap: "anywhere" }}>
+          <strong>{item.product_name}</strong>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>Qty returned: {Number(item.qty)}</span><strong>{formatCurrency(Number(item.amount))}</strong></div>
+        </div>)}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 800, fontSize: 13 }}><span>Total credit</span><span>{formatCurrency(Number(receipt.record.amount))}</span></div>
+      <p style={{ marginTop: 8 }}>Credit recorded. No cash refund recorded.</p>
+      <div>Processed by: {receipt.record.created_by_name}</div>
+    </div>}
+  </>;
 }

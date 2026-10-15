@@ -17,10 +17,12 @@ import { buildSupplierStatements } from "@/lib/supplierStatement";
 import { buildPartyStatements } from "@/lib/partyStatement";
 import { SupplierStatementReport } from "@/components/SupplierStatementReport";
 import { StockReport } from "@/components/StockReport";
+import { DailyStatementReport } from "@/components/DailyStatementReport";
+import type { DailyStatementData } from "@/lib/dailyStatement";
 import type { StockReportRow } from "@/lib/stockReport";
 import type { Supplier, PurchaseOrder } from "@/lib/database.types";
 
-type Tab = "account" | "cashbook" | "dailyparties" | "paymentmethod" | "expense" | "supplier" | "party" | "stock";
+type Tab = "dailystatement" | "account" | "cashbook" | "dailyparties" | "paymentmethod" | "expense" | "supplier" | "party" | "stock";
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   paid:    { bg: "var(--green-light)", color: "var(--green)", label: "Paid" },
@@ -64,7 +66,8 @@ function KpiCard({ label, value, color, sub }: { label: string; value: string; c
 }
 
 const REPORT_CARDS: { id: Tab; title: string; description: string; icon: ReactNode }[] = [
-  { id: "stock", title: "Stock reports", description: "Stock received, sold and available by date and category, with revenue and estimated gross profit.", icon: <Package size={22} /> },
+  { id: "dailystatement", title: "Daily Statement", description: "Income, expenses, returns, invoices and cash movements for any selected date.", icon: <CalendarDays size={22} /> },
+  { id: "stock", title: "Stock reports", description: "Stock received, sold and available by product and date, with revenue and estimated gross profit.", icon: <Package size={22} /> },
   { id: "party", title: "Party Statement", description: "All party balances. Select a party to view debit and credit details.", icon: <Users size={22} /> },
   { id: "supplier", title: "Supplier Statement", description: "All supplier balances. Select a supplier to view debit and credit details.", icon: <Users size={22} /> },
   { id: "account", title: "Head Account Statement", description: "Select a head account to view debit and credit for all its parties.", icon: <FileText size={22} /> },
@@ -117,8 +120,9 @@ export default function ReportsPage() {
   const [reportGenerated, setReportGenerated] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [stockCategory, setStockCategory] = useState("all");
-  const [stockCategories, setStockCategories] = useState<{ id: string; name: string }[]>([]);
+  const [stockProduct, setStockProduct] = useState("all");
+  const [stockProducts, setStockProducts] = useState<{ id: string; name: string }[]>([]);
+  const [dailyStatement, setDailyStatement] = useState<DailyStatementData | null>(null);
   const [stockRows, setStockRows] = useState<StockReportRow[]>([]);
 
   // ── Master filter state ───────────────────────────────────
@@ -202,9 +206,9 @@ export default function ReportsPage() {
   }, [fromDate, toDate]);
 
   useEffect(() => {
-    db.from("product_categories").select("*").order("name").then(({ data, error }) => {
+    db.from("products").select("id, name").order("created_at", { ascending: false }).then(({ data, error }) => {
       if (error) setGenerateError(error.message);
-      if (data) setStockCategories(data);
+      if (data) setStockProducts(data);
     });
     db.from("head_accounts").select("*").order("code").then(({ data, error }) => {
       if (error) setGenerateError(error.message);
@@ -228,7 +232,7 @@ export default function ReportsPage() {
       setGenerateError("Choose a report type from the cards above.");
       return;
     }
-    if (activeTab !== "dailyparties" && (!fromDate || !toDate || fromDate > toDate)) {
+    if (activeTab !== "dailyparties" && activeTab !== "dailystatement" && (!fromDate || !toDate || fromDate > toDate)) {
       setGenerateError("Select a valid date range. From date must be on or before To date.");
       return;
     }
@@ -240,11 +244,24 @@ export default function ReportsPage() {
       setGenerateError("Select a payment method to generate this report.");
       return;
     }
-    if (activeTab === "stock") {
+    if (activeTab === "dailystatement") {
+      setLoading(true);
+      setReportGenerated(false);
+      setDailyStatement(null);
+      try {
+        const response = await fetch(`/api/reports/daily-statement?${new URLSearchParams({ date: dailyDate })}`);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not load daily statement.");
+        setDailyStatement(result);
+      } catch (error) {
+        setGenerateError(error instanceof Error ? error.message : "Could not load daily statement.");
+        return;
+      } finally { setLoading(false); }
+    } else if (activeTab === "stock") {
       setLoading(true);
       setReportGenerated(false);
       try {
-        const response = await fetch(`/api/reports/stock?${new URLSearchParams({ from: fromDate, to: toDate, category: stockCategory })}`);
+        const response = await fetch(`/api/reports/stock?${new URLSearchParams({ from: fromDate, to: toDate, product: stockProduct })}`);
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Could not load stock report.");
         setStockRows(result.rows);
@@ -315,7 +332,7 @@ export default function ReportsPage() {
   const methodCashOut = useMemo(() => methodCashbook.filter((c) => c.type === "out").reduce((s, c) => s + Number(c.amount), 0), [methodCashbook]);
 
   // ── Filter label ──────────────────────────────────────────
-  const filterLabel = `${formatDate(fromDate)} - ${formatDate(toDate)}${activeTab === "account" && selectedHeadAccount ? ` / ${selectedHeadAccount.name}` : ""}${activeTab === "paymentmethod" && methodFilter !== "all" ? ` / ${methodFilter}` : ""}${activeTab === "stock" ? ` / ${stockCategories.find(c => c.id === stockCategory)?.name ?? "All categories"}` : ""}`;
+  const filterLabel = `${formatDate(fromDate)} - ${formatDate(toDate)}${activeTab === "account" && selectedHeadAccount ? ` / ${selectedHeadAccount.name}` : ""}${activeTab === "paymentmethod" && methodFilter !== "all" ? ` / ${methodFilter}` : ""}${activeTab === "stock" ? ` / ${stockProducts.find(c => c.id === stockProduct)?.name ?? "All products"}` : ""}`;
 
   // ──────────────────────────────────────────────────────────
   return (
@@ -385,10 +402,11 @@ export default function ReportsPage() {
             )}
 
             <div inert={loading || dailyLoading} className="flex flex-wrap gap-3 items-end">
-              {activeTab === "dailyparties" ? (
+              {(activeTab === "dailyparties" || activeTab === "dailystatement") ? (
                 <div className="flex flex-col gap-1">
-                  <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Report date</label>
+                  <label htmlFor="daily-report-date" className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Report date</label>
                   <input
+                    id="daily-report-date"
                     type="date"
                     value={dailyDate}
                     onChange={(e) => { setReportGenerated(false); setDailyDate(e.target.value); }}
@@ -400,13 +418,12 @@ export default function ReportsPage() {
                 <>
                   {activeTab === "stock" ? (
                     <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
-                      <label htmlFor="stock-category" className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Category</label>
-                      <select id="stock-category" value={stockCategory} onChange={e => { setReportGenerated(false); setStockCategory(e.target.value); }}
-                        className="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] focus-visible:outline-2 focus-visible:outline-[var(--blue)]"
-                        style={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }}>
-                        <option value="all">All categories</option>
-                        {stockCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                      <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Product</label>
+                      <SearchableSelect value={stockProduct} onChange={value => { setReportGenerated(false); setStockProduct(value); }}
+                        options={stockProducts.map(p => ({ value: p.id, label: p.name, searchText: p.name }))}
+                        maxResults={10} emptyValue="all" placeholder="All products ? search product"
+                        inputClassName="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] w-full focus-visible:outline-2 focus-visible:outline-[var(--blue)]"
+                        inputStyle={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }} />
                     </div>
                   ) : activeTab === "paymentmethod" ? (
                     <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
@@ -475,7 +492,7 @@ export default function ReportsPage() {
               )}
               <div className="ml-auto text-[11px] font-medium px-3 py-1.5 rounded-[7px] border self-end"
                 style={{ color: "var(--gray-800)", background: "var(--gray-50)", borderColor: "var(--gray-100)" }}>
-                {activeTab === "dailyparties"
+                {(activeTab === "dailyparties" || activeTab === "dailystatement")
                   ? formatDate(dailyDate)
                   : filterLabel}
               </div>
@@ -490,7 +507,8 @@ export default function ReportsPage() {
         )}
 
         {/* ── TAB: ACCOUNT STATEMENT ────────────────────────── */}
-        {reportGenerated && activeTab === "stock" && <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-4 mb-4" style={{ boxShadow: "var(--shadow-sm)" }}><h2 className="text-lg font-extrabold mb-1">Stock reports</h2><p className="text-xs mb-4">{formatDate(fromDate)} — {formatDate(toDate)} · {stockCategories.find(c => c.id === stockCategory)?.name ?? "All categories"}</p><StockReport rows={stockRows} /></div>}
+        {reportGenerated && activeTab === "dailystatement" && dailyStatement && <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-4 mb-4"><DailyStatementReport data={dailyStatement} /></div>}
+        {reportGenerated && activeTab === "stock" && <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-4 mb-4" style={{ boxShadow: "var(--shadow-sm)" }}><h2 className="text-lg font-extrabold mb-1">Stock reports</h2><p className="text-xs mb-4">{formatDate(fromDate)} — {formatDate(toDate)} · {stockProducts.find(c => c.id === stockProduct)?.name ?? "All products"}</p><StockReport rows={stockRows} /></div>}
         {reportGenerated && activeTab === "party" && <SupplierStatementReport statements={partyStatements} selectedId={selectedSupplierId} onSelect={setSelectedSupplierId} onBack={() => setSelectedSupplierId(null)} party />}
 
         {reportGenerated && activeTab === "supplier" && <SupplierStatementReport statements={supplierStatements} selectedId={selectedSupplierId} onSelect={setSelectedSupplierId} onBack={() => setSelectedSupplierId(null)} />}
@@ -839,7 +857,7 @@ export default function ReportsPage() {
       </div>
 
       {/* ── Print Layout (A4 — flex column pins footer to page bottom) ── */}
-      <div className="ledger-a4-print-only" style={{ background: "#fff", fontFamily: "Arial, sans-serif" }}>
+      <div className={`ledger-a4-print-only a4-report${activeTab === "stock" ? " a4-report-wide" : ""}`} style={{ background: "#fff", fontFamily: "Arial, sans-serif" }}>
         {reportGenerated && activeTab ? (
           <>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -847,18 +865,19 @@ export default function ReportsPage() {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 10px 8px", marginBottom: 14 }}>
           <div style={{ fontSize: 12, color: "#555" }}>
-            {activeTab === "dailyparties"
+            {(activeTab === "dailyparties" || activeTab === "dailystatement")
               ? `Date: ${formatDate(dailyDate)}`
               : `Period: ${formatDate(fromDate)} — ${formatDate(toDate)}`}
             {activeTab === "account" && selectedHeadAccount && <span style={{ marginLeft: 8, color: "#888" }}> / Head account: {selectedHeadAccount.name}</span>}
             {activeTab === "paymentmethod" && methodFilter !== "all" && <span style={{ marginLeft: 8, color: "#888" }}>· Method: {methodFilter}</span>}
           </div>
           <div style={{ fontWeight: 900, color: "#075985", fontSize: 14, letterSpacing: 2, textTransform: "uppercase" }}>
-            {{ stock: "Stock reports", account: "Head Account Statement", cashbook: "Cashbook", dailyparties: "Daily Parties Report", paymentmethod: "Payment Method Report", expense: "Expense Report", supplier: "Supplier Statement", party: "Party Statement" }[activeTab]}
+            {{ dailystatement: "Daily Statement", stock: "Stock reports", account: "Head Account Statement", cashbook: "Cashbook", dailyparties: "Daily Parties Report", paymentmethod: "Payment Method Report", expense: "Expense Report", supplier: "Supplier Statement", party: "Party Statement" }[activeTab]}
           </div>
         </div>
 
-        {activeTab === "stock" && <><p className="text-xs mb-3">Category: {stockCategories.find(c => c.id === stockCategory)?.name ?? "All categories"}</p><StockReport rows={stockRows} /></>}
+        {activeTab === "dailystatement" && dailyStatement && <DailyStatementReport data={dailyStatement} />}
+        {activeTab === "stock" && <><p className="text-xs mb-3">Product: {stockProducts.find(c => c.id === stockProduct)?.name ?? "All products"}</p><StockReport rows={stockRows} /></>}
         {activeTab === "party" && <SupplierStatementReport statements={partyStatements} selectedId={selectedSupplierId} print party />}
 
         {activeTab === "supplier" && <SupplierStatementReport statements={supplierStatements} selectedId={selectedSupplierId} print />}

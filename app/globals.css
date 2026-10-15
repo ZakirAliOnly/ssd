@@ -156,3 +156,57 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* A5 documents use their own page so reports and ledgers retain A4. */
+@page delivery-challan { size: A5 portrait; margin: 0; }
+@page party-invoice { size: A5 portrait; margin: 6mm; }
+@page report-a4 { size: A4 portrait; margin: 10mm; }
+@page report-a4-wide { size: A4 landscape; margin: 10mm; }
+@media print {
+  .delivery-challan-doc { page: delivery-challan; }
+  .inv-a4-print-only { page: party-invoice; width: 100%; box-sizing: border-box; }
+
+  /* The dashboard's screen padding otherwise consumes printable page width. */
+  main > div { padding: 0 !important; min-width: 0 !important; width: 100%; }
+
+  .a4-report,
+  .ledger-a4-print-only {
+    page: report-a4;
+    display: block !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+  .a4-report-wide { page: report-a4-wide; }
+
+  :is(.a4-report, .ledger-a4-print-only) * {
+    min-width: 0 !important;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+  }
+  .a4-report > div:first-child { display: block !important; }
+  :is(.a4-report, .ledger-a4-print-only) .overflow-x-auto {
+    overflow: visible !important;
+  }
+  :is(.a4-report, .ledger-a4-print-only) table {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 10px !important;
+  }
+  :is(.a4-report, .ledger-a4-print-only) :is(th, td) {
+    padding: 5px 4px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    font-size: 10px !important;
+    letter-spacing: normal !important;
+    vertical-align: top;
+  }
+  :is(.a4-report, .ledger-a4-print-only) thead { display: table-header-group; }
+  :is(.a4-report, .ledger-a4-print-only) tfoot { display: table-row-group; }
+  :is(.a4-report, .ledger-a4-print-only) tr { break-inside: avoid; }
+  :is(.a4-report, .ledger-a4-print-only) img { max-width: 100%; height: auto; }
+}

@@ -79,3 +79,20 @@ test("supplier returns reduce stock on the return date without being counted as 
   assert.equal(day.sold, 0); assert.equal(day.revenue, 0); assert.equal(day.cost, 0); assert.equal(day.warning, null);
   assert.equal(buildStockReport([p], "2026-02-11", "2026-02-11")[0].opening, 7);
 });
+
+
+test("sales detail keeps invoice identity and prices and filters inclusive dates", () => {
+  const sales = [
+    { date: "2026-01-31", qty: 1, deducted: 1, revenue: 10, invoiceNumber: "OUTSIDE" },
+    { date: "2026-02-28", qty: 0.5, deducted: 0.5, revenue: 20, lineId: "l2", invoiceId: "i2", invoiceNumber: "INV-2", customer: "Customer B", unitPrice: 50, amount: 22.5 },
+    { date: "2026-02-01", qty: 2, deducted: 2, revenue: 54, lineId: "l1", invoiceId: "i1", invoiceNumber: "INV-1", customer: "Customer A", unitPrice: 30, amount: 60 },
+    { date: "2026-03-01", qty: 1, deducted: 1, revenue: 10, invoiceNumber: "AFTER" },
+  ];
+  const [row] = buildStockReport([{ ...product, sales }], "2026-02-01", "2026-02-28");
+  assert.deepEqual(row.sales, [sales[2], sales[1]]);
+  assert.equal(row.sales[1].qty, 0.5);
+  assert.equal(row.sales[1].unitPrice, 50);
+  assert.equal(row.sales[1].amount, 22.5);
+  assert.equal(row.revenue, 74);
+  assert.equal(row.sold, 2.5);
+});

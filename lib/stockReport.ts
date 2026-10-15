@@ -1,12 +1,18 @@
+export interface StockReportSale {
+  date: string; qty: number; deducted: number; revenue: number;
+  lineId?: string; invoiceId?: string; invoiceNumber?: string; customer?: string;
+  unitPrice?: number; amount?: number;
+}
 export interface StockReportProduct {
   description?: string | null;
   id: string; code: string; name: string; cost_price: number; category: string; created_at: string;
   batches: { received_date: string; received_qty: number; remaining_qty: number; supplier_returns?: { qty: number; date: string }[]; allocations: { qty: number; date: string; cost: number | null; returns?: { qty: number; date: string }[] }[] }[];
-  sales: { date: string; qty: number; deducted: number; revenue: number }[];
+  sales: StockReportSale[];
   returns?: { date: string; qty: number; restored: number; revenue: number }[];
 }
 export interface StockReportRow {
   description: string;
+  sales: StockReportSale[];
   id: string; code: string; name: string; category: string; opening: number | null;
   received: number; sold: number; available: number | null; costPrice: number;
   revenue: number; cost: number; profit: number; warning: string | null;
@@ -66,7 +72,7 @@ export function buildStockReport(products: StockReportProduct[], from: string, t
     cost += Math.max(0, grossSold - costQty) * p.cost_price;
     cost -= returnedCost + Math.max(0, returnedQty - returnedCostQty) * p.cost_price;
     const revenue = money(sales.reduce((sum, s) => sum + s.revenue, 0) - periodReturns.reduce((sum, r) => sum + r.revenue, 0));
-    return { id: p.id, code: p.code, name: p.name, description: p.description ?? "", category: p.category,
+    return { sales: [...sales].sort((a, b) => a.date.localeCompare(b.date)), id: p.id, code: p.code, name: p.name, description: p.description ?? "", category: p.category,
       opening: incomplete ? null : money(opening), received: money(received), sold: money(sold),
       available: incomplete ? null : money(opening + received - consumed + restored),
       costPrice: p.cost_price, revenue, cost: money(cost), profit: money(revenue - cost),

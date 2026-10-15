@@ -76,7 +76,7 @@ Last updated: 2026-10-13
 | --- | --- |
 | Background | bg-white; var(--gray-50) for totals and filter inputs |
 | Border | border border-[var(--gray-100)]; filter border-[1.5px] var(--gray-200) |
-| Border radius | rounded-[14px] report panel; rounded-[8px] category selector |
+| Border radius | rounded-[14px] report panel; rounded-[8px] product selector |
 | Text — primary | existing DT table tokens; text-lg font-extrabold heading |
 | Text — secondary | text-xs var(--gray-800) |
 | Spacing | p-4 panel; DT.tdDense table cells |
@@ -84,11 +84,11 @@ Last updated: 2026-10-13
 | Shadow | var(--shadow-sm) |
 | Accent usage | existing ReportTypeCard blue active state; var(--red) for incomplete history |
 
-**Pattern notes:** Reuse ReportTypeCard and the report date controls. Share StockReport between screen and print. Include a separate Description column after Product; preserve line breaks, wrap long descriptions, and show a dash when absent. Left-align descriptive columns, center quantity headers/values/totals, and right-align currency headers/values/totals with matching cell padding and monospace values. Explain unavailable historical balances in visible copy.
+**Pattern notes:** Reuse ReportTypeCard and the report date controls. Filter by product ID with SearchableSelect; display names only, newest first, at most 10 suggestions, with case-insensitive matching across the full product list. Share StockReport between screen and print. Include per-product original sales invoices in the date range with invoice number, date, customer, quantity, historical unit price and line amount; explain that returns and invoice-wide discounts affect the summary. Include a separate Description column after Product; preserve line breaks, wrap long descriptions, and show a dash when absent. Left-align descriptive columns, center quantity headers/values/totals, and right-align currency headers/values/totals with matching cell padding and monospace values. Explain unavailable historical balances in visible copy.
 
-### Delivery challan print header
+### Shared document print header
 
-File: components/PrintHeader.tsx (challan variant)
+Files: components/PrintHeader.tsx, public/brand/letterhead.svg
 Last updated: 2026-10-13
 
 | Property | Style |
@@ -100,7 +100,7 @@ Last updated: 2026-10-13
 | Spacing | gap 20px; header padding 0 0 10px; document top padding 6mm |
 | Shadow | none |
 
-**Pattern notes:** Top-align enlarged triangular logo with the business name. Keep address and phone details; omit email and sales-manager lines only in this variant. Challans omit delivery number and receiver/delivery/signature fields in both editor and output.
+**Pattern notes:** All document types use the supplied reference letterhead: large blue triangular logo on the left, centered bold black serif business name and blue contact lines on the right, with a full-width blue rule underneath. Omit email and sales-manager lines across all documents. Use the corrected middle mobile number 03342427408. Thermal receipts use the same shared SVG header with larger proportional contact text. Challans omit delivery number and receiver/delivery/signature fields in both editor and output.
 
 ### Invoice print header
 
@@ -126,3 +126,75 @@ Product selectors display the product name only. Keep code searchable without sh
 | Print discount | 11px semibold #111, margin-top 3px |
 
 **Pattern notes:** Product and Description occupy separate columns. Top-align every row cell. Center quantity/discount headings, right-align totals. Qty and Rate allow two decimal places (step 0.01); quantities must be positive. Currency values retain up to two decimal places without rounding to whole rupees. Discount percentage accepts 0–100 with two decimal places. Print percentage and deducted amount beneath the product; show invoice-wide discounts separately.
+
+### Delivery challan products
+
+File: app/(dashboard)/delivery-challan/page.tsx
+Last updated: 2026-10-15
+
+Use white panels with rounded-[14px], var(--gray-100) borders, p-5 spacing, and var(--shadow-sm). The screen table uses 13px text, p-2 cells, blue-deeper headings, left-aligned wrapping product details and centered tabular quantities. Show products and quantities when an invoice opens. Print/PDF columns are S.#, Product and Qty with black 1px borders. Omit rates, amounts, monetary totals and invoice prices from the challan interface and output.
+
+### A5 delivery challan and party invoice
+
+Files: app/(dashboard)/delivery-challan/page.tsx, app/(dashboard)/accounts/page.tsx, app/globals.css
+Last updated: 2026-10-15
+
+Print and downloaded PDFs use A5 portrait (148 x 210mm) with 6mm content insets. Use named print pages to scope sizing to these documents. Party invoice columns use 6% / 42% / 10% / 20% / 22%, 11px body text, 9px column headings and 5px 3px cells. Preserve the blue letterhead and totals styling.
+
+### Walk-in thermal receipt
+
+File: app/(dashboard)/quick-invoice/page.tsx
+Last updated: 2026-10-15
+
+Draft and saved walk-in invoices share an 80mm thermal print/PDF template with 3mm padding, black text on white, Arial 11px body, an 18px bold business heading and dashed separators. Products occupy full-width rows; quantities and rates appear beneath each product with amounts aligned right. Totals span the receipt width. Receipt height follows the content, without A4 filler space or image banners.
+
+### Return thermal receipt
+
+File: app/(dashboard)/returns/page.tsx
+Last updated: 2026-10-15
+
+Match the walk-in receipt: 80mm paper, 3mm padding, Arial 11px black on white, 18px bold business heading and dashed separators. Print saved return ID, source invoice, party/supplier, return date, reason, returned products, quantities, credited amounts, total credit and operator. Label sales versus supplier returns and state that no cash refund was recorded. Automatically print only after the saved record is fetched; allow reprints from immutable return history. Keep the editor and native dialog out of print output.
+
+### A4 report printing
+
+Files: app/globals.css, app/(dashboard)/reports/page.tsx, app/(dashboard)/invoice-report/page.tsx
+Last updated: 2026-10-15
+
+Reports and ledger statements use named A4 print pages with 10mm margins; the 12-column stock report uses A4 landscape. Remove dashboard inner padding during print. Report tables fill the printable width with fixed layout, zero minimum widths, 10px text, 5px 4px cells and wrapping content. Remove horizontal scroll clipping and nowrap rules in print, repeat table headers and keep ordinary rows together. Use block report flow for page breaks. Keep these rules scoped to report/ledger templates so invoice and thermal receipt sizes remain independent.
+
+### Daily Statement report
+
+Files: components/DailyStatementReport.tsx, app/(dashboard)/reports/page.tsx
+Last updated: 2026-10-15
+
+Extend the existing report-card selector and single-date generate flow. Reuse the same DailyStatementReport for screen and A4 print. KPI panels use var(--gray-100) borders, rounded-[12px], px-4 py-3, blue-deeper totals, and gray-800 notes. Use a responsive one/two/four-column KPI grid and four columns on print. Detail tables reuse DT styles with right-aligned monetary values, wrapping descriptions, horizontal scrolling on screen and A4 wrapping in print.
+
+Income is real cashbook inflow across payment methods. Show recorded expenses, sales return credits, supplier return credits, all cash out, net cash movement, sales invoices and purchase invoices separately. Exclude opening balances and Adjustment entries from cash metrics. Explain pending expenses, non-cash credits and double counting. Fetch invoices by invoice date and returns by return date, including returns against older invoices. List invoice/return activity, expense records and cash movements even when one section has no records.
+
+### Party invoice settlement
+
+Files: app/(dashboard)/accounts/page.tsx, lib/partyInvoiceSettlement.ts
+Last updated: 2026-10-15
+
+Party invoice lists show Received on invoice, Remaining and Status separately. Preserve the original on-invoice receipts for ledger deduplication; ledger payments change remaining balance and status without generating duplicate cash entries. Settle general credits against opening debt, then invoices ordered by invoice date, creation time and ID. Show Partial until the remaining invoice balance reaches zero. Return credits reduce the original invoice, excess credit carries forward, and walk-in/supplier invoices stay separate. Recalculate on payment create/edit/delete, invoice changes, sales returns and opening the party invoice list.
+
+### Conditional invoice discount print summary
+
+Files: components/InvoiceDiscountSummary.tsx, components/InvoiceLineDiscount.tsx
+Last updated: 2026-10-15
+
+Share the summary between A5 party invoice and 80mm walk-in print/PDF. When discounts have a positive monetary amount, show Subtotal before discounts, Product discounts where applied, and Invoice discount where applied (with percentage for percentage discounts). Use 11px black text, thin black separators, right-aligned deductions and a break-inside-avoid block. Hide the entire summary and per-product discount notes when nothing was deducted. Use stored line amounts and discount amounts, preserving decimals; never deduct a product discount twice. Load canonical invoice header and item data before printing a saved walk-in invoice.
+
+### Return History tab
+
+Files: components/ReturnHistory.tsx, app/(dashboard)/returns/page.tsx
+Last updated: 2026-10-15
+
+Add Return History beside Sales Invoice Return and Supplier Invoice Return, using the same blue-deeper active tab and neutral button styling. History uses white rounded-[14px] panels, gray-100 borders, p-4/sm:p-5 padding, gray-50 labelled search/select fields, 8px input/button corners, and DT table styles. Provide sales/supplier filters, case-insensitive invoice/party/product/return-ID search and 25-record pagination. Open details inline with Back to history, wrapping product descriptions, centered quantities, right-aligned credits and a thermal receipt reprint action. Preserve read-only saved records and identify Whole invoice, Remaining invoice or Selected items from actual saved quantities and earlier returns, using creation order rather than backdated return dates.
+
+### Reference letterhead update
+
+Files: components/PrintHeader.tsx, public/brand/letterhead.svg, app/(dashboard)/quick-invoice/page.tsx, app/(dashboard)/returns/page.tsx
+Last updated: 2026-10-15
+
+Use the shared inline SVG for all print and PDF headers. Reference proportions use a 700 x 152 viewBox, 1.3-scale triangular logo on the left, centered Georgia/Times bold 34px business name, Arial bold 13px contact lines and a 2px blue rule. Thermal variant uses a 700 x 170 viewBox with 38px name and 18px contacts. Correct middle mobile: 03342427408. Keep the static SVG asset identical to the default component. Email and sales-manager details are absent throughout.

@@ -1,17 +1,14 @@
 "use client";
 
-import { invoiceUnitRate } from "@/lib/invoicePricing";
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { ClipboardList, Download, Loader2, Printer } from "lucide-react";
 import { db } from "@/lib/db";
 import { showToast } from "@/components/Toast";
-import { formatCurrency, formatDate } from "@/lib/helpers";
+import { formatDate } from "@/lib/helpers";
 import { PrintFooter } from "@/components/PrintFooter";
 import { PrintHeader } from "@/components/PrintHeader";
-import { useUser } from "@/lib/UserContext";
 import type { InvoiceItem } from "@/lib/database.types";
 
 type InvoicePick = {
@@ -20,7 +17,6 @@ type InvoicePick = {
   client_name: string;
   client_phone: string;
   invoice_date: string;
-  grand_total: number;
   job_notes?: string;
 };
 
@@ -28,8 +24,6 @@ type PrintRow = {
   id: string;
   detail: string;
   qty: string;
-  rate: string;
-  amount: string;
 };
 
 /** Matches sample `delivery_chalan.pdf` date style (e.g. 23-Aug-25). */
@@ -47,11 +41,6 @@ function nowTimeStr(): string {
   return new Date().toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
-function parseNum(s: string): number {
-  const n = parseFloat(String(s).replace(/,/g, ""));
-  return Number.isFinite(n) ? n : 0;
-}
-
 function itemsToPrintRows(items: InvoiceItem[]): PrintRow[] {
   return items.map((it, i) => {
     const qty = Number(it.qty) || 1;
@@ -60,8 +49,6 @@ function itemsToPrintRows(items: InvoiceItem[]): PrintRow[] {
       id: it.id || `row-${i}`,
       detail,
       qty: String(qty),
-      rate: invoiceUnitRate(it) ? String(invoiceUnitRate(it)) : "",
-      amount: Number(it.amount) > 0 ? String(Number(it.amount)) : "",
     };
   });
 }
@@ -70,7 +57,6 @@ const DEFAULT_TERMS =
   "Goods delivered as per above details. Please verify quantity and condition on receipt. Subject to invoice and payment terms.";
 
 export default function DeliveryChallanPage() {
-  const userProfile = useUser();
   const docRef = useRef<HTMLDivElement>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
@@ -84,14 +70,13 @@ export default function DeliveryChallanPage() {
   const [cell, setCell] = useState("");
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [lineItems, setLineItems] = useState<InvoiceItem[]>([]);
-  const [grandTotal, setGrandTotal] = useState(0);
   const [invoiceRef, setInvoiceRef] = useState("");
 
   const fetchInvoices = useCallback(async () => {
     setLoadingList(true);
     const { data, error } = await db
       .from("invoices")
-      .select("id, invoice_number, client_name, client_phone, invoice_date, grand_total, job_notes")
+      .select("id, invoice_number, client_name, client_phone, invoice_date, job_notes")
       .order("created_at", { ascending: false })
       .limit(300);
     setLoadingList(false);
@@ -115,7 +100,6 @@ export default function DeliveryChallanPage() {
       setChallanTime(nowTimeStr());
       setCell("");
       setLineItems([]);
-      setGrandTotal(0);
       setInvoiceRef("");
       setTerms(DEFAULT_TERMS);
       return;
@@ -144,7 +128,6 @@ export default function DeliveryChallanPage() {
         client_name: String(inv.client_name ?? ""),
         client_phone: String(inv.client_phone ?? ""),
         invoice_date: String(inv.invoice_date ?? ""),
-        grand_total: Number(inv.grand_total) || 0,
       }]);
       setHeaderParty(String(inv.client_name ?? ""));
       setChallanDate(String(inv.invoice_date ?? ""));
@@ -152,7 +135,6 @@ export default function DeliveryChallanPage() {
       setCell(String(inv.client_phone ?? "").trim());
       setInvoiceRef(String(inv.invoice_number ?? ""));
       setLineItems(items);
-      setGrandTotal(Number(inv.grand_total) || items.reduce((s, it) => s + Number(it.amount), 0));
       if (String(inv.job_notes ?? "").trim()) {
         setTerms(String(inv.job_notes));
       } else {
@@ -172,7 +154,7 @@ export default function DeliveryChallanPage() {
     () =>
       printRows.length
         ? printRows
-        : [{ id: "e", detail: "", qty: "", rate: "", amount: "" }],
+        : [{ id: "e", detail: "", qty: "" }],
     [printRows],
   );
 
@@ -193,7 +175,7 @@ export default function DeliveryChallanPage() {
     node.style.position = "absolute";
     node.style.left = "-99999px";
     node.style.top = "0";
-    node.style.width = "210mm";
+    node.style.width = "148mm";
 
     try {
       await new Promise((r) => setTimeout(r, 200));
@@ -204,7 +186,7 @@ export default function DeliveryChallanPage() {
         logging: false,
       });
       const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a5" });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const imgProps = pdf.getImageProperties(imgData);
@@ -277,7 +259,7 @@ export default function DeliveryChallanPage() {
               <option value="">— Select invoice —</option>
               {invoices.map((inv) => (
                 <option key={inv.id} value={inv.id}>
-                  {inv.invoice_number} — {inv.client_name} ({formatDate(inv.invoice_date)}) — {formatCurrency(Number(inv.grand_total))}
+                  {inv.invoice_number} — {inv.client_name} ({formatDate(inv.invoice_date)})
                 </option>
               ))}
             </select>
@@ -288,6 +270,26 @@ export default function DeliveryChallanPage() {
             </p>
           )}
         </div>
+
+        {invoiceId && !loadingInvoice && (
+          <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-5 mb-5" style={{ boxShadow: "var(--shadow-sm)" }}>
+            <h2 className="text-sm font-bold mb-3" style={{ color: "var(--gray-900)" }}>Products to deliver</h2>
+            {printRows.length ? (
+              <table className="w-full text-[13px] border-collapse">
+                <thead><tr style={{ color: "var(--blue-deeper)" }}>
+                  <th scope="col" className="text-left p-2 border-b border-[var(--gray-100)]">Product</th>
+                  <th scope="col" className="text-center p-2 border-b border-[var(--gray-100)]">Qty</th>
+                </tr></thead>
+                <tbody>{printRows.map(row => (
+                  <tr key={row.id}>
+                    <td className="p-2 border-b border-[var(--gray-100)] whitespace-pre-wrap break-words">{row.detail}</td>
+                    <td className="p-2 border-b border-[var(--gray-100)] text-center tabular-nums align-top">{row.qty}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            ) : <p className="text-[13px]" style={{ color: "var(--gray-800)" }}>No products on this invoice.</p>}
+          </div>
+        )}
 
         {invoiceId ? (
           <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-5 space-y-4 mb-5" style={{ boxShadow: "var(--shadow-sm)" }}>
@@ -387,9 +389,9 @@ export default function DeliveryChallanPage() {
         ref={docRef}
         className="delivery-challan-doc print-only bg-white"
         style={{
-          width: "210mm",
+          width: "148mm",
           maxWidth: "100%",
-          padding: "6mm 12mm 12mm",
+          padding: "6mm",
           boxSizing: "border-box",
           fontFamily: "Arial, Helvetica, sans-serif",
           color: "#111",
@@ -451,9 +453,9 @@ export default function DeliveryChallanPage() {
             marginBottom: 12,
           }}
         >
-          <thead><tr>{["S.#", "Detail", "Qty", "Rate", "Amount"].map((label, index) => (
+          <thead><tr>{["S.#", "Product", "Qty"].map((label, index) => (
             <th key={label} style={{ border: "1px solid #000", padding: "6px", fontWeight: 700,
-              textAlign: index === 1 ? "left" : "center", width: index === 1 ? "52%" : "12%" }}>{label}</th>
+              textAlign: index === 1 ? "left" : "center", width: index === 1 ? "76%" : "12%" }}>{label}</th>
           ))}</tr></thead>
           <tbody>
             {rowsForPdf.map((r, idx) => (
@@ -463,22 +465,8 @@ export default function DeliveryChallanPage() {
 
                 <td style={{ border: "1px solid #000", padding: "5px 3px", textAlign: "center", fontFamily: "monospace" }}>{r.qty || "\u00A0"}</td>
 
-                <td style={{ border: "1px solid #000", padding: "5px 4px", textAlign: "right", fontFamily: "monospace" }}>
-                  {r.rate ? formatCurrency(parseNum(r.rate)).replace("Rs ", "") : "\u00A0"}
-                </td>
-                <td style={{ border: "1px solid #000", padding: "5px 4px", textAlign: "right", fontFamily: "monospace", fontWeight: 600 }}>
-                  {r.amount ? formatCurrency(parseNum(r.amount)).replace("Rs ", "") : "\u00A0"}
-                </td>
               </tr>
             ))}
-            <tr>
-              <td colSpan={4} style={{ border: "1px solid #000", padding: "7px 6px", fontWeight: 800, textAlign: "right", letterSpacing: 1 }}>
-                TOTAL
-              </td>
-              <td style={{ border: "1px solid #000", padding: "7px 6px", textAlign: "right", fontFamily: "monospace", fontWeight: 800 }}>
-                {formatCurrency(grandTotal).replace("Rs ", "")}
-              </td>
-            </tr>
           </tbody>
         </table>
 

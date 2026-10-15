@@ -256,7 +256,7 @@ export default function InvoiceReportPage() {
       </div>
 
       {/* ── Print Layout ── */}
-      <div className="print-only" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 11 }}>
+      <div className="print-only a4-report" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 11 }}>
         <PrintHeader />
 
         {/* Title bar */}
