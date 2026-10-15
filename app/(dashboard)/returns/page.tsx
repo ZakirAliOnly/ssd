@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, RotateCcw, ChevronLeft, ChevronRight, X, Printer } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/helpers";
 import { PrintHeader } from "@/components/PrintHeader";
+import { PrintFooter } from "@/components/PrintFooter";
 import { DT } from "@/lib/dataTableStyles";
 import { ReturnHistory } from "@/components/ReturnHistory";
 import { planInvoiceReturn, type ReturnLineSource, type ReturnedLine } from "@/lib/invoiceReturns";
@@ -277,6 +278,7 @@ export default function ReturnsPage() {
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 800, fontSize: 13 }}><span>Total credit</span><span>{formatCurrency(Number(receipt.record.amount))}</span></div>
       <p style={{ marginTop: 8 }}>Credit recorded. No cash refund recorded.</p>
       <div>Processed by: {receipt.record.created_by_name}</div>
+      <PrintFooter style={{ marginTop: 8, fontSize: 10 }} />
     </div>}
   </>;
 }

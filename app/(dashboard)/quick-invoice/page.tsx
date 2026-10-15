@@ -10,6 +10,7 @@ import { showToast } from "@/components/Toast";
 import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
 import { Plus, Printer, Trash2, FileText, Clock, X, Loader2, Download, Wallet } from "lucide-react";
 import { PrintHeader } from "@/components/PrintHeader";
+import { PrintFooter } from "@/components/PrintFooter";
 import { DT } from "@/lib/dataTableStyles";
 import type { Invoice } from "@/lib/database.types";
 import html2canvas from "html2canvas";
@@ -1545,7 +1546,7 @@ export default function InvoicePage() {
             </div>
 
             <div style={{ textAlign: "center", borderTop: "1px dashed #000", paddingTop: 8 }}>Thank you for your business.</div>
-            <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, breakInside: "avoid" }}>Software developed by addsmint</div>
+            <PrintFooter style={{ marginTop: 8, fontSize: 10 }} />
           </>
         ) : null}
       </div>

@@ -1,5 +1,12 @@
 # UI Registry
 
+### Shared print credit
+
+Files: components/PrintFooter.tsx, public/brand/footer.svg
+Last updated: 2026-10-15
+
+Every print/PDF credit reads exactly "Software developed by AddsMint.com". Reuse PrintFooter for full-page documents and thermal sales/return receipts. Default is centered black 11px semibold with 12px top margin; thermal receipts use 10px and 8px top margin. Keep the footer together across page breaks and the SVG asset text identical.
+
 ### Party ledger product details
 
 File: app/(dashboard)/accounts/page.tsx
