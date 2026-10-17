@@ -707,11 +707,11 @@ export default function AccountsPage() {
     if (a4El) {
       a4El.style.setProperty("display", "flex", "important");
       a4El.style.setProperty("flex-direction", "column", "important");
-      a4El.style.setProperty("min-height", "198mm", "important");
+      a4El.style.setProperty("min-height", "190mm", "important");
     }
     const el = document.createElement("style");
     el.id = "__inv_a4_page_style";
-    el.textContent = "@page { size: A5 portrait; margin: 6mm; }";
+    el.textContent = "@page { size: A5 portrait; margin: 10mm; }";
     document.head.appendChild(el);
   }
 
@@ -753,7 +753,7 @@ export default function AccountsPage() {
       a4El.style.setProperty("display", "flex", "important");
       a4El.style.setProperty("flex-direction", "column", "important");
       a4El.style.setProperty("min-height", "210mm", "important");
-      a4El.style.padding = "6mm";
+      a4El.style.padding = "10mm";
       a4El.style.boxSizing = "border-box";
       a4El.style.position = "fixed";
       a4El.style.top = "-9999px";
@@ -2908,7 +2908,7 @@ export default function AccountsPage() {
     </div>
 
     {/* ── Invoice A4 print template — outside no-print wrapper so it's visible during window.print() ── */}
-    <div className="inv-a4-print-only" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 11 }}>
+    <div className="inv-a4-print-only" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 13 }}>
       {viewingInvoice ? (() => {
         const inv = viewingInvoice;
         const items = viewingInvoiceItems;
@@ -2916,24 +2916,24 @@ export default function AccountsPage() {
           <>
             <PrintHeader variant="invoice" />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px", background: "#075985", color: "#fff", marginBottom: 10 }}>
-              <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Invoice</span>
-              <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 11 }}>{inv.invoice_number}</span>
+              <span style={{ fontSize: 15, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Invoice</span>
+              <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 13 }}>{inv.invoice_number}</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "0 12px", marginBottom: 12 }}>
               <div>
-                <div style={{ fontSize: 8, color: "#111", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Bill To</div>
+                <div style={{ fontSize: 10, color: "#111", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Bill To</div>
                 <div style={{ fontWeight: 900, color: "#111", fontSize: 16, lineHeight: 1.2 }}>{inv.client_name}</div>
-                {inv.client_phone ? <div style={{ fontSize: 11, color: "#111", marginTop: 3 }}>{inv.client_phone}</div> : null}
+                {inv.client_phone ? <div style={{ fontSize: 13, color: "#111", marginTop: 3 }}>{inv.client_phone}</div> : null}
                 {(inv.job_notes || inv.job_name) ? (
-                  <div style={{ fontSize: 10, color: "#111", marginTop: 6, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 12, color: "#111", marginTop: 6, lineHeight: 1.5 }}>
                     <span style={{ fontWeight: 700 }}>Description: </span>{inv.job_notes || inv.job_name}
                   </div>
                 ) : null}
               </div>
               <div style={{ textAlign: "right", minWidth: 110 }}>
                 <div style={{ marginBottom: 5, display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 6 }}>
-                  <span style={{ fontSize: 8, color: "#111", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>Date:</span>
-                  <span style={{ fontWeight: 700, fontSize: 12 }}>{formatDate(inv.invoice_date)}</span>
+                  <span style={{ fontSize: 10, color: "#111", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>Date:</span>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>{formatDate(inv.invoice_date)}</span>
                 </div>
               </div>
             </div>
@@ -2943,7 +2943,7 @@ export default function AccountsPage() {
               const gridCols = "6% 42% 10% 20% 22%";
               const cellPad = "5px 3px";
               return (
-                <div style={{ padding: "0 12px", marginBottom: 12, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: 11 }}>
+                <div style={{ padding: "0 12px", marginBottom: 12, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: 13 }}>
                   {/* Header row */}
                   <div style={{ display: "grid", gridTemplateColumns: gridCols, background: "#075985", color: "#fff" }}>
                     {[
@@ -2953,7 +2953,7 @@ export default function AccountsPage() {
                       { label: "Rate", align: "right" as const },
                       { label: "Amount", align: "right" as const },
                     ].map((h, i, arr) => (
-                      <div key={h.label} style={{ padding: "5px 3px", fontSize: 9, fontWeight: 700, textAlign: h.align, textTransform: "uppercase", letterSpacing: 0.2, borderLeft: "1px solid #000", ...(i === arr.length - 1 ? { borderRight: "1px solid #000" } : {}) }}>
+                      <div key={h.label} style={{ padding: "5px 3px", fontSize: 11, fontWeight: 700, textAlign: h.align, textTransform: "uppercase", letterSpacing: 0.2, borderLeft: "1px solid #000", ...(i === arr.length - 1 ? { borderRight: "1px solid #000" } : {}) }}>
                         {h.label}
                       </div>
                     ))}
@@ -2967,7 +2967,7 @@ export default function AccountsPage() {
                       <div style={{ padding: cellPad, fontWeight: 600, color: "#111", borderLeft: "1px solid #000" }}>
                         <div>{it.category || it.description || "—"}</div>
                         {it.category && it.description ? (
-                          <div style={{ fontWeight: 400, fontSize: 11, color: "#444", marginTop: 2, whiteSpace: "pre-wrap" }}>{it.description}</div>
+                          <div style={{ fontWeight: 400, fontSize: 13, color: "#444", marginTop: 2, whiteSpace: "pre-wrap" }}>{it.description}</div>
                         ) : null}
                         <InvoiceLineDiscount line={it} />
                       </div>
@@ -2985,37 +2985,37 @@ export default function AccountsPage() {
             <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 12px", marginBottom: 16 }}>
               <div style={{ width: 230 }}>
                 <InvoiceDiscountSummary invoice={inv} items={items} />                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>Previous Balance</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>Previous Balance</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(inv.previous_balance)}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "2px solid #111" }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>New Bill</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>New Bill</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>{formatCurrency(inv.grand_total)}</span>
                 </div>
                 {inv.gst_amount > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>GST ({inv.gst_pct}%)</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>GST ({inv.gst_pct}%)</span>
                     <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(inv.gst_amount)}</span>
                   </div>
                 )}
                 {inv.stax_amount > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>Sales Tax ({inv.stax_pct}%)</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>Sales Tax ({inv.stax_pct}%)</span>
                     <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(inv.stax_amount)}</span>
                   </div>
                 )}
                 {inv.bra_amount > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>BRA ({inv.bra_pct}%)</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>BRA ({inv.bra_pct}%)</span>
                     <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(inv.bra_amount)}</span>
                   </div>
                 )}
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>Received</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>Received</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(inv.amount_received)}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "2px solid #111" }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Total Balance</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Total Balance</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>{formatCurrency(inv.grand_total + inv.previous_balance - inv.amount_received)}</span>
                 </div>
               </div>
@@ -3028,13 +3028,13 @@ export default function AccountsPage() {
 
     {/* Ledger print layout — mirrors the A4 invoice template (same header, colors, borders, footer) */}
     {ledgerAccount && (
-      <div ref={ledgerPdfRef} className="ledger-a4-print-only" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 11 }}>
+      <div ref={ledgerPdfRef} className="ledger-a4-print-only" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 13 }}>
         <PrintHeader />
 
         {/* Title bar — matches A4 invoice */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px", background: "#075985", color: "#fff", marginBottom: 10 }}>
-          <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Account Ledger</span>
-          <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 13 }}>
+          <span style={{ fontSize: 15, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Account Ledger</span>
+          <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 15 }}>
             {(ledgerDateFrom.trim() || ledgerDateTo.trim())
               ? `${ledgerDateFrom.trim() ? formatDate(ledgerDateFrom.trim()) : "Start"} — ${ledgerDateTo.trim() ? formatDate(ledgerDateTo.trim()) : "End"}`
               : "All Transactions"}
@@ -3044,11 +3044,11 @@ export default function AccountsPage() {
         {/* Statement-for / date block — matches the invoice "Bill To" header */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "0 12px", marginBottom: 12 }}>
           <div>
-            <div style={{ fontSize: 8, color: "#111", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Statement For</div>
+            <div style={{ fontSize: 10, color: "#111", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Statement For</div>
             <div style={{ fontWeight: 900, color: "#111", fontSize: 16, lineHeight: 1.2 }}>{ledgerAccount.name}</div>
-            {ledgerAccount.phone ? <div style={{ fontSize: 11, color: "#111", marginTop: 3 }}>{ledgerAccount.phone}</div> : null}
+            {ledgerAccount.phone ? <div style={{ fontSize: 13, color: "#111", marginTop: 3 }}>{ledgerAccount.phone}</div> : null}
             {ledgerDateFrom.trim() && ledgerOpeningBefore !== 0 ? (
-              <div style={{ fontSize: 10, color: "#111", marginTop: 6, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 12, color: "#111", marginTop: 6, lineHeight: 1.5 }}>
                 <span style={{ fontWeight: 700 }}>Opening balance (before {formatDate(ledgerDateFrom.trim())}): </span>
                 {formatCurrency(Math.abs(ledgerOpeningBefore))}{ledgerOpeningBefore > 0 ? " receivable" : " payable"}
               </div>
@@ -3056,29 +3056,29 @@ export default function AccountsPage() {
           </div>
           <div style={{ textAlign: "right", minWidth: 160 }}>
             <div style={{ marginBottom: 5, display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 6 }}>
-              <span style={{ fontSize: 8, color: "#111", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>Printed:</span>
-              <span style={{ fontWeight: 700, fontSize: 12 }}>{formatDate(todayISO())}</span>
+              <span style={{ fontSize: 10, color: "#111", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>Printed:</span>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>{formatDate(todayISO())}</span>
             </div>
             <div style={{ marginTop: 4, textAlign: "right" }}>
-              <div style={{ fontWeight: 700, fontSize: 10, color: "#111" }}>S.S. Diagnostics</div>
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#111" }}>S.S. Diagnostics</div>
             </div>
           </div>
         </div>
 
         {ledgerAllRows.length === 0 ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <p style={{ padding: "12px 12px", fontSize: 12, color: "#111", margin: 0 }}>No ledger entries for this account.</p>
+            <p style={{ padding: "12px 12px", fontSize: 14, color: "#111", margin: 0 }}>No ledger entries for this account.</p>
           </div>
         ) : ledgerDisplayWithBal.length === 0 ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <p style={{ padding: "12px 12px", fontSize: 12, color: "#111", margin: 0 }}>No entries in the selected date range.</p>
+            <p style={{ padding: "12px 12px", fontSize: 14, color: "#111", margin: 0 }}>No entries in the selected date range.</p>
           </div>
         ) : (() => {
           // CSS-grid layout (mirrors A4 invoice items table) so column lines extend to the totals.
           const gridCols = "11% 17% 33% 10% 10% 10% 9%";
           const cellPad = "6px 8px";
           return (
-            <div style={{ padding: "0 12px", marginBottom: 12, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: 13 }}>
+            <div style={{ padding: "0 12px", marginBottom: 12, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: 15 }}>
               {/* Header row */}
               <div style={{ display: "grid", gridTemplateColumns: gridCols, background: "#075985", color: "#fff" }}>
                 {[
@@ -3094,7 +3094,7 @@ export default function AccountsPage() {
                     key={h.label}
                     style={{
                       padding: "6px 8px",
-                      fontSize: 11,
+                      fontSize: 13,
                       fontWeight: 700,
                       textAlign: h.align,
                       textTransform: "uppercase",
@@ -3153,14 +3153,14 @@ export default function AccountsPage() {
                       {/* Products header */}
                       <div style={{ display: "grid", gridTemplateColumns: itemCols, background: "#f1d6d6", borderBottom: "1px solid #000" }}>
                         {itemHeads.map((h, i) => (
-                          <div key={h.label} style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, color: "#075985", textAlign: h.align, padding: "2px 5px", borderLeft: i === 0 ? "none" : "1px solid #86b99a" }}>
+                          <div key={h.label} style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, color: "#075985", textAlign: h.align, padding: "2px 5px", borderLeft: i === 0 ? "none" : "1px solid #86b99a" }}>
                             {h.label}
                           </div>
                         ))}
                       </div>
                       {/* Product rows */}
                       {items.map((it, ii) => (
-                        <div key={it.id} style={{ display: "grid", gridTemplateColumns: itemCols, fontSize: 10, borderBottom: ii === items.length - 1 ? "none" : "1px solid #ddd" }}>
+                        <div key={it.id} style={{ display: "grid", gridTemplateColumns: itemCols, fontSize: 12, borderBottom: ii === items.length - 1 ? "none" : "1px solid #ddd" }}>
                           <div style={{ padding: "2px 5px", color: "#222" }}>
                             <div style={{ fontWeight: 600 }}>{it.category?.trim() || it.description?.trim() || "Item"}</div>
                             {it.category?.trim() && it.description?.trim() && it.category.trim() !== it.description.trim() ? (
@@ -3199,7 +3199,7 @@ export default function AccountsPage() {
           <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 12px", marginBottom: 16 }}>
             <div style={{ width: 260 }}>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "2px solid #111" }}>
-                <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
                   Closing Balance{(ledgerDateFrom.trim() || ledgerDateTo.trim()) ? " (period)" : ""}
                 </span>
                 <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>

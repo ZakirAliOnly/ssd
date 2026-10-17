@@ -256,13 +256,13 @@ export default function InvoiceReportPage() {
       </div>
 
       {/* ── Print Layout ── */}
-      <div className="print-only a4-report" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 11 }}>
+      <div className="print-only a4-report" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 13 }}>
         <PrintHeader />
 
         {/* Title bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px", background: "#0369a1", color: "#fff", marginBottom: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Invoice Report</span>
-          <span style={{ fontSize: 10, fontWeight: 600 }}>
+          <span style={{ fontSize: 15, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Invoice Report</span>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>
             {formatDate(fromDate)} — {formatDate(toDate)}
             {clientFilter !== "all" && <span> · {clientFilter}</span>}
             {statusFilter !== "all" && <span> · {statusFilter}</span>}
@@ -278,7 +278,7 @@ export default function InvoiceReportPage() {
             { label: "Balance Due", val: formatCurrency(totalBalance), color: "#dc2626" },
           ].map((c) => (
             <div key={c.label} style={{ border: "1px solid #e5e7eb", borderRadius: 6, padding: "8px 10px", textAlign: "center", background: "#f8fafc" }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{c.label}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{c.label}</div>
               <div style={{ fontSize: 14, fontWeight: 900, color: c.color, fontFamily: "monospace" }}>{c.val}</div>
             </div>
           ))}
@@ -286,11 +286,11 @@ export default function InvoiceReportPage() {
 
         {/* Invoices table */}
         <div style={{ padding: "0 12px", marginBottom: 16 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10.5 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
             <thead>
               <tr>
                 {["#", "Invoice No", "Date", "Client / Party", "Grand Total", "Received", "Balance Due", "Status"].map((h) => (
-                  <th key={h} style={{ background: "#0369a1", color: "#fff", fontWeight: 700, textAlign: h === "Grand Total" || h === "Received" || h === "Balance Due" ? "right" : "left", padding: "7px 8px", fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase" }}>
+                  <th key={h} style={{ background: "#0369a1", color: "#fff", fontWeight: 700, textAlign: h === "Grand Total" || h === "Received" || h === "Balance Due" ? "right" : "left", padding: "7px 8px", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase" }}>
                     {h}
                   </th>
                 ))}
@@ -304,13 +304,13 @@ export default function InvoiceReportPage() {
                   <td style={{ padding: "6px 8px", whiteSpace: "nowrap", borderLeft: "1px solid #e5e7eb" }}>{formatDate(inv.invoice_date)}</td>
                   <td style={{ padding: "6px 8px", borderLeft: "1px solid #e5e7eb" }}>
                     <div style={{ fontWeight: 700 }}>{inv.client_name}</div>
-                    {inv.client_phone && <div style={{ fontSize: 9.5, color: "#555" }}>{inv.client_phone}</div>}
+                    {inv.client_phone && <div style={{ fontSize: 11.5, color: "#555" }}>{inv.client_phone}</div>}
                   </td>
                   <td style={{ padding: "6px 8px", fontWeight: 800, fontFamily: "monospace", textAlign: "right", borderLeft: "1px solid #e5e7eb" }}>{formatCurrency(inv.grand_total)}</td>
                   <td style={{ padding: "6px 8px", fontWeight: 700, fontFamily: "monospace", textAlign: "right", color: "#16a34a", borderLeft: "1px solid #e5e7eb" }}>{formatCurrency(inv.amount_received)}</td>
                   <td style={{ padding: "6px 8px", fontWeight: 800, fontFamily: "monospace", textAlign: "right", color: inv.balance_due > 0 ? "#dc2626" : "#16a34a", borderLeft: "1px solid #e5e7eb" }}>{formatCurrency(inv.balance_due)}</td>
                   <td style={{ padding: "6px 8px", borderLeft: "1px solid #e5e7eb", borderRight: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 5px", borderRadius: 3, background: inv.payment_status === "paid" ? "#dcfce7" : inv.payment_status === "partial" ? "#fff7ed" : "#fef2f2", color: inv.payment_status === "paid" ? "#16a34a" : inv.payment_status === "partial" ? "#ea580c" : "#dc2626", textTransform: "uppercase" }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 5px", borderRadius: 3, background: inv.payment_status === "paid" ? "#dcfce7" : inv.payment_status === "partial" ? "#fff7ed" : "#fef2f2", color: inv.payment_status === "paid" ? "#16a34a" : inv.payment_status === "partial" ? "#ea580c" : "#dc2626", textTransform: "uppercase" }}>
                       {inv.payment_status}
                     </span>
                   </td>
@@ -319,15 +319,15 @@ export default function InvoiceReportPage() {
             </tbody>
             <tfoot>
               <tr style={{ background: "#f3f4f6", borderTop: "2px solid #0369a1" }}>
-                <td colSpan={4} style={{ padding: "7px 8px", fontWeight: 900, fontSize: 11, borderLeft: "1px solid #e5e7eb" }}>
+                <td colSpan={4} style={{ padding: "7px 8px", fontWeight: 900, fontSize: 13, borderLeft: "1px solid #e5e7eb" }}>
                   TOTAL — {filtered.length} Invoice{filtered.length !== 1 ? "s" : ""}
-                  <span style={{ fontSize: 9.5, color: "#555", fontWeight: 500, marginLeft: 6 }}>
+                  <span style={{ fontSize: 11.5, color: "#555", fontWeight: 500, marginLeft: 6 }}>
                     ({countPaid} paid · {countPartial} partial · {countUnpaid} unpaid)
                   </span>
                 </td>
-                <td style={{ padding: "7px 8px", fontWeight: 900, fontFamily: "monospace", textAlign: "right", fontSize: 12, borderLeft: "1px solid #e5e7eb" }}>{formatCurrency(totalAmount)}</td>
-                <td style={{ padding: "7px 8px", fontWeight: 900, fontFamily: "monospace", textAlign: "right", fontSize: 12, color: "#16a34a", borderLeft: "1px solid #e5e7eb" }}>{formatCurrency(totalReceived)}</td>
-                <td style={{ padding: "7px 8px", fontWeight: 900, fontFamily: "monospace", textAlign: "right", fontSize: 12, color: "#dc2626", borderLeft: "1px solid #e5e7eb" }}>{formatCurrency(totalBalance)}</td>
+                <td style={{ padding: "7px 8px", fontWeight: 900, fontFamily: "monospace", textAlign: "right", fontSize: 14, borderLeft: "1px solid #e5e7eb" }}>{formatCurrency(totalAmount)}</td>
+                <td style={{ padding: "7px 8px", fontWeight: 900, fontFamily: "monospace", textAlign: "right", fontSize: 14, color: "#16a34a", borderLeft: "1px solid #e5e7eb" }}>{formatCurrency(totalReceived)}</td>
+                <td style={{ padding: "7px 8px", fontWeight: 900, fontFamily: "monospace", textAlign: "right", fontSize: 14, color: "#dc2626", borderLeft: "1px solid #e5e7eb" }}>{formatCurrency(totalBalance)}</td>
                 <td style={{ borderLeft: "1px solid #e5e7eb", borderRight: "1px solid #e5e7eb" }} />
               </tr>
             </tfoot>

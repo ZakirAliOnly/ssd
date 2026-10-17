@@ -11,7 +11,7 @@ export function InvoiceDiscountSummary({ invoice, items }: { invoice: DiscountIn
   const invoiceDiscount = Math.max(0, Number(invoice.discount_amount) || 0);
   if (productDiscount + invoiceDiscount <= 0) return null;
   const subtotal = items.length ? items.reduce((sum, line) => sum + Number(line.amount), 0) : Number(invoice.subtotal) || 0;
-  const row = { display: "flex", justifyContent: "space-between", gap: 8, padding: "3px 0", fontSize: 11, color: "#111" };
+  const row = { display: "flex", justifyContent: "space-between", gap: 8, padding: "3px 0", fontSize: 12, color: "#111" };
   return <div style={{ borderTop: "1px solid #111", borderBottom: "1px solid #111", padding: "4px 0", marginBottom: 6, breakInside: "avoid" }}>
     <div style={row}><span>Subtotal before discounts</span><span>{formatCurrency(Math.round((subtotal + productDiscount) * 100) / 100)}</span></div>
     {productDiscount > 0 && <div style={row}><span>Product discounts</span><strong>− {formatCurrency(productDiscount)}</strong></div>}

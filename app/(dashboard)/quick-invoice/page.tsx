@@ -1479,7 +1479,7 @@ export default function InvoicePage() {
     </div>
 
       {/* ── A4 print template — hidden on screen, shown when printing (A4) ── */}
-      <div ref={invoicePdfRef} className="a4-print-only thermal-invoice" style={{ width: "80mm", maxWidth: "100%", boxSizing: "border-box", padding: "3mm", background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#000", fontSize: 11, lineHeight: 1.4 }}>
+      <div ref={invoicePdfRef} className="a4-print-only thermal-invoice" style={{ width: "80mm", maxWidth: "100%", boxSizing: "border-box", padding: "3mm", background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#000", fontSize: 12, lineHeight: 1.4 }}>
         {invoicePdfData ? (
           <>
             <PrintHeader variant="thermal" />
@@ -1509,44 +1509,44 @@ export default function InvoicePage() {
             <div style={{ display: "flex", justifyContent: "flex-end", padding: "0", marginBottom: 16 }}>
               <div style={{ width: "100%" }}>
                 <InvoiceDiscountSummary invoice={invoicePdfData.invoice} items={invoicePdfData.items} />                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>Previous Balance</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>Previous Balance</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(invoicePdfData.invoice.previous_balance)}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "2px solid #111" }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>New Bill</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>New Bill</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>{formatCurrency(invoicePdfData.invoice.grand_total)}</span>
                 </div>
                 {invoicePdfData.invoice.gst_amount > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>GST ({invoicePdfData.invoice.gst_pct}%)</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>GST ({invoicePdfData.invoice.gst_pct}%)</span>
                     <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(invoicePdfData.invoice.gst_amount)}</span>
                   </div>
                 )}
                 {invoicePdfData.invoice.stax_amount > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>Sales Tax ({invoicePdfData.invoice.stax_pct}%)</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>Sales Tax ({invoicePdfData.invoice.stax_pct}%)</span>
                     <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(invoicePdfData.invoice.stax_amount)}</span>
                   </div>
                 )}
                 {invoicePdfData.invoice.bra_amount > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>BRA ({invoicePdfData.invoice.bra_pct}%)</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>BRA ({invoicePdfData.invoice.bra_pct}%)</span>
                     <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(invoicePdfData.invoice.bra_amount)}</span>
                   </div>
                 )}
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: "#111" }}>Received</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>Received</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(invoicePdfData.invoice.amount_received)}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "2px solid #111" }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Total Balance</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Total Balance</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>{formatCurrency(invoicePdfData.invoice.grand_total + invoicePdfData.invoice.previous_balance - invoicePdfData.invoice.amount_received)}</span>
                 </div>
               </div>
             </div>
 
             <div style={{ textAlign: "center", borderTop: "1px dashed #000", paddingTop: 8 }}>Thank you for your business.</div>
-            <PrintFooter style={{ marginTop: 8, fontSize: 10 }} />
+            <PrintFooter style={{ marginTop: 8, fontSize: 11 }} />
           </>
         ) : null}
       </div>

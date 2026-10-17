@@ -881,7 +881,7 @@ export default function ReportsPage() {
         <PdfPrintBanner subtitle="Reports" />
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 10px 8px", marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: "#555" }}>
+          <div style={{ fontSize: 14, color: "#555" }}>
             {(activeTab === "dailyparties" || activeTab === "dailystatement")
               ? `Date: ${formatDate(dailyDate)}`
               : `Period: ${formatDate(fromDate)} — ${formatDate(toDate)}`}
@@ -904,15 +904,15 @@ export default function ReportsPage() {
         {/* Print table for cashbook (selected range) */}
         {activeTab === "cashbook" && (
           cashbookWithBal.length === 0 ? (
-            <p style={{ fontSize: 12, color: "#666", padding: "12px 10px" }}>
+            <p style={{ fontSize: 14, color: "#666", padding: "12px 10px" }}>
               No cashbook entries from {formatDate(fromDate)} to {formatDate(toDate)}.
             </p>
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#075985" }}>
                   {["#", "Description", "Invoice # / Ref", "Method", "Cash In", "Cash Out", "Running Balance"].map((h) => (
-                    <th key={h} style={{ color: "#fff", fontWeight: 700, textAlign: "left", padding: "7px 8px", fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
+                    <th key={h} style={{ color: "#fff", fontWeight: 700, textAlign: "left", padding: "7px 8px", fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -937,16 +937,16 @@ export default function ReportsPage() {
               </tbody>
               <tfoot>
                 <tr style={{ background: "#f3f4f6", borderTop: "2px solid #dc2626" }}>
-                  <td colSpan={4} style={{ padding: "8px 8px", fontWeight: 900, fontSize: 12 }}>
+                  <td colSpan={4} style={{ padding: "8px 8px", fontWeight: 900, fontSize: 14 }}>
                     Range total — {cashbookWithBal.length} {cashbookWithBal.length !== 1 ? "entries" : "entry"}
                   </td>
-                  <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#16a34a", fontSize: 13 }}>
+                  <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#16a34a", fontSize: 15 }}>
                     {formatCurrency(cashbook.filter((c) => c.type === "in").reduce((s, c) => s + Number(c.amount), 0))}
                   </td>
-                  <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#dc2626", fontSize: 13 }}>
+                  <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#dc2626", fontSize: 15 }}>
                     {formatCurrency(cashbook.filter((c) => c.type === "out").reduce((s, c) => s + Number(c.amount), 0))}
                   </td>
-                  <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", fontSize: 13, color: (cashbookWithBal.at(-1)?.runningBal ?? 0) >= 0 ? "#16a34a" : "#dc2626" }}>
+                  <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", fontSize: 15, color: (cashbookWithBal.at(-1)?.runningBal ?? 0) >= 0 ? "#16a34a" : "#dc2626" }}>
                     {formatCurrency(Math.abs(cashbookWithBal.at(-1)?.runningBal ?? 0))}
                   </td>
                 </tr>
@@ -957,11 +957,11 @@ export default function ReportsPage() {
 
         {/* Print: daily parties */}
         {activeTab === "dailyparties" && (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#075985" }}>
                 {["#", "Invoice No", "Party Name", "Job / Description", "Invoice Amount", "Received", "Balance", "Status"].map((h) => (
-                  <th key={h} style={{ color: "#fff", fontWeight: 700, textAlign: "left", padding: "7px 8px", fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
+                  <th key={h} style={{ color: "#fff", fontWeight: 700, textAlign: "left", padding: "7px 8px", fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -976,7 +976,7 @@ export default function ReportsPage() {
                   <td style={{ padding: "6px 8px", fontWeight: 700, fontFamily: "monospace", textAlign: "right", color: "#16a34a" }}>{formatCurrency(inv.amount_received)}</td>
                   <td style={{ padding: "6px 8px", fontWeight: 800, fontFamily: "monospace", textAlign: "right", color: inv.balance_due > 0 ? "#dc2626" : "#16a34a" }}>{formatCurrency(inv.balance_due)}</td>
                   <td style={{ padding: "6px 8px" }}>
-                    <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4, textTransform: "uppercase",
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 6px", borderRadius: 4, textTransform: "uppercase",
                       background: inv.payment_status === "paid" ? "#dcfce7" : inv.payment_status === "partial" ? "#fff7ed" : "#fef2f2",
                       color: inv.payment_status === "paid" ? "#16a34a" : inv.payment_status === "partial" ? "#ea580c" : "#dc2626" }}>
                       {inv.payment_status}
@@ -994,7 +994,7 @@ export default function ReportsPage() {
         {/* Print: payment method report */}
         {activeTab === "paymentmethod" && (
           methodCashbookWithBal.length === 0 ? (
-            <p style={{ fontSize: 12, color: "#666", padding: "12px 10px" }}>
+            <p style={{ fontSize: 14, color: "#666", padding: "12px 10px" }}>
               No transactions for {methodFilter} between {formatDate(fromDate)} and {formatDate(toDate)}.
             </p>
           ) : (
@@ -1007,16 +1007,16 @@ export default function ReportsPage() {
                   { label: "Closing Balance", val: formatCurrency(methodOpeningBalance + methodCashIn - methodCashOut), color: (methodOpeningBalance + methodCashIn - methodCashOut) >= 0 ? "#16a34a" : "#dc2626" },
                 ].map((c) => (
                   <div key={c.label} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", textAlign: "center" }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 4 }}>{c.label}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 4 }}>{c.label}</div>
                     <div style={{ fontSize: 15, fontWeight: 900, color: c.color, fontFamily: "monospace" }}>{c.val}</div>
                   </div>
                 ))}
               </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "#075985" }}>
                     {["#", "Date", "Description", "Invoice # / Ref", "Method", "Cash In", "Cash Out", "Running Balance"].map((h) => (
-                      <th key={h} style={{ color: "#fff", fontWeight: 700, textAlign: "left", padding: "7px 8px", fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
+                      <th key={h} style={{ color: "#fff", fontWeight: 700, textAlign: "left", padding: "7px 8px", fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1042,12 +1042,12 @@ export default function ReportsPage() {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: "#f3f4f6", borderTop: "2px solid #dc2626" }}>
-                    <td colSpan={5} style={{ padding: "8px 8px", fontWeight: 900, fontSize: 12 }}>
+                    <td colSpan={5} style={{ padding: "8px 8px", fontWeight: 900, fontSize: 14 }}>
                       Total — {methodCashbookWithBal.length} {methodCashbookWithBal.length !== 1 ? "entries" : "entry"} · {methodFilter}
                     </td>
-                    <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#16a34a", fontSize: 13, textAlign: "right" }}>{formatCurrency(methodCashIn)}</td>
-                    <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#dc2626", fontSize: 13, textAlign: "right" }}>{formatCurrency(methodCashOut)}</td>
-                    <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", fontSize: 13, textAlign: "right", color: (methodCashbookWithBal.at(-1)?.runningBal ?? 0) >= 0 ? "#16a34a" : "#dc2626" }}>
+                    <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#16a34a", fontSize: 15, textAlign: "right" }}>{formatCurrency(methodCashIn)}</td>
+                    <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#dc2626", fontSize: 15, textAlign: "right" }}>{formatCurrency(methodCashOut)}</td>
+                    <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", fontSize: 15, textAlign: "right", color: (methodCashbookWithBal.at(-1)?.runningBal ?? 0) >= 0 ? "#16a34a" : "#dc2626" }}>
                       {formatCurrency(Math.abs(methodCashbookWithBal.at(-1)?.runningBal ?? 0))}
                     </td>
                   </tr>
@@ -1060,15 +1060,15 @@ export default function ReportsPage() {
         {/* Print: expense report */}
         {activeTab === "expense" && (
           expenses.length === 0 ? (
-            <p style={{ fontSize: 12, color: "#666", padding: "12px 10px" }}>
+            <p style={{ fontSize: 14, color: "#666", padding: "12px 10px" }}>
               No expenses between {formatDate(fromDate)} and {formatDate(toDate)}.
             </p>
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#075985" }}>
                   {["#", "Expense No", "Date", "Category", "Invoice", "Method", "Amount"].map((h) => (
-                    <th key={h} style={{ color: "#fff", fontWeight: 700, textAlign: h === "Amount" ? "right" : "left", padding: "7px 8px", fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
+                    <th key={h} style={{ color: "#fff", fontWeight: 700, textAlign: h === "Amount" ? "right" : "left", padding: "7px 8px", fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1087,8 +1087,8 @@ export default function ReportsPage() {
               </tbody>
               <tfoot>
                 <tr style={{ background: "#f3f4f6", borderTop: "2px solid #dc2626" }}>
-                  <td colSpan={6} style={{ padding: "8px 8px", fontWeight: 900, fontSize: 12 }}>TOTAL — {expenses.length} {expenses.length !== 1 ? "entries" : "entry"}</td>
-                  <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#dc2626", fontSize: 13, textAlign: "right" }}>{formatCurrency(expenseTotal)}</td>
+                  <td colSpan={6} style={{ padding: "8px 8px", fontWeight: 900, fontSize: 14 }}>TOTAL — {expenses.length} {expenses.length !== 1 ? "entries" : "entry"}</td>
+                  <td style={{ padding: "8px 8px", fontWeight: 900, fontFamily: "monospace", color: "#dc2626", fontSize: 15, textAlign: "right" }}>{formatCurrency(expenseTotal)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -1099,7 +1099,7 @@ export default function ReportsPage() {
         <PrintFooter />
           </>
         ) : (
-          <div style={{ padding: 32, textAlign: "center", color: "#888", fontSize: 12 }}>
+          <div style={{ padding: 32, textAlign: "center", color: "#888", fontSize: 14 }}>
             Generate a report on screen, then use Print / PDF.
           </div>
         )}

@@ -233,3 +233,7 @@ Files: app/(dashboard)/reports/page.tsx, app/api/reports/stock/route.ts
 Last updated: 2026-10-15
 
 Use SearchableSelect beside Product with the same gray-50 background, gray-200 border, 8px corners and blue focus outline. Search all categories, with All categories and Uncategorized options. Category changes reset Product and invalidate the generated report; product choices narrow to the category. Apply both filters on the server and identify the category in screen and printed report headings.
+
+### Invoice and report print readability
+
+Party invoices use A5 with 10mm margins, a 190mm printable minimum height, 12?13px detail text and 14px totals. PDF capture uses the same 10mm inset. A4 reports use 12mm margins and 12px table text with wrapping and repeated table headings. Keep numeric grids inside their container and allow descriptions to wrap. These print sizes supersede the smaller ledger typography above.
