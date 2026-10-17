@@ -271,7 +271,7 @@ dated(db
       }
       // For now we only render deletion rows here — the other rows are
       // already represented by the create-time queries above.
-      if (action !== "delete" || ["laborer", "labor_task", "labor_advance"].includes(r.entity_type)) continue;
+      if (action !== "delete") continue;
       all.push({
         id: `log-${r.id}`,
         eventType: "deletion",

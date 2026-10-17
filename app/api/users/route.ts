@@ -190,6 +190,11 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
-  await prisma.user.delete({ where: { id: userId } });
+  await prisma.$transaction(async tx => {
+    await tx.user.delete({ where: { id: userId } });
+    await tx.activityLog.create({ data: { action: "delete", entity_type: "user", entity_id: userId,
+      title: "Sub-user Deleted", subtitle: target.full_name || target.email,
+      user_id: auth.payload.sub, user_email: auth.payload.email, user_name: auth.payload.full_name } });
+  });
   return NextResponse.json({ success: true });
 }

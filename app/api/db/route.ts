@@ -693,6 +693,26 @@ export async function POST(req: NextRequest) {
 
     if (operation === "delete") {
       const where = buildWhere(filters, table);
+      if (table === "activity_log") throw new InventoryError("Activity history cannot be deleted.");
+      // Log on the server in the same transaction: a failed deletion leaves no audit event.
+      const auditDeletion = async (tx: Prisma.TransactionClient, key: string, match: Record<string, unknown>) => {
+        const entities: Record<string, string> = { invoices: "invoice", invoice_items: "invoice_item", cashbook: "cashbook",
+          products: "product", suppliers: "supplier", accounts: "account", head_accounts: "head_account",
+          quick_invoices: "quick_invoice", quick_invoice_items: "quick_invoice_item", purchase_orders: "purchase_order",
+          expenses: "expense", quotations: "quotation", quotation_items: "quotation_item", workers: "worker",
+          worker_advances: "worker_advance", worker_payments: "worker_payment", worker_extra_hours: "worker_extra_hours",
+          payment_methods: "payment_method", product_categories: "product_category", quotation_products: "quotation_product" };
+        const accessor = TABLE_MAP[key] ?? key;
+        const delegate = (tx as unknown as Record<string, { findMany(args: { where: Record<string, unknown> }): Promise<Record<string, unknown>[]> }>)[accessor];
+        const rows = await delegate.findMany({ where: match });
+        for (const row of rows) await tx.activityLog.create({ data: {
+          action: "delete", entity_type: entities[key] ?? key, entity_id: String(row.id),
+          title: "Deleted " + (entities[key] ?? key).replaceAll("_", " "),
+          subtitle: String(row.invoice_number ?? row.po_number ?? row.name ?? row.description ?? row.id),
+          amount: row.grand_total != null ? Number(row.grand_total) : row.amount != null ? Number(row.amount) : null,
+          user_id: authUser.id, user_email: authUser.email, user_name: authUser.name,
+        } });
+      };
       if (table === "cashbook") {
         await partySettlementTransaction(prisma, async tx => {
           const entries = await tx.cashbook.findMany({ where, select: { id: true, account_name: true }, orderBy: { id: "asc" } });
@@ -700,6 +720,7 @@ export async function POST(req: NextRequest) {
           const returns = await tx.invoiceReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
           const supplierReturns = await tx.supplierReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
           if (returns.length || supplierReturns.length) throw new InventoryError("Return credits cannot be deleted. Return history must remain intact.");
+          await auditDeletion(tx, "cashbook", { id: { in: entries.map(entry => entry.id) } });
           await tx.cashbook.deleteMany({ where: { id: { in: entries.map(entry => entry.id) } } });
           for (const name of new Set(entries.map(e => e.account_name))) await settlePartyInvoices(tx, name);
         });
@@ -739,6 +760,7 @@ export async function POST(req: NextRequest) {
           if (batches.some(batch => batch.purchase_item_id) || allocations.length) throw new InventoryError("This product has purchase or sale history and cannot be deleted.");
           // An unused opening batch can be removed when its product is cancelled.
           await tx.stockBatch.deleteMany({ where: { id: { in: batches.map(batch => batch.id) } } });
+          await auditDeletion(tx, "products", { id: { in: products.map(product => product.id) } });
           await tx.product.deleteMany({ where: { id: { in: products.map(product => product.id) } } });
         });
         return NextResponse.json({ data: null, error: null });
@@ -756,13 +778,18 @@ export async function POST(req: NextRequest) {
           const itemWhere = table === "invoices" ? { invoice_id: { in: ids } } : where;
           const lines = await tx.invoiceItem.findMany({ where: itemWhere });
           for (const id of [...new Set(ids)].sort()) await applyStockChange(tx, lines.filter(line => line.invoice_id === id).map(line => ({ ...line, qty: Number(line.qty), stock_deducted_qty: Number(line.stock_deducted_qty) })), [], id);
+          await auditDeletion(tx, table, table === "invoices" ? { id: { in: ids } } : { id: { in: lines.map(line => line.id) } });
           if (table === "invoices") await tx.invoice.deleteMany({ where: { id: { in: ids } } });
           else await tx.invoiceItem.deleteMany({ where: { id: { in: lines.map(line => line.id) } } });
           for (const name of new Set(parties.map(p => p.client_name))) await settlePartyInvoices(tx, name);
         }, { timeout: 15000 });
         return NextResponse.json({ data: null, error: null });
       }
-      await model.deleteMany({ where });
+      await prisma.$transaction(async tx => {
+        await auditDeletion(tx, table, where);
+        const delegate = (tx as unknown as Record<string, { deleteMany(args: { where: Record<string, unknown> }): Promise<unknown> }>)[modelName];
+        await delegate.deleteMany({ where });
+      });
       return NextResponse.json({ data: null, error: null });
     }
 

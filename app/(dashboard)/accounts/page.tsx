@@ -85,6 +85,7 @@ export default function AccountsPage() {
   const [partyInvoicesList, setPartyInvoicesList] = useState<Invoice[]>([]);
   const [partyInvoicesLoading, setPartyInvoicesLoading] = useState(false);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [viewingInvoiceItems, setViewingInvoiceItems] = useState<InvoiceItem[]>([]);
   const [viewingInvoiceItemsLoading, setViewingInvoiceItemsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -723,6 +724,20 @@ export default function AccountsPage() {
       a4El.style.removeProperty("flex-direction");
       a4El.style.removeProperty("min-height");
     }
+  }
+
+  async function deletePartyInvoice(inv: Invoice) {
+    if (!userProfile?.isAdmin || deletingInvoiceId) return;
+    if (!await confirmDialog({ title: "Delete invoice?", message: `Delete ${inv.invoice_number}? Stock will be restored and deletion recorded in the activity log.`, tone: "danger" })) return;
+    setDeletingInvoiceId(inv.id);
+    try {
+      const { error } = await db.from("invoices").delete().eq("id", inv.id);
+      if (error) { showToast(error.message, "err"); return; }
+      setPartyInvoicesList(rows => rows.filter(row => row.id !== inv.id));
+      if (viewingInvoice?.id === inv.id) { setViewingInvoice(null); setViewingInvoiceItems([]); }
+      await fetchData();
+      showToast("Invoice deleted", "ok");
+    } finally { setDeletingInvoiceId(null); }
   }
 
   async function printViewingInvoice() {
@@ -2611,6 +2626,11 @@ export default function AccountsPage() {
                               >
                                 <Eye size={11} /> View
                               </button>
+                              {userProfile?.isAdmin && <button type="button" onClick={() => void deletePartyInvoice(inv)} disabled={deletingInvoiceId !== null}
+                                className="inline-flex items-center gap-1 ml-2 px-2.5 py-1 rounded-[8px] text-[12px] font-semibold border-[1.5px] bg-white cursor-pointer disabled:opacity-50"
+                                style={{ borderColor: "var(--red)", color: "var(--red)" }}>
+                                {deletingInvoiceId === inv.id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Delete
+                              </button>}
                             </td>
                           </tr>
                         );
@@ -2724,7 +2744,7 @@ export default function AccountsPage() {
 
             <div className="flex items-center justify-between px-5 py-3.5 border-t border-[var(--gray-100)]">
               {viewingInvoice ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => void openEditInvoiceModal(viewingInvoice)}
@@ -2735,6 +2755,11 @@ export default function AccountsPage() {
                   >
                     <Edit size={13} /> Edit Invoice
                   </button>
+                  {userProfile?.isAdmin && <button type="button" onClick={() => void deletePartyInvoice(viewingInvoice)} disabled={deletingInvoiceId !== null || invPrinting}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[9px] text-[12.5px] font-semibold border-[1.5px] bg-white cursor-pointer disabled:opacity-50"
+                    style={{ borderColor: "var(--red)", color: "var(--red)" }}>
+                    {deletingInvoiceId ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete Invoice
+                  </button>}
                   <button
                     type="button"
                     disabled={invPrinting || viewingInvoiceItemsLoading}

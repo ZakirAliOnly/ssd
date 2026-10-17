@@ -242,3 +242,7 @@ Party invoices use A5 with 10mm margins, a 190mm printable minimum height, 12?13
 
 Only admins see the red trash action beside Edit in the purchase invoice list. Require confirmation, disable while deleting, and surface server errors. Server deletion reverses unused received batches atomically and blocks invoices with payments, returns or sale allocations.
 
+
+### Party invoice deletion and audit
+
+Admins see a red Delete action beside View in party invoices, and Delete Invoice beside Edit Invoice in the detail footer. Reuse confirmation and busy states; refresh party balances and return to the invoice list after deletion. All record deletions are audited by the server transaction, with record reference, amount and authenticated user. Client logActivity skips deletion to avoid duplicates.

@@ -34,6 +34,8 @@ export interface ActivityLogInput {
 }
 
 export async function logActivity(input: ActivityLogInput): Promise<void> {
+  // Deletions are audited atomically by /api/db, including calls from any screen.
+  if (input.action === "delete") return;
   try {
     await db.from("activity_log").insert({
       action: input.action,
