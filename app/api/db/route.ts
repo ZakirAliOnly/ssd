@@ -705,7 +705,31 @@ export async function POST(req: NextRequest) {
         });
         return NextResponse.json({ data: null, error: null });
       }
-      if (["purchase_orders", "purchase_order_items", "stock_batches"].includes(table)) throw new InventoryError("Purchase batches cannot be deleted directly. Edit the purchase invoice instead.");
+      if (table === "purchase_orders") {
+        if (currentUser.role !== "super_admin") return forbidden();
+        await prisma.$transaction(async tx => {
+          const purchases = await tx.purchaseOrder.findMany({ where, orderBy: { id: "asc" } });
+          for (const purchase of purchases) {
+            await tx.$queryRawUnsafe('SELECT id FROM purchase_orders WHERE id = $1::uuid FOR UPDATE', purchase.id);
+            const fresh = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } });
+            const returns = await tx.supplierReturn.findMany({ where: { purchase_order_id: purchase.id }, take: 1 });
+            if (returns.length) throw new InventoryError("Purchase invoices with returns cannot be deleted.");
+            const payments = await tx.cashbook.findMany({ where: { reference: purchase.id }, take: 1 });
+            if (Number(fresh.amount_paid) > 0 || fresh.cashbook_entry_id || payments.length) throw new InventoryError("This purchase invoice has payments and cannot be deleted. Resolve its payments first.");
+            const items = await tx.purchaseOrderItem.findMany({ where: { purchase_order_id: purchase.id } });
+            const batches = await tx.stockBatch.findMany({ where: { purchase_item_id: { in: items.map(item => item.id) } } });
+            const allocations = await tx.stockAllocation.findMany({ where: { batch_id: { in: batches.map(batch => batch.id) } }, take: 1 });
+            if (allocations.length) throw new InventoryError("This purchase has sale history and cannot be deleted.");
+            await receivePurchaseItems(tx, purchase.id, [], fresh.order_date);
+            await tx.purchaseOrder.delete({ where: { id: purchase.id } });
+            await tx.activityLog.create({ data: { action: "delete", entity_type: "purchase_order", entity_id: purchase.id,
+              title: "Purchase Invoice Deleted", subtitle: fresh.po_number, amount: fresh.grand_total,
+              user_email: authUser.email, user_name: authUser.name } });
+          }
+        }, { timeout: 15000 });
+        return NextResponse.json({ data: null, error: null });
+      }
+      if (["purchase_order_items", "stock_batches"].includes(table)) throw new InventoryError("Purchase batches cannot be deleted directly. Edit the purchase invoice instead.");
       if (table === "products") {
         await prisma.$transaction(async tx => {
           const products = await tx.product.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });

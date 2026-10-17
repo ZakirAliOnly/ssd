@@ -237,3 +237,8 @@ Use SearchableSelect beside Product with the same gray-50 background, gray-200 b
 ### Invoice and report print readability
 
 Party invoices use A5 with 10mm margins, a 190mm printable minimum height, 12?13px detail text and 14px totals. PDF capture uses the same 10mm inset. A4 reports use 12mm margins and 12px table text with wrapping and repeated table headings. Keep numeric grids inside their container and allow descriptions to wrap. These print sizes supersede the smaller ledger typography above.
+
+### Purchase invoice deletion
+
+Only admins see the red trash action beside Edit in the purchase invoice list. Require confirmation, disable while deleting, and surface server errors. Server deletion reverses unused received batches atomically and blocks invoices with payments, returns or sale allocations.
+

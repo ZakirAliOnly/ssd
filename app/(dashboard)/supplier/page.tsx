@@ -214,6 +214,7 @@ export default function SupplierPage() {
   const [editPoId, setEditPoId] = useState<string | null>(null);
   const purchaseSaveRef = useRef(false);
   const [savingPo, setSavingPo] = useState(false);
+  const [deletingPoId, setDeletingPoId] = useState<string | null>(null);
 
   const [supplierModal, setSupplierModal] = useState<SupplierRow | null>(null);
   const [supplierSaving, setSupplierSaving] = useState(false);
@@ -397,6 +398,20 @@ export default function SupplierPage() {
     } finally {
       setDeletingSupplierId(null);
     }
+  }
+
+  async function deletePurchaseInvoice(po: SavedPO) {
+    if (!userProfile?.isAdmin || deletingPoId) return;
+    const ok = await confirmDialog({ title: "Delete purchase invoice?",
+      message: `Delete ${po.po_number}? Its received stock will be removed. Invoices with payments, returns or sold stock cannot be deleted.`, tone: "danger" });
+    if (!ok) return;
+    setDeletingPoId(po.id);
+    try {
+      const { error } = await db.from("purchase_orders").delete().eq("id", po.id);
+      if (error) { showToast(error.message, "err"); return; }
+      showToast("Purchase invoice deleted", "ok");
+      await Promise.all([fetchPOs(), fetchSuppliers()]);
+    } finally { setDeletingPoId(null); }
   }
 
   function openPoModal() {
@@ -1400,6 +1415,12 @@ export default function SupplierPage() {
                               >
                                 <Pencil size={14} />
                               </button>
+                              {userProfile?.isAdmin && <button type="button" onClick={() => void deletePurchaseInvoice(po)}
+                                disabled={deletingPoId !== null || savingPo} title="Delete purchase invoice"
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-[8px] border-[1.5px] cursor-pointer hover:bg-[var(--red-light)] disabled:opacity-45"
+                                style={{ borderColor: "var(--gray-200)", color: "var(--red)" }}>
+                                {deletingPoId === po.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                              </button>}
                               <button
                                 type="button"
                                 onClick={() => {
