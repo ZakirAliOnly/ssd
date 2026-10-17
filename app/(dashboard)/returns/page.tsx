@@ -152,7 +152,7 @@ export default function ReturnsPage() {
         body: JSON.stringify({ type, invoiceId: invoice.id, requestId: requestId.current, date, reason, selections }) });
       const result = await response.json();
       if (!response.ok) { definiteFailure = true; setUncertain(false); throw new Error(result.error || "Could not save this return."); }
-      setSuccess(`Return saved. ${formatCurrency(Number(result.record.amount))} credit recorded. ${supplier ? "Stock has been removed where tracked and the supplier balance reduced." : "Stock has been restored where tracked."} No cash refund was recorded.`);
+      setSuccess(`Return saved. ${formatCurrency(Number(result.record.amount))} credit recorded. ${supplier ? "Stock has been removed where tracked and the supplier balance reduced." : "Returned products have been added back to stock."} No cash refund was recorded.`);
       pendingPrintId.current = result.record.id;
       setRefresh(value => value + 1);
     } catch (err) {
@@ -223,7 +223,7 @@ export default function ReturnsPage() {
         <tbody>{invoice.items.map(item => <tr key={item.id}>
           <td className={`${DT.tdDense} align-top`}><span className="font-semibold">{item.product?.name || item.category || "Invoice item"}</span><span className="block text-sm whitespace-pre-wrap break-words text-[var(--gray-800)]">{item.description}</span>
             {supplier && item.available_qty != null && <span className="block text-xs text-[var(--gray-800)]">Available from this purchase: {Number(item.available_qty)}</span>}
-            {Number(item.stock_deducted_qty) === 0 && <span className="block text-xs text-[var(--gray-800)]">{supplier ? "No tracked receipt; return credits value only." : "No tracked stock deduction; return credits value only."}</span>}</td>
+            {supplier && Number(item.stock_deducted_qty) === 0 && <span className="block text-xs text-[var(--gray-800)]">{supplier ? "No tracked receipt; return credits value only." : "No tracked stock deduction; return credits value only."}</span>}</td>
           <td className={`${DT.tdDense} text-center tabular-nums`}>{Number(item.qty)}</td>
           <td className={`${DT.tdDense} text-center tabular-nums`}>{Math.round((Number(item.qty) - remaining(item)) * 100) / 100}</td>
           <td className={`${DT.tdDense} text-center tabular-nums`}>{remaining(item)}</td>

@@ -70,13 +70,15 @@ test("invalid quantities, duplicate selections, foreign items and invalid dates 
   for (const date of ["2026-10-01", "2026-02-30", "2999-01-01"]) assert.equal((await h.returnCall({ ...body(1), date })).status, 400);
   assert.deepEqual(h.state(), before);
 });
-test("missing batch history rolls back every part of the return", async () => {
+test("legacy sales without batch history restock returned products", async () => {
   const { h, body } = await setup();
   h.state().allocations.length = 0;
-  const before = structuredClone(h.state());
+  h.state().invoiceItems[0].stock_deducted_qty = 0;
   const response = await h.returnCall(body(1));
-  assert.equal(response.status, 400);
-  assert.deepEqual(h.state(), before);
+  assert.equal(response.status, 200);
+  assert.equal(h.state().products[0].quantity, 7);
+  assert.equal((await h.returnCall(body(3))).status, 200);
+  assert.equal(h.state().products[0].quantity, 10);
 });
 test("return history protects invoices, items and ledger credits from edits and deletion", async () => {
   const { h, body, invoiceId, lineId } = await setup();
@@ -108,5 +110,14 @@ test("cumulative rounded credits exactly match discounted and taxed invoice tota
   assert.equal(Math.round(previous.reduce((sum, line) => sum + line.amount, 0) * 100), 101);
   assert.equal(Math.round(previous.reduce((sum, line) => sum + line.revenue, 0) * 100), 90);
   const free = h.planReturn({ ...invoice, grand_total: 0, discount_amount: 0, items: [{ ...invoice.items[0], amount: 0, stock_deducted_qty: 0 }] }, [], [{ invoice_item_id: "a", qty: 3 }]);
-  assert.equal(free.amount, 0); assert.equal(free.lines[0].stock_restored_qty, 0);
+  assert.equal(free.amount, 0); assert.equal(free.lines[0].stock_restored_qty, 3);
+});
+
+
+test("non-admins cannot delete invoices, suppliers or supplier invoices", async () => {
+  const h = harness({ role: "sub_user", modules: ["accounts", "quick-invoice", "supplier"], is_active: true });
+  for (const table of ["invoices", "invoice_items", "quick_invoices", "suppliers", "purchase_orders", "purchase_order_items"]) {
+    assert.equal((await h.call({ table, operation: "delete", filters: [] })).status, 403, table);
+  }
+  assert.equal(h.transactions(), 0);
 });

@@ -66,6 +66,7 @@ const READ_DEPENDENCIES: Record<string, string[]> = {
 /** Module grants include data needed by that module's existing workflows. */
 export function canAccessTable(profile: AccessProfile, table: string, operation: string): boolean {
   if (profile.role === "super_admin") return true;
+  if (operation === "delete" && ["invoices", "invoice_items", "quick_invoices", "suppliers", "purchase_orders", "purchase_order_items"].includes(table)) return false;
   const modules = profile.modules ?? DEFAULT_MODULES;
   if (table === "stock_batches") return operation === "select" && canAccessTable(profile, "products", "select");
   if (operation === "insert" && table === "activity_log") return modules.length > 0;

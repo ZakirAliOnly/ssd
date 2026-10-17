@@ -65,7 +65,7 @@ export function planInvoiceReturn(invoice: ReturnInvoiceSource, previous: Return
     const fraction = cumulative / quantity;
     const amount = money((Math.round(lineCredits[index] * fraction) - earlier.reduce((sum, line) => sum + cents(Number(line.amount)), 0)) / 100);
     const revenue = money((Math.round(lineRevenues[index] * fraction) - earlier.reduce((sum, line) => sum + cents(Number(line.revenue)), 0)) / 100);
-    const stock_restored_qty = item.product_id ? roundQuantity(roundQuantity(Number(item.stock_deducted_qty) * fraction)
+    const stock_restored_qty = item.product_id ? roundQuantity(roundQuantity(quantity * fraction)
       - earlier.reduce((sum, line) => sum + Number(line.stock_restored_qty), 0)) : 0;
     if (amount < 0 || revenue < 0 || stock_restored_qty < 0 || stock_restored_qty > qty) throw new InventoryError("Return history does not match this invoice. Review it before continuing.");
     return { invoice_item_id: item.id, product_id: item.product_id, product_name: item.category || "Invoice item",
@@ -114,7 +114,13 @@ export async function saveInvoiceReturn(tx: Prisma.TransactionClient, input: {
       needed = roundQuantity(needed - qty);
       if (!needed) break;
     }
-    if (needed) throw new InventoryError("This invoice has incomplete stock batch history. Review its stock allocations before returning this product.");
+    if (needed) {
+      // Legacy sales have no batch allocation. Receive the physical return as a new batch.
+      const source = await tx.product.findUniqueOrThrow({ where: { id: line.product_id } });
+      await tx.stockBatch.create({ data: { product_id: line.product_id,
+        received_qty: needed, remaining_qty: needed, expiry_date: source.expiry_date,
+        received_date: new Date(input.date) } });
+    }
   }
   for (const productId of products) {
     await syncProductStock(tx, productId);
