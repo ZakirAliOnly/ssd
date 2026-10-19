@@ -1,5 +1,6 @@
 "use client";
 
+import { hasWhatsAppAutomation } from "@/lib/whatsappAutomation";
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
 import { InvoiceDiscountSummary } from "@/components/InvoiceDiscountSummary";
 import { InvoiceLineDiscount } from "@/components/InvoiceLineDiscount";
@@ -1308,7 +1309,9 @@ export default function AccountsPage() {
       description: descTrim || undefined,
       remainingBalanceSigned: postSigned,
     });
-    if (!openWhatsAppNewTab(party.whatsapp || party.phone || "", msg)) {
+    if (await hasWhatsAppAutomation("payment_received")) {
+      showToast("Payment saved. Automatic WhatsApp receipt added to the queue for consent and delivery checks.", "ok");
+    } else if (!openWhatsAppNewTab(party.whatsapp || party.phone || "", msg)) {
       showToast("Payment saved. Add a valid WhatsApp number on the party to open chat.", "err");
     } else {
       showToast("Payment received — WhatsApp opened", "ok");
@@ -2454,7 +2457,7 @@ export default function AccountsPage() {
               <button onClick={() => void handleReceivePayment()} disabled={receivingSaving}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[9px] text-[12.5px] font-semibold border-none cursor-pointer text-white disabled:opacity-60"
                 style={{ background: "#25D366", boxShadow: "0 2px 10px rgba(37, 211, 102, 0.35)" }}
-                title="Save payment and open WhatsApp with receipt message"
+                title="Save payment and send its WhatsApp receipt"
               >
                 <WhatsAppIcon size={15} /> {receivingSaving ? "Saving…" : "Receive"}
               </button>

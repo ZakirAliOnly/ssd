@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Monitor, FileText, LogOut,
-  Package, BarChart2, Users, FileSignature, Truck, ClipboardList, History, UserCog, Receipt, RotateCcw,
+  Package, BarChart2, Users, FileSignature, Truck, ClipboardList, History, UserCog, Receipt, RotateCcw, Menu, X, MessageCircle,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { getInitials } from "@/lib/helpers";
@@ -21,6 +21,7 @@ const menuBarLinks: { name: string; href: string; adminOnly?: true }[] = [
   { name: "Quote",         href: "/quote" },
   { name: "Sub Users",     href: "/users", adminOnly: true },
   { name: "Payment Methods", href: "/payment-methods", adminOnly: true },
+  { name: "WhatsApp Setup", href: "/whatsapp-setup", adminOnly: true },
   { name: "Change Password", href: "/change-password", adminOnly: true },
 ];
 
@@ -44,6 +45,7 @@ const adminToolbarItems: { name: string; href: string; icon: React.ElementType }
 
 export default function TopNav() {
   const [email, setEmail] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const userProfile = useUser();
@@ -73,136 +75,67 @@ export default function TopNav() {
     router.push("/");
   }
 
+  const mobileLinks = [...toolbarItems, ...visibleMenuLinks.filter(link => !toolbarItems.some(item => item.href === link.href))];
+
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[200] no-print">
-
-      {/* ── Brand bar ── */}
-      <div
-        className="flex items-center px-5 h-12 gap-6"
-        style={{
-          background: "var(--accent-sky)",
-          borderBottom: "1px solid #86efac",
-        }}
-      >
-        {/* Brand — same treatment as login page (app/page.tsx) */}
-        <Link href={userProfile ? firstAllowedPath(userProfile) : "/"} className="flex items-center gap-2.5 shrink-0 no-underline" title="Dashboard">
-          <img
-            src="/brand/logo.svg"
-            alt="S.S. Diagnostics"
-            className="h-9 w-[167px] object-contain shrink-0"
-          />
+    <nav className="fixed top-0 left-0 right-0 z-[200] no-print" aria-label="Main navigation"
+      onKeyDown={event => { if (event.key === "Escape") { setMenuOpen(false); document.getElementById("navigation-toggle")?.focus(); } }}>
+      <div className="flex items-center justify-between px-3 sm:px-5 h-16 lg:h-12 gap-3 border-b border-[#86efac]" style={{ background: "var(--accent-sky)" }}>
+        <Link href={userProfile ? firstAllowedPath(userProfile) : "/"} onClick={() => setMenuOpen(false)} className="flex items-center shrink-0 no-underline" title="Dashboard">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo.svg" alt="S.S. Diagnostics" className="h-9 w-[145px] sm:w-[167px] object-contain" />
         </Link>
-
-        {/* Menu bar links — right of logo */}
-        <div className="flex items-stretch gap-0.5 flex-1">
-          {isSubUser && (
-            <span
-              className="text-[11px] font-semibold px-2.5 py-1 rounded-full text-[var(--blue-deeper)] self-center"
-              style={{ background: "rgba(3,105,161,0.06)" }}
-            >
-              Sub User
-            </span>
-          )}
-          {visibleMenuLinks.map((link) => {
-            const isActive = pathname === link.href;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="relative flex items-center px-3.5 h-12 text-[12.5px] font-semibold no-underline transition-all whitespace-nowrap"
-                style={{
-                  color: isActive ? "var(--blue-deeper)" : "var(--gray-700)",
-                  background: isActive ? "rgba(3,105,161,0.10)" : undefined,
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) (e.currentTarget as HTMLElement).style.background = "rgba(3,105,161,0.06)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) (e.currentTarget as HTMLElement).style.background = "";
-                }}
-              >
-                {isActive && (
-                  <div className="absolute bottom-0 left-2 right-2 h-[2px] rounded-t-full bg-[var(--blue)]" />
-                )}
-                {link.name}
-              </Link>
-            );
-          })}
+        <div className="hidden 2xl:flex items-stretch flex-1 min-w-0">
+          {visibleMenuLinks.map(link => (
+            <Link key={link.href} href={link.href} aria-current={pathname === link.href ? "page" : undefined}
+              className="flex items-center px-2.5 h-12 text-xs font-semibold no-underline whitespace-nowrap hover:bg-white/40"
+              style={{ color: "var(--blue-deeper)", background: pathname === link.href ? "rgba(3,105,161,0.10)" : undefined }}>
+              {link.name}
+            </Link>
+          ))}
         </div>
-
-        {/* Date + user — pushed to far right */}
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-[12px] font-semibold text-[var(--blue-deeper)] hidden md:block">{today}</span>
-          <button
-            onClick={handleLogout}
-            title="Sign out"
-            className="flex items-center gap-2 cursor-pointer rounded-full py-1 pl-1 pr-2.5 transition-all hover:bg-white/40 border-none bg-transparent"
-          >
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white shrink-0"
-              style={{ background: "var(--blue)" }}
-            >
-              {getInitials(displayName)}
-            </div>
-            <span className="text-[12px] font-medium text-[var(--blue-deeper)] hidden sm:block">{displayName}</span>
-            <LogOut size={13} className="ml-0.5 text-[var(--blue-deeper)]" />
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="hidden min-[1800px]:block text-xs font-semibold whitespace-nowrap">{today}</span>
+          <button onClick={handleLogout} title="Sign out" aria-label={`Sign out ${displayName}`}
+            className="flex items-center gap-2 rounded-full p-1 sm:pr-2 hover:bg-white/40 cursor-pointer shrink-0">
+            <span className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ background: "var(--blue)" }}>{getInitials(displayName)}</span>
+            <span className="hidden sm:block max-w-24 truncate text-xs">{displayName}</span>
+            <LogOut size={15} className="hidden sm:block" />
+          </button>
+          <button id="navigation-toggle" type="button" aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={menuOpen} aria-controls="mobile-navigation" onClick={() => setMenuOpen(open => !open)}
+            className="2xl:hidden flex items-center justify-center w-11 h-11 rounded-lg hover:bg-white/50 cursor-pointer">
+            {menuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
       </div>
-
-      {/* ── Icon toolbar ── */}
-      <div
-        className="bg-white border-b border-[var(--gray-200)] flex items-stretch overflow-x-auto nav-scrollbar-hide"
-        style={{ height: "106px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}
-      >
-        {toolbarItems.map((item, i) => {
-          const isActive = pathname === item.href;
+      <div className="hidden lg:flex bg-white border-b border-[var(--gray-200)] items-stretch overflow-x-auto nav-scrollbar-hide h-[106px] shadow-sm">
+        {toolbarItems.map(item => {
           const Icon = item.icon;
-          return (
-            <div key={item.href} className="flex items-stretch shrink-0">
-              {i > 0 && (
-                <div className="self-stretch w-[1.5px] my-4 shrink-0" style={{ background: "#0C2433" }} />
-              )}
-              <Link
-                href={item.href}
-                className="relative flex flex-col items-center justify-center gap-2 px-5 sm:px-7 min-w-[92px] sm:min-w-[100px] max-w-[132px] no-underline transition-all duration-150"
-                style={{ background: isActive ? "var(--blue-light)" : undefined }}
-                onMouseEnter={(e) => {
-                  if (!isActive) (e.currentTarget as HTMLElement).style.background = "var(--blue-pale)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) (e.currentTarget as HTMLElement).style.background = "";
-                }}
-              >
-                {isActive && (
-                  <div
-                    className="absolute bottom-0 left-3 right-3 h-[3px] rounded-t-full"
-                    style={{ background: "var(--blue)" }}
-                  />
-                )}
-
-                <div
-                  className="w-14 h-14 rounded-xl flex items-center justify-center transition-all shrink-0"
-                  style={{
-                    background: isActive ? "var(--blue)" : "#E8ECEF",
-                    color: isActive ? "white" : "#0C2433",
-                    boxShadow: isActive ? "0 3px 12px rgba(140,0,0,0.28)" : undefined,
-                  }}
-                >
-                  <Icon size={30} />
-                </div>
-
-                <span
-                  className="text-[10.5px] sm:text-[11px] font-bold text-center leading-tight px-0.5"
-                  style={{ color: isActive ? "var(--blue-deeper)" : "#0C2433" }}
-                >
-                  {item.name}
-                </span>
-              </Link>
-            </div>
-          );
+          const active = pathname === item.href;
+          return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined}
+            className="flex flex-col shrink-0 items-center justify-center gap-2 px-5 min-w-[100px] max-w-[132px] no-underline hover:bg-sky-50 border-r border-gray-200"
+            style={{ background: active ? "var(--blue-light)" : undefined, color: "#0C2433" }}>
+            <span className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: active ? "var(--blue)" : "#E8ECEF", color: active ? "white" : "#0C2433" }}><Icon size={30} /></span>
+            <span className="text-[11px] font-bold text-center leading-tight">{item.name}</span>
+          </Link>;
         })}
       </div>
+      {menuOpen && <>
+        <button aria-label="Close navigation" tabIndex={-1} onClick={() => setMenuOpen(false)} className="fixed inset-0 top-16 lg:top-12 bg-black/25 -z-10 2xl:hidden" />
+        <div id="mobile-navigation" className="absolute top-16 lg:top-12 inset-x-0 bg-white shadow-xl border-b border-gray-200 p-4 max-h-[calc(100dvh-64px)] overflow-y-auto 2xl:hidden">
+          <div className="text-xs text-gray-500 px-2 pb-3">{isSubUser ? "Your modules" : "Navigation"}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {mobileLinks.map(link => {
+              const Icon = "icon" in link ? link.icon : link.href === "/whatsapp-setup" ? MessageCircle : FileText;
+              return <Link key={link.href} href={link.href} onClick={() => setMenuOpen(false)} aria-current={pathname === link.href ? "page" : undefined}
+                className={`flex items-center gap-2 min-h-12 p-3 rounded-lg text-sm font-medium no-underline ${pathname === link.href ? "bg-sky-100 text-sky-900" : "text-gray-800 hover:bg-gray-100"}`}>
+                <Icon size={18} className="shrink-0" /><span>{link.name}</span>
+              </Link>;
+            })}
+          </div>
+        </div>
+      </>}
     </nav>
   );
 }

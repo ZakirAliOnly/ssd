@@ -2,6 +2,10 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### WhatsApp Business automation
+
+See [WhatsApp setup and deployment](docs/whatsapp-setup.md) for QR linking with Baileys, consent, the persistent queue worker, and database migrations. Settings are available from **WhatsApp Setup** in the top navigation.
+
 ### Returns module deployment
 
 After deploying this source to the VPS, run these commands from the app folder

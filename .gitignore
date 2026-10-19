@@ -17,6 +17,10 @@ next-env.d.ts
 !.env.example
 *.pem
 *.key
+# Legacy local credentials must never be committed
+/.wwebjs_auth/
+/.wwebjs_cache/
+/.whatsapp-private/
 
 # Logs
 *.log

@@ -2,6 +2,80 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// One business connection per installation, shared by the business's sub-users.
+model WhatsAppSettings {
+  id                  Int      @id @default(1)
+  waba_id             String   @default("")
+  phone_number_id      String   @default("")
+  display_phone       String   @default("")
+  token_encrypted     String   @default("")
+  // Linked-session control; legacy API fields above are retained for migration compatibility.
+  connection_requested Boolean @default(false)
+  connection_state   String   @default("disconnected")
+  connection_error   String   @default("")
+  qr_data            String   @default("")
+  qr_expires_at       DateTime? @db.Timestamptz(6)
+  session_generation Int      @default(0)
+  logout_requested   Boolean  @default(false)
+  worker_owner       String   @default("")
+  worker_lease_until DateTime? @db.Timestamptz(6)
+  enabled             Boolean  @default(false)
+  invoice_enabled     Boolean  @default(true)
+  received_enabled    Boolean  @default(true)
+  supplier_enabled    Boolean  @default(true)
+  delay_seconds       Int      @default(15)
+  next_send_at        DateTime @default(now()) @db.Timestamptz(6)
+  worker_seen_at      DateTime? @db.Timestamptz(6)
+  connected_at        DateTime? @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("whatsapp_settings")
+}
+
+model WhatsAppAuth {
+  id              String @id
+  value_encrypted String
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("whatsapp_auth")
+}
+
+model WhatsAppContact {
+  phone               String   @id
+  name                String   @default("")
+  opted_in_at         DateTime? @db.Timestamptz(6)
+  opted_out_at        DateTime? @db.Timestamptz(6)
+  consent_source      String   @default("")
+  last_inbound_at     DateTime? @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("whatsapp_contacts")
+}
+
+model WhatsAppMessage {
+  id                  String   @id @default(uuid()) @db.Uuid
+  event_key           String   @unique
+  kind                String
+  source_id           String
+  phone               String
+  phone_number_id     String
+  recipient_name      String
+  body                String
+  template_values     String[] @default([])
+  status              String   @default("queued")
+  reason              String   @default("")
+  attempts            Int      @default(0)
+  available_at        DateTime @default(now()) @db.Timestamptz(6)
+  processing_at       DateTime? @db.Timestamptz(6)
+  provider_id         String?  @unique
+  sent_at             DateTime? @db.Timestamptz(6)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([status, available_at])
+  @@map("whatsapp_messages")
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
