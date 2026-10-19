@@ -14,6 +14,7 @@ import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
 import { Plus, Search, Download, Edit, Trash2, X, Banknote, TrendingUp, Users, Layers, FileText, ChevronDown, BookOpen, Printer, Eye, ArrowLeft, Loader2, ClipboardList } from "lucide-react";
 import type { Account, HeadAccount, Invoice, CashbookEntry, InvoiceItem } from "@/lib/database.types";
 import { usePaymentMethods, type PaymentMethod } from "@/lib/paymentMethods";
+import { LedgerLineItems } from "@/components/LedgerLineItems";
 import { ledgerRowsForDateRange, openingBalanceBeforeDate } from "@/lib/ledger";
 import { buildLedgerRows, computePartySignedBalance } from "@/lib/partyBalance";
 import { fetchPartySignedBalance, syncCachedAccountBalance, recomputeCachedBalance } from "@/lib/partyBalanceLive";
@@ -1897,37 +1898,7 @@ export default function AccountsPage() {
                       {items.length > 0 ? (
                         <tr>
                           <td colSpan={7} className="p-0" style={{ background: "var(--gray-50, #f8fafc)" }}>
-                            <table className="w-full border-collapse">
-                              <thead>
-                                <tr>
-                                  {["Product", "Qty", "Rate", "Amount"].map((h, hi) => (
-                                    <th
-                                      key={h}
-                                      className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide"
-                                      style={{ color: "var(--gray-500)", textAlign: hi === 0 ? "left" : "right" }}
-                                    >
-                                      {h}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {items.map((it) => (
-                                  <tr key={it.id}>
-                                    <td className="px-2 py-1 text-[11px]" style={{ color: "var(--gray-700)" }}>
-                                      <div className="font-semibold">{it.category?.trim() || it.description?.trim() || "Item"}</div>
-                                      {it.category?.trim() && it.description?.trim() && it.category.trim() !== it.description.trim() ? (
-                                        <div className="whitespace-normal break-words">{it.description}</div>
-                                      ) : null}
-                                    </td>
-
-                                    <td className="px-2 py-1 text-[11px] font-mono text-right" style={{ color: "var(--gray-700)" }}>{Number(it.qty) || "—"}</td>
-                                    <td className="px-2 py-1 text-[11px] font-mono text-right" style={{ color: "var(--gray-700)" }}>{invoiceUnitRate(it) ? formatCurrency(invoiceUnitRate(it)) : "—"}</td>
-                                    <td className="px-2 py-1 text-[11px] font-mono text-right" style={{ color: "var(--gray-900)" }}>{Number(it.amount) ? formatCurrency(Number(it.amount)) : "—"}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                            <LedgerLineItems items={items.map(item => ({ ...item, rate: invoiceUnitRate(item) }))} />
                           </td>
                         </tr>
                       ) : null}
@@ -3138,18 +3109,6 @@ export default function AccountsPage() {
               {ledgerDisplayWithBal.map((r, idx) => {
                 const items = r.invoiceId ? (ledgerItemsByInvoice[r.invoiceId] ?? []) : [];
                 const rowBg = idx % 2 === 0 ? "#fff" : "#f8fafc";
-                // The product detail strip keeps the first two outer columns (Date,
-                // Invoice#) as empty bordered cells so the main table's vertical lines
-                // run unbroken; the products table fills the remaining width (aligned to
-                // the Description column's left edge through the right border).
-                const detailCols = "11% 17% 72%";
-                const itemCols = "55% 10% 15% 20%";
-                const itemHeads = [
-                  { label: "Product", align: "left" as const },
-                  { label: "Qty", align: "right" as const },
-                  { label: "Rate", align: "right" as const },
-                  { label: "Amount", align: "right" as const },
-                ];
                 return (
                 <Fragment key={`${r.sortAt}-p-${idx}`}>
                 <div
@@ -3172,34 +3131,8 @@ export default function AccountsPage() {
                   </div>
                 </div>
                 {items.length > 0 ? (
-                  <div style={{ display: "grid", gridTemplateColumns: detailCols, background: rowBg, borderBottom: "1px solid #000" }}>
-                    <div style={{ borderLeft: "1px solid #000" }} />
-                    <div style={{ borderLeft: "1px solid #000" }} />
-                    <div style={{ borderLeft: "1px solid #000", borderRight: "1px solid #000" }}>
-                      {/* Products header */}
-                      <div style={{ display: "grid", gridTemplateColumns: itemCols, background: "#f1d6d6", borderBottom: "1px solid #000" }}>
-                        {itemHeads.map((h, i) => (
-                          <div key={h.label} style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3, color: "#075985", textAlign: h.align, padding: "2px 5px", borderLeft: i === 0 ? "none" : "1px solid #86b99a" }}>
-                            {h.label}
-                          </div>
-                        ))}
-                      </div>
-                      {/* Product rows */}
-                      {items.map((it, ii) => (
-                        <div key={it.id} style={{ display: "grid", gridTemplateColumns: itemCols, fontSize: 12, borderBottom: ii === items.length - 1 ? "none" : "1px solid #ddd" }}>
-                          <div style={{ padding: "2px 5px", color: "#222" }}>
-                            <div style={{ fontWeight: 600 }}>{it.category?.trim() || it.description?.trim() || "Item"}</div>
-                            {it.category?.trim() && it.description?.trim() && it.category.trim() !== it.description.trim() ? (
-                              <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{it.description}</div>
-                            ) : null}
-                          </div>
-
-                          <div style={{ padding: "2px 5px", textAlign: "right", fontFamily: "monospace", color: "#222", borderLeft: "1px solid #eee" }}>{Number(it.qty) || "—"}</div>
-                          <div style={{ padding: "2px 5px", textAlign: "right", fontFamily: "monospace", color: "#222", borderLeft: "1px solid #eee" }}>{invoiceUnitRate(it) ? formatCurrency(invoiceUnitRate(it)) : "—"}</div>
-                          <div style={{ padding: "2px 5px", textAlign: "right", fontFamily: "monospace", color: "#111", fontWeight: 700, borderLeft: "1px solid #eee" }}>{Number(it.amount) ? formatCurrency(Number(it.amount)) : "—"}</div>
-                        </div>
-                      ))}
-                    </div>
+                  <div style={{ border: "1px solid #000", borderTop: 0 }}>
+                    <LedgerLineItems items={items.map(item => ({ ...item, rate: invoiceUnitRate(item) }))} />
                   </div>
                 ) : null}
                 </Fragment>

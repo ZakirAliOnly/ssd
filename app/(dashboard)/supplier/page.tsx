@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { db, savePurchase } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
@@ -33,6 +33,8 @@ import { buildSupplierPaymentWhatsAppMessage, openWhatsAppNewTab } from "@/lib/w
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { invoiceProductOption } from "@/lib/productOptions";
 import { PrintHeader } from "@/components/PrintHeader";
+import { LedgerLineItems } from "@/components/LedgerLineItems";
+import type { PurchaseOrderItem } from "@/lib/database.types";
 import { PrintFooter } from "@/components/PrintFooter";
 
 interface SupplierRow {
@@ -170,6 +172,7 @@ function buildSupplierLedgerRows(
       date,
       sortAt: `${date}T${po.created_at || "1970-01-01"}_po`,
       doc: po.po_number,
+      purchaseOrderId: po.id,
       desc: "Purchase invoice",
       debit: Number(po.grand_total) || 0,
       credit: 0,
@@ -238,6 +241,7 @@ export default function SupplierPage() {
   const [showLedgerModal, setShowLedgerModal] = useState(false);
   const [ledgerSupplier, setLedgerSupplier] = useState<SupplierRow | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerItemsByPo, setLedgerItemsByPo] = useState<Record<string, PurchaseOrderItem[]>>({});
   const [ledgerPos, setLedgerPos] = useState<SupplierLedgerPo[]>([]);
   const [ledgerCashbook, setLedgerCashbook] = useState<SupplierLedgerCashbookEntry[]>([]);
   const [ledgerOpeningSnapshot, setLedgerOpeningSnapshot] = useState(0);
@@ -536,6 +540,7 @@ export default function SupplierPage() {
     setLedgerDateTo("");
     setLedgerMonth("");
     setLedgerPos([]);
+    setLedgerItemsByPo({});
     setLedgerCashbook([]);
     setLedgerOpeningSnapshot(Number(s.opening_balance) || 0);
     setLedgerSupplierCreatedAt("");
@@ -560,6 +565,19 @@ export default function SupplierPage() {
     }
     if (poRows) setLedgerPos(poRows as SupplierLedgerPo[]);
     if (cbRows) setLedgerCashbook(cbRows as SupplierLedgerCashbookEntry[]);
+    const poIds = ((poRows ?? []) as SupplierLedgerPo[]).map(po => po.id);
+    if (poIds.length) {
+      try {
+        const { data: items, error } = await db.from("purchase_order_items").select("*")
+          .in("purchase_order_id", poIds).order("id", { ascending: true });
+        if (error) showToast(error.message, "err");
+        const grouped: Record<string, PurchaseOrderItem[]> = {};
+        for (const item of (items ?? []) as PurchaseOrderItem[]) (grouped[item.purchase_order_id] ||= []).push(item);
+        setLedgerItemsByPo(grouped);
+      } catch {
+        showToast("Could not load purchase item details. Reopen the ledger to try again.", "err");
+      }
+    }
     setLedgerLoading(false);
   }
 
@@ -567,6 +585,7 @@ export default function SupplierPage() {
     setShowLedgerModal(false);
     setLedgerSupplier(null);
     setLedgerPos([]);
+    setLedgerItemsByPo({});
     setLedgerCashbook([]);
     setLedgerDateFrom("");
     setLedgerDateTo("");
@@ -1873,7 +1892,8 @@ export default function SupplierPage() {
                     </thead>
                     <tbody>
                       {ledgerDisplayWithBal.map((r, idx) => (
-                        <tr key={`${r.sortAt}-${idx}`} className={DT.row}>
+                        <Fragment key={`${r.sortAt}-${idx}`}>
+                        <tr className={DT.row}>
                           <td className={`${DT.tdDense} ${DT.cellPrimary}`} style={{ color: "var(--gray-900)" }}>{formatDate(r.date)}</td>
                           <td className={`${DT.tdDense} font-mono text-[12px]`} style={{ color: "var(--gray-900)" }}>{r.doc}</td>
                           <td className={DT.tdDense} style={{ color: "var(--gray-800)" }}>{r.desc}</td>
@@ -1891,6 +1911,10 @@ export default function SupplierPage() {
                             <span className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold" style={{ background: "var(--gray-100)", color: "var(--gray-900)" }}>{r.method || "—"}</span>
                           </td>
                         </tr>
+                        {r.purchaseOrderId && ledgerItemsByPo[r.purchaseOrderId]?.length > 0 && <tr>
+                          <td colSpan={7} className="p-0"><LedgerLineItems items={ledgerItemsByPo[r.purchaseOrderId]} /></td>
+                        </tr>}
+                        </Fragment>
                       ))}
                     </tbody>
                     <tfoot>
@@ -2010,8 +2034,8 @@ export default function SupplierPage() {
                 </div>
 
                 {ledgerDisplayWithBal.map((r, idx) => (
+                  <Fragment key={`${r.sortAt}-p-${idx}`}>
                   <div
-                    key={`${r.sortAt}-p-${idx}`}
                     style={{ display: "grid", gridTemplateColumns: gridCols, background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #000" }}
                   >
                     <div style={{ padding: cellPad, color: "#111", borderLeft: "1px solid #000" }}>{formatDate(r.date)}</div>
@@ -2030,6 +2054,10 @@ export default function SupplierPage() {
                       {r.method || "—"}
                     </div>
                   </div>
+                  {r.purchaseOrderId && ledgerItemsByPo[r.purchaseOrderId]?.length > 0 && <div style={{ border: "1px solid #000", borderTop: 0 }}>
+                    <LedgerLineItems items={ledgerItemsByPo[r.purchaseOrderId]} />
+                  </div>}
+                  </Fragment>
                 ))}
 
                 <div style={{ flex: 1, display: "grid", gridTemplateColumns: gridCols, borderBottom: "1px solid #000" }}>

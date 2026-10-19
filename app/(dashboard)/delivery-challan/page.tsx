@@ -64,6 +64,9 @@ export default function DeliveryChallanPage() {
   const [loadingInvoice, setLoadingInvoice] = useState(false);
   const [invoices, setInvoices] = useState<InvoicePick[]>([]);
   const [invoiceId, setInvoiceId] = useState("");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoicePick | null>(null);
+  const [listError, setListError] = useState("");
 
   const [headerParty, setHeaderParty] = useState("");
   const [challanDate, setChallanDate] = useState("");
@@ -74,32 +77,44 @@ export default function DeliveryChallanPage() {
   const [invoiceRef, setInvoiceRef] = useState("");
   const [challanNumber, setChallanNumber] = useState("");
 
-  const fetchInvoices = useCallback(async () => {
-    setLoadingList(true);
-    const { data, error } = await db
-      .from("invoices")
-      .select("id, invoice_number, client_name, client_phone, invoice_date, job_notes")
-      .order("created_at", { ascending: false })
-      .limit(300);
-    setLoadingList(false);
-    if (error) {
-      showToast(error.message, "err");
-      return;
-    }
-    setInvoices((data ?? []) as InvoicePick[]);
+  useEffect(() => {
     const requestedInvoice = new URLSearchParams(window.location.search).get("invoice");
     if (requestedInvoice) setInvoiceId(requestedInvoice);
   }, []);
 
   useEffect(() => {
-    void fetchInvoices();
-  }, [fetchInvoices]);
+    let active = true;
+    const timer = setTimeout(async () => {
+      setLoadingList(true);
+      setListError("");
+      let query = db.from("invoices")
+        .select("id, invoice_number, client_name, client_phone, invoice_date, job_notes")
+        .order("created_at", { ascending: false })
+        .limit(300);
+      const search = invoiceSearch.trim();
+      if (search) query = query.ilike("invoice_number", search);
+      const { data, error } = await Promise.resolve(query).catch(() => ({
+        data: null,
+        error: { message: "Check your connection and try searching again." },
+      }));
+      if (!active) return;
+      setLoadingList(false);
+      if (error) {
+        setInvoices([]);
+        setListError(error.message);
+        return;
+      }
+      setInvoices((data ?? []) as InvoicePick[]);
+    }, invoiceSearch.trim() ? 300 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [invoiceSearch]);
 
   const loadInvoice = useCallback(async (id: string) => {
     const version = ++loadVersion.current;
     setChallanNumber("");
     if (!id) {
       setLoadingInvoice(false);
+      setSelectedInvoice(null);
       setHeaderParty("");
       setChallanDate("");
       setChallanTime(nowTimeStr());
@@ -148,14 +163,14 @@ export default function DeliveryChallanPage() {
       if (!response.ok) throw new Error(result.error || "Could not assign challan number.");
       if (version !== loadVersion.current) return;
       setChallanNumber(result.number);
-      // Linked invoices may be older than the initial 300-row picker list.
-      setInvoices(current => current.some(row => row.id === id) ? current : [...current, {
+      // Preserve the selected invoice when a search returns different results.
+      setSelectedInvoice({
         id,
         invoice_number: String(inv.invoice_number ?? ""),
         client_name: String(inv.client_name ?? ""),
         client_phone: String(inv.client_phone ?? ""),
         invoice_date: String(inv.invoice_date ?? ""),
-      }]);
+      });
       setHeaderParty(String(inv.client_name ?? ""));
       setChallanDate(String(inv.invoice_date ?? ""));
       setChallanTime(nowTimeStr());
@@ -274,6 +289,26 @@ export default function DeliveryChallanPage() {
         </div>
 
         <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-5 mb-5" style={{ boxShadow: "var(--shadow-sm)" }}>
+          <label className="flex flex-col gap-1.5 max-w-xl mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--blue-deeper)" }}>
+              Search by invoice number
+            </span>
+            <input
+              type="search"
+              value={invoiceSearch}
+              onChange={(e) => { setInvoiceSearch(e.target.value); setLoadingList(true); }}
+              placeholder="Enter full or partial invoice number"
+              aria-describedby="invoice-search-status"
+              className="border-[1.5px] rounded-[9px] px-3 py-2.5 text-[13px] outline-none"
+              style={{ borderColor: "var(--gray-200)", color: "var(--gray-900)" }}
+            />
+          </label>
+          <p id="invoice-search-status" role="status" className="text-xs mb-3" style={{ color: "var(--gray-600)" }}>
+            {loadingList ? "Searching invoices…" : listError ? `Could not load invoices: ${listError}` : invoices.length === 0
+              ? "No invoices found. Try another invoice number."
+              : invoices.length === 300 ? "Showing the latest 300 matches. Enter more of the invoice number to narrow the results."
+              : `${invoices.length} invoice${invoices.length === 1 ? "" : "s"} found. Select one below.`}
+          </p>
           <label className="flex flex-col gap-1.5 max-w-xl">
             <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--blue-deeper)" }}>
               Invoice
@@ -286,6 +321,11 @@ export default function DeliveryChallanPage() {
               style={{ borderColor: "var(--gray-200)", color: "var(--gray-900)" }}
             >
               <option value="">— Select invoice —</option>
+              {selectedInvoice && selectedInvoice.id === invoiceId && !invoices.some(inv => inv.id === invoiceId) && (
+                <option value={selectedInvoice.id}>
+                  {selectedInvoice.invoice_number} — {selectedInvoice.client_name} (selected)
+                </option>
+              )}
               {invoices.map((inv) => (
                 <option key={inv.id} value={inv.id}>
                   {inv.invoice_number} — {inv.client_name} ({formatDate(inv.invoice_date)})
