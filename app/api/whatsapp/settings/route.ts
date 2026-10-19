@@ -39,7 +39,7 @@ export async function DELETE(req: NextRequest) {
       token_encrypted: "", waba_id: "", phone_number_id: "", display_phone: "", connected_at: null } });
     await tx.whatsAppMessage.updateMany({ where: { status: { in: ["queued", "blocked"] } }, data: { status: "cancelled", reason: "WhatsApp account disconnected" } });
     await tx.whatsAppAuth.deleteMany({ where: { id: { not: "transport:baileys" } } });
-    await tx.whatsAppContact.updateMany({ data: { last_inbound_at: null, opted_in_at: null, opted_out_at: new Date(), consent_source: "WhatsApp account disconnected" } });
+    await tx.whatsAppContact.updateMany({ data: { last_inbound_at: null, opted_in_at: null } });
   });
   return NextResponse.json({ ok: true });
 }

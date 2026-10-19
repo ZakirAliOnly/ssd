@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Clock3, Link2, MessageCircle, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
+import { isWhatsAppRecipientBlocked } from "@/lib/whatsappPolicy";
 import { useUser } from "@/lib/UserContext";
 
 type Settings = { connected: boolean; displayPhone: string; enabled: boolean; invoice: boolean; received: boolean; supplier: boolean; delaySeconds: number; workerSeenAt: string | null };
@@ -64,7 +65,7 @@ export default function WhatsAppSetupPage() {
   return <div className="max-w-6xl mx-auto space-y-6 text-gray-900">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-bold flex items-center gap-2"><MessageCircle className="text-green-700" /> WhatsApp Setup</h1>
-        <p className="mt-1 text-sm text-gray-600">Send invoices and payment receipts from your business number.</p></div>
+        <p className="mt-1 text-sm text-gray-600">Scan WhatsApp, enable automatic sending, and your invoice and payment actions send messages.</p></div>
       <button className="flex items-center gap-2 text-sm font-medium p-2" onClick={() => void action("refresh", () => refresh())} disabled={!!busy}><RefreshCw size={16} /> Refresh</button>
     </div>
     {error && <div role="alert" className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">{error}</div>}
@@ -106,25 +107,29 @@ export default function WhatsAppSetupPage() {
         </div>
         <div className="flex flex-wrap items-end gap-4"><label className="text-sm font-medium">Delay between messages (seconds)<input type="number" min={10} max={3600} value={form.delaySeconds} onChange={e => setForm({ ...form, delaySeconds: Number(e.target.value) })} className={`${field} mt-1 max-w-52 block`} /></label>
           <button className={button} disabled={!!busy} onClick={() => void action("save", async () => { await api("settings", "PATCH", form); await refresh(true); setNotice("Automatic message settings saved."); })}>Save settings</button></div>
-        <p className="text-xs text-gray-500">One notification per saved transaction. Printing or editing an existing invoice does not send it again. Missing numbers and missing consent are held for review. The original WhatsApp buttons remain available for manual sending.</p>
+        <p className="text-xs text-gray-500">One notification per saved transaction. Printing or editing an existing invoice does not send it again. Messages go to the saved customer or supplier number automatically. Missing numbers and recipient opt-outs are held for review. The original WhatsApp buttons remain available for manual sending.</p>
         <div className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900 flex gap-2"><ShieldCheck size={20} className="shrink-0" /><p>Messages use your existing invoice and receipt text, sent through the linked Baileys session. Only message recipients who have agreed to receive these updates. This unofficial connection can break when WhatsApp changes; delays do not guarantee compliance or prevent account restrictions.</p></div>
         <p className="flex items-center gap-2 text-sm"><Clock3 size={16} /> Queue worker: <strong>{workerRecent ? "Running" : "Not running / not yet configured"}</strong></p>
       </section>
 
-      <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-        <h2 className="text-lg font-bold">3. Recipient consent</h2>
-        <p className="text-sm text-gray-600">Record permission to receive invoices and receipts on WhatsApp. A saved phone number alone is not consent. Recipients can reply STOP to opt out or START to opt in. An ordinary inbound message does not automatically grant consent.</p>
-        <form className="grid gap-3 sm:grid-cols-2" onSubmit={event => { event.preventDefault(); void action("contact", async () => {
-          await api("contacts", "POST", contact); setContact({ phone: "", name: "", source: "", optedIn: false }); await refresh(); setNotice("Consent record saved. Review held messages before retrying them.");
-        }); }}>
-          <label className="text-sm">Name<input className={`${field} mt-1`} value={contact.name} maxLength={150} onChange={e => setContact({ ...contact, name: e.target.value })} /></label>
-          <label className="text-sm">WhatsApp number<input className={`${field} mt-1`} placeholder="03xxxxxxxxx or +country code…" required value={contact.phone} onChange={e => setContact({ ...contact, phone: e.target.value })} /></label>
-          <label className="text-sm sm:col-span-2">When and how permission was given / withdrawn<input className={`${field} mt-1`} required minLength={3} maxLength={500} placeholder="e.g. Customer opted in on the order form today" value={contact.source} onChange={e => setContact({ ...contact, source: e.target.value })} /></label>
-          <label className="text-sm flex gap-2 items-center"><input type="checkbox" checked={contact.optedIn} onChange={e => setContact({ ...contact, optedIn: e.target.checked })} /> This recipient agreed to receive these messages</label>
-          <div className="sm:text-right"><button className={button} disabled={!!busy}><CheckCircle2 size={16} />{contact.optedIn ? "Record consent" : "Record opt-out"}</button></div>
-        </form>
-        <details><summary className="text-sm font-medium cursor-pointer">Recent consent records ({data.contacts.length}, latest 100)</summary>
-          <div className="mt-3 space-y-2">{data.contacts.map(row => <div key={row.phone} className="text-sm flex flex-wrap justify-between gap-2 border-t pt-2"><span>{row.name || row.phone} · +{row.phone}<small className="block text-gray-500">{row.consent_source}</small></span><span>{row.opted_in_at && !row.opted_out_at ? "Consented" : "No consent / opted out"}</span></div>)}</div>
+      <section className="bg-white rounded-xl border border-gray-200 p-5">
+        <details>
+          <summary className="text-lg font-bold cursor-pointer">Recipient preferences (optional)</summary>
+          <div className="space-y-4 mt-4">
+            <p className="text-sm text-gray-600">No per-recipient setup is required for new invoice and payment notifications. Use these controls only to stop or resume messages for a number. Recipients can also reply STOP to stop messages or START to resume them.</p>
+            <form className="grid gap-3 sm:grid-cols-2" onSubmit={event => { event.preventDefault(); void action("contact", async () => {
+              await api("contacts", "POST", contact); setContact({ phone: "", name: "", source: "", optedIn: false }); await refresh(); setNotice("Recipient preference saved. Previously held messages remain held for review.");
+            }); }}>
+              <label className="text-sm">Name<input className={`${field} mt-1`} value={contact.name} maxLength={150} onChange={e => setContact({ ...contact, name: e.target.value })} /></label>
+              <label className="text-sm">WhatsApp number<input className={`${field} mt-1`} placeholder="03xxxxxxxxx or +country code…" required value={contact.phone} onChange={e => setContact({ ...contact, phone: e.target.value })} /></label>
+              <label className="text-sm sm:col-span-2">Note (optional)<input className={`${field} mt-1`} maxLength={500} placeholder="e.g. Customer asked to stop messages" value={contact.source} onChange={e => setContact({ ...contact, source: e.target.value })} /></label>
+              <label className="text-sm flex gap-2 items-center"><input type="checkbox" checked={contact.optedIn} onChange={e => setContact({ ...contact, optedIn: e.target.checked })} /> Allow transaction messages for this number</label>
+              <div className="sm:text-right"><button className={button} disabled={!!busy}><CheckCircle2 size={16} />{contact.optedIn ? "Allow messages" : "Stop messages"}</button></div>
+            </form>
+            <details><summary className="text-sm font-medium cursor-pointer">Recent recipient preferences ({data.contacts.length}, latest 100)</summary>
+              <div className="mt-3 space-y-2">{data.contacts.map(row => <div key={row.phone} className="text-sm flex flex-wrap justify-between gap-2 border-t pt-2"><span>{row.name || row.phone} · +{row.phone}<small className="block text-gray-500">{row.consent_source}</small></span><span>{isWhatsAppRecipientBlocked(row) ? "Stopped" : "Allowed"}</span></div>)}</div>
+            </details>
+          </div>
         </details>
       </section>
 
@@ -134,7 +139,7 @@ export default function WhatsAppSetupPage() {
         {jobs.length === 0 && <p className="text-sm text-gray-500 py-5 text-center">No messages to display. New eligible transactions appear here when automation is enabled.</p>}
         <div className="space-y-3">{jobs.map(job => <article key={job.id} className="rounded-lg border border-gray-200 p-3 space-y-2">
           <div className="flex flex-wrap justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold break-words">{job.recipient_name} {job.phone && <span className="font-normal text-gray-500">· +{job.phone}</span>}</p><p className="text-xs text-gray-500">{labels[job.kind]} · {new Date(job.created_at).toLocaleString()} · {job.attempts} attempts</p></div><span className="self-start text-xs font-semibold rounded-full bg-gray-100 px-3 py-1">{job.status}</span></div>
-          {job.reason && <p className="text-xs text-amber-800">{job.reason}</p>}
+          {job.reason && <p className="text-xs text-amber-800">{job.reason === "Recipient consent required" ? "Held by the previous setup. Review this notification before retrying." : job.reason}</p>}
           <details><summary className="text-xs cursor-pointer text-sky-800">Message preview</summary><pre className="text-xs whitespace-pre-wrap break-words mt-2 bg-gray-50 rounded p-3">{job.body}</pre></details>
           <div className="flex gap-3">{job.status === "blocked" && <button className="text-xs text-sky-800 font-semibold py-2" disabled={!!busy} onClick={() => void action(job.id, async () => { await api("queue", "POST", { id: job.id, action: "retry" }); await refresh(); })}>Retry after fixing issue</button>}
             {["queued", "blocked", "failed"].includes(job.status) && <button className="text-xs text-red-700 py-2" disabled={!!busy} onClick={() => void action(job.id, async () => { await api("queue", "POST", { id: job.id, action: "cancel" }); await refresh(); })}>Cancel</button>}</div>

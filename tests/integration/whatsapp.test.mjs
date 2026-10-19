@@ -53,7 +53,7 @@ describe("WhatsApp connection outbox, session and worker against PostgreSQL", { 
     await db.cashbook.deleteMany(); await db.invoice.deleteMany(); await db.account.deleteMany(); await db.supplier.deleteMany();
     await db.whatsAppSettings.create({ data: { id: 1, enabled: true, phone_number_id: sender, connection_requested: true, connection_state: "ready",
       worker_owner: owner, worker_lease_until: new Date(Date.now() + 30000), delay_seconds: 15, next_send_at: new Date(0) } });
-    await db.whatsAppContact.create({ data: { phone, opted_in_at: new Date(Date.now() - 86400000), consent_source: "Test fixture", last_inbound_at: new Date() } });
+    await db.whatsAppContact.create({ data: { phone, opted_in_at: null, consent_source: "Test fixture", last_inbound_at: new Date() } });
   });
 
   test("stale connection events cannot grant consent after disconnect", async () => {
@@ -73,6 +73,102 @@ describe("WhatsApp connection outbox, session and worker against PostgreSQL", { 
     assert.equal(await db.whatsAppMessage.count(), 1);
     const queued = await db.whatsAppMessage.findFirstOrThrow();
     assert.match(queued.body, /Invoice \*/); assert.match(queued.body, /Rs 500/);
+  });
+
+  test("connect and enable is enough for all three event types without recipient records", async () => {
+    await db.whatsAppContact.deleteMany();
+    await db.whatsAppSettings.update({ where: { id: 1 }, data: { enabled: false } });
+    const settings = load("app/api/whatsapp/settings/route.ts");
+    const enabled = await settings.PATCH(new NextRequest("http://localhost/api/whatsapp/settings", { method: "PATCH", headers: { cookie: "auth=admin" },
+      body: JSON.stringify({ enabled: true, invoice: true, received: true, supplier: true, delaySeconds: 15 }) }));
+    assert.equal(enabled.status, 200);
+    await db.account.create({ data: { name: "Automatic customer", type: "Client", whatsapp: phone } });
+    const post = async body => {
+      const response = await dbRoute.POST(new NextRequest("http://localhost/api/db", { method: "POST", headers: { cookie: "auth=admin" }, body: JSON.stringify(body) }));
+      const result = await response.json(); assert.equal(result.error, null); return result.data;
+    };
+    await post({ table: "invoices", operation: "save_invoice", data: { client_name: "Automatic customer", client_phone: phone,
+      invoice_date: "2026-10-19", grand_total: 500, balance_due: 500, is_walk_in: false },
+      items: [{ category: "Service", qty: 1, rate: 500, amount: 500 }] });
+    await post({ table: "cashbook", operation: "insert", data: { type: "in", amount: 200, date: "2026-10-19", method: "Cash",
+      account_name: "Automatic customer", description: "Payment received from Automatic customer — Test receipt", reference: "" } });
+    await db.supplier.create({ data: { id: supplierId, name: "Automatic supplier", phone, opening_balance: 500 } });
+    await post({ table: "cashbook", operation: "insert", data: { type: "out", amount: 100, date: "2026-10-19", method: "Cash",
+      account_name: "Automatic supplier", description: "Supplier payment — Automatic supplier — Test receipt", reference: supplierId } });
+    assert.deepEqual((await db.whatsAppMessage.findMany()).map(row => row.kind).sort(), ["invoice", "payment_received", "supplier_payment"]);
+    for (let i = 0; i < 3; i++) {
+      await db.whatsAppSettings.update({ where: { id: 1 }, data: { next_send_at: new Date(0) } });
+      await processWhatsAppQueue();
+    }
+    assert.equal(sends.length, 3);
+    assert.equal(await db.whatsAppMessage.count({ where: { status: "accepted" } }), 3);
+    assert.equal(await db.whatsAppContact.count(), 0);
+  });
+
+  test("a walk-in with no recipient record is sent without an opt-in entry", async () => {
+    await db.whatsAppContact.deleteMany();
+    const job = await queuedInvoice();
+    assert.equal(job.status, "queued"); await processWhatsAppQueue();
+    assert.equal(sends.length, 1);
+  });
+
+  test("legacy connection resets do not block future transaction messages", async () => {
+    for (const source of ["Linked account changed", "WhatsApp account disconnected", "Transport changed; consent must be recorded again"]) {
+      await db.whatsAppContact.update({ where: { phone }, data: { opted_in_at: null, opted_out_at: new Date(), consent_source: source } });
+      const job = await queuedInvoice(); assert.equal(job.status, "queued");
+      await db.whatsAppSettings.update({ where: { id: 1 }, data: { next_send_at: new Date(0) } });
+      await processWhatsAppQueue();
+      assert.equal((await db.whatsAppMessage.findUniqueOrThrow({ where: { id: job.id } })).status, "accepted");
+    }
+    assert.equal(sends.length, 3);
+  });
+
+  test("recipient STOP blocks new notifications until START and never replays cancelled work", async () => {
+    await inbound("STOP");
+    const blocked = await queuedInvoice(); assert.equal(blocked.status, "blocked"); assert.equal(blocked.reason, "Recipient opted out");
+    await processWhatsAppQueue(); assert.equal(sends.length, 0);
+    const contact = await db.whatsAppContact.findUniqueOrThrow({ where: { phone } });
+    await inbound("START", Math.floor(contact.opted_out_at.getTime() / 1000) + 1);
+    const fresh = await queuedInvoice(); await processWhatsAppQueue();
+    assert.equal((await db.whatsAppMessage.findUniqueOrThrow({ where: { id: fresh.id } })).status, "accepted");
+    assert.equal((await db.whatsAppMessage.findUniqueOrThrow({ where: { id: blocked.id } })).status, "blocked");
+    assert.equal(sends.length, 1);
+  });
+
+  test("optional administrator preferences stop and resume a recipient without a source note", async () => {
+    const route = load("app/api/whatsapp/contacts/route.ts");
+    const request = optedIn => new NextRequest("http://localhost/api/whatsapp/contacts", { method: "POST", headers: { cookie: "auth=admin" }, body: JSON.stringify({ phone, name: "Test", optedIn }) });
+    assert.equal((await route.POST(request(false))).status, 200);
+    assert.equal((await queuedInvoice()).status, "blocked");
+    assert.equal((await route.POST(request(true))).status, 200);
+    assert.equal((await queuedInvoice()).status, "queued");
+  });
+
+  test("opt-out during number lookup is checked again immediately before sending", async () => {
+    const job = await queuedInvoice();
+    await worker.processWhatsAppQueue({ ...transport, resolveNumber: async () => {
+      await db.whatsAppContact.update({ where: { phone }, data: { opted_out_at: new Date(), consent_source: "Recipient sent STOP" } });
+      return `${phone}@s.whatsapp.net`;
+    } }, owner);
+    assert.equal(sends.length, 0);
+    assert.equal((await db.whatsAppMessage.findUniqueOrThrow({ where: { id: job.id } })).status, "blocked");
+  });
+
+  test("account changes and disconnect retain explicit recipient opt-outs", async () => {
+    await db.whatsAppContact.update({ where: { phone }, data: { opted_out_at: new Date(), consent_source: "Recipient sent STOP" } });
+    assert.equal(await session.recordConnectionReady(owner, 0, "923001111111@s.whatsapp.net"), true);
+    assert.equal((await db.whatsAppContact.findUniqueOrThrow({ where: { phone } })).consent_source, "Recipient sent STOP");
+    const route = load("app/api/whatsapp/settings/route.ts");
+    await route.DELETE(new NextRequest("http://localhost/api/whatsapp/settings", { method: "DELETE", headers: { cookie: "auth=admin" } }));
+    const contact = await db.whatsAppContact.findUniqueOrThrow({ where: { phone } });
+    assert.ok(contact.opted_out_at); assert.equal(contact.consent_source, "Recipient sent STOP");
+  });
+
+  test("previously held notifications stay held when automatic sending is enabled", async () => {
+    const job = await queuedInvoice();
+    await db.whatsAppMessage.update({ where: { id: job.id }, data: { status: "blocked", reason: "Recipient consent required" } });
+    await processWhatsAppQueue(); assert.equal(sends.length, 0);
+    assert.equal((await db.whatsAppMessage.findUniqueOrThrow({ where: { id: job.id } })).status, "blocked");
   });
 
   test("first paid walk-in invoice and its payment save with automation off and on", async () => {
