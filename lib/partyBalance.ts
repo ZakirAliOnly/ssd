@@ -1,6 +1,6 @@
 import type { Invoice, CashbookEntry } from "@/lib/database.types";
 import type { LedgerRow } from "@/lib/ledger";
-import { isLedgerOnlyEntry, isOpeningBalanceEntry } from "@/lib/paymentMethods";
+import { isLedgerOnlyEntry, isOpeningBalanceEntry } from "@/lib/cashbookEntries";
 
 /** Keep credits and invoices at their stored precision so partial returns
  * neither lose cents nor leave a balance after a full return. */

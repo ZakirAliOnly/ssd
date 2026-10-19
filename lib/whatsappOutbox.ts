@@ -2,7 +2,7 @@ import type { Cashbook, Prisma } from "@prisma/client";
 import { buildInvoiceShareWhatsAppMessage, buildPaymentReceivedWhatsAppMessage, buildSupplierPaymentWhatsAppMessage } from "@/lib/whatsappWaMe";
 import { normalizeWhatsAppPhone, type WhatsAppEvent } from "@/lib/whatsappPolicy";
 import { computePartySignedBalance } from "@/lib/partyBalance";
-import { isLedgerOnlyEntry } from "@/lib/paymentMethods";
+import { isLedgerOnlyEntry } from "@/lib/cashbookEntries";
 import type { Invoice, CashbookEntry } from "@/lib/database.types";
 
 type Tx = Prisma.TransactionClient;
