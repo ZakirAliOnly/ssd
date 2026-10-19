@@ -60,13 +60,15 @@ export default function DeliveryChallanPage() {
   const docRef = useRef<HTMLDivElement>(null);
   const loadVersion = useRef(0);
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [loadingList, setLoadingList] = useState(true);
+  const [loadingList, setLoadingList] = useState(false);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
   const [invoices, setInvoices] = useState<InvoicePick[]>([]);
   const [invoiceId, setInvoiceId] = useState("");
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState<InvoicePick | null>(null);
   const [listError, setListError] = useState("");
+  const searchVersion = useRef(0);
+  const [searched, setSearched] = useState(false);
 
   const [headerParty, setHeaderParty] = useState("");
   const [challanDate, setChallanDate] = useState("");
@@ -82,32 +84,48 @@ export default function DeliveryChallanPage() {
     if (requestedInvoice) setInvoiceId(requestedInvoice);
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    const timer = setTimeout(async () => {
-      setLoadingList(true);
-      setListError("");
-      let query = db.from("invoices")
-        .select("id, invoice_number, client_name, client_phone, invoice_date, job_notes")
-        .order("created_at", { ascending: false })
-        .limit(300);
-      const search = invoiceSearch.trim();
-      if (search) query = query.ilike("invoice_number", search);
-      const { data, error } = await Promise.resolve(query).catch(() => ({
-        data: null,
-        error: { message: "Check your connection and try searching again." },
-      }));
-      if (!active) return;
-      setLoadingList(false);
-      if (error) {
-        setInvoices([]);
-        setListError(error.message);
-        return;
-      }
-      setInvoices((data ?? []) as InvoicePick[]);
-    }, invoiceSearch.trim() ? 300 : 0);
-    return () => { active = false; clearTimeout(timer); };
-  }, [invoiceSearch]);
+  function chooseInvoice(invoice: InvoicePick) {
+    searchVersion.current++;
+    setLoadingList(false);
+    setInvoices([]);
+    setListError("");
+    setSearched(false);
+    setInvoiceSearch(invoice.invoice_number);
+    if (invoiceId === invoice.id) void loadInvoice(invoice.id);
+    else setInvoiceId(invoice.id);
+  }
+
+  async function openByNumber() {
+    const search = invoiceSearch.trim();
+    if (!search) return;
+    const version = ++searchVersion.current;
+    setLoadingList(true);
+    setListError("");
+    setInvoices([]);
+    setSearched(true);
+    const query = () => db.from("invoices")
+      .select("id, invoice_number, client_name, client_phone, invoice_date, job_notes");
+    try {
+      // Look up an exact number first so older invoices cannot be hidden by a result cap.
+      const exact = await query().eq("invoice_number", search).limit(2);
+      if (exact.error) throw new Error(exact.error.message);
+      if (version !== searchVersion.current) return;
+      if (exact.data?.length === 1) { chooseInvoice(exact.data[0] as InvoicePick); return; }
+      const result = await query().ilike("invoice_number", search)
+        .order("created_at", { ascending: false }).limit(50);
+      if (result.error) throw new Error(result.error.message);
+      if (version !== searchVersion.current) return;
+      const matches = (result.data ?? []) as InvoicePick[];
+      const fullMatches = matches.filter(invoice => invoice.invoice_number.toLowerCase() === search.toLowerCase());
+      if (fullMatches.length === 1) chooseInvoice(fullMatches[0]);
+      else if (matches.length === 1) chooseInvoice(matches[0]);
+      else setInvoices(matches);
+    } catch (error) {
+      if (version === searchVersion.current) setListError(error instanceof Error ? error.message : "Check your connection and try again.");
+    } finally {
+      if (version === searchVersion.current) setLoadingList(false);
+    }
+  }
 
   const loadInvoice = useCallback(async (id: string) => {
     const version = ++loadVersion.current;
@@ -125,6 +143,7 @@ export default function DeliveryChallanPage() {
       return;
     }
     setLoadingInvoice(true);
+    setSelectedInvoice(null);
     try {
       const { data: inv, error: invErr } = await db.from("invoices").select("*").eq("id", id).single();
       if (invErr || !inv) {
@@ -289,50 +308,44 @@ export default function DeliveryChallanPage() {
         </div>
 
         <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-5 mb-5" style={{ boxShadow: "var(--shadow-sm)" }}>
-          <label className="flex flex-col gap-1.5 max-w-xl mb-3">
-            <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--blue-deeper)" }}>
-              Search by invoice number
-            </span>
-            <input
-              type="search"
-              value={invoiceSearch}
-              onChange={(e) => { setInvoiceSearch(e.target.value); setLoadingList(true); }}
-              placeholder="Enter full or partial invoice number"
-              aria-describedby="invoice-search-status"
-              className="border-[1.5px] rounded-[9px] px-3 py-2.5 text-[13px] outline-none"
-              style={{ borderColor: "var(--gray-200)", color: "var(--gray-900)" }}
-            />
-          </label>
-          <p id="invoice-search-status" role="status" className="text-xs mb-3" style={{ color: "var(--gray-600)" }}>
-            {loadingList ? "Searching invoices…" : listError ? `Could not load invoices: ${listError}` : invoices.length === 0
-              ? "No invoices found. Try another invoice number."
-              : invoices.length === 300 ? "Showing the latest 300 matches. Enter more of the invoice number to narrow the results."
-              : `${invoices.length} invoice${invoices.length === 1 ? "" : "s"} found. Select one below.`}
+          <form onSubmit={event => { event.preventDefault(); void openByNumber(); }} className="max-w-2xl">
+            <label htmlFor="challan-invoice-number" className="block text-xs font-bold mb-2" style={{ color: "var(--blue-deeper)" }}>Invoice number</label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input id="challan-invoice-number" type="search" value={invoiceSearch}
+                onChange={event => {
+                  searchVersion.current++;
+                  setInvoiceSearch(event.target.value);
+                  setLoadingList(false); setInvoices([]); setListError(""); setSearched(false);
+                }}
+                placeholder="Enter invoice number" autoComplete="off" enterKeyHint="go"
+                aria-describedby="invoice-search-status"
+                className="min-w-0 flex-1 border-[1.5px] rounded-[9px] px-3 py-2.5 text-sm focus:outline-2 focus:outline-sky-700"
+                style={{ borderColor: "var(--gray-200)", color: "var(--gray-900)" }} />
+              <button type="submit" disabled={!invoiceSearch.trim() || loadingList || loadingInvoice}
+                className="rounded-[9px] px-4 py-2.5 text-sm font-semibold bg-sky-800 text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2">
+                {loadingList ? <Loader2 size={16} className="animate-spin" /> : <ClipboardList size={16} />}
+                {loadingList ? "Finding invoice…" : "Open delivery challan"}
+              </button>
+            </div>
+          </form>
+          <p id="invoice-search-status" role="status" className="text-xs mt-2" style={{ color: "var(--gray-600)" }}>
+            {loadingList ? "Finding your invoice…" : listError ? `Could not open invoice: ${listError}` : searched
+              ? invoices.length === 0 ? "No invoice found. Check the number and try again."
+                : invoices.length === 50 ? "Several invoices match. Choose one below or enter the full invoice number (showing 50)."
+                  : `${invoices.length} invoices match. Choose the invoice to open.`
+              : "Type an invoice number and press Enter to open its delivery challan."}
           </p>
-          <label className="flex flex-col gap-1.5 max-w-xl">
-            <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--blue-deeper)" }}>
-              Invoice
-            </span>
-            <select
-              value={invoiceId}
-              onChange={(e) => setInvoiceId(e.target.value)}
-              disabled={loadingList}
-              className="border-[1.5px] rounded-[9px] px-3 py-2.5 text-[13px] outline-none cursor-pointer"
-              style={{ borderColor: "var(--gray-200)", color: "var(--gray-900)" }}
-            >
-              <option value="">— Select invoice —</option>
-              {selectedInvoice && selectedInvoice.id === invoiceId && !invoices.some(inv => inv.id === invoiceId) && (
-                <option value={selectedInvoice.id}>
-                  {selectedInvoice.invoice_number} — {selectedInvoice.client_name} (selected)
-                </option>
-              )}
-              {invoices.map((inv) => (
-                <option key={inv.id} value={inv.id}>
-                  {inv.invoice_number} — {inv.client_name} ({formatDate(inv.invoice_date)})
-                </option>
-              ))}
-            </select>
-          </label>
+          {invoices.length > 0 && <ul aria-label="Matching invoices" className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-200">
+            {invoices.map(invoice => <li key={invoice.id}>
+              <button type="button" onClick={() => chooseInvoice(invoice)} className="w-full text-left p-3 hover:bg-sky-50 focus:bg-sky-50 focus:outline-2 focus:outline-sky-700">
+                <span className="font-semibold text-sky-900">{invoice.invoice_number}</span>
+                <span className="block text-xs text-gray-600 mt-1">{invoice.client_name} · {formatDate(invoice.invoice_date)}</span>
+              </button>
+            </li>)}
+          </ul>}
+          {selectedInvoice && !loadingInvoice && <p className="mt-3 text-sm text-sky-900">
+            Open challan: <strong>{selectedInvoice.invoice_number}</strong> · {selectedInvoice.client_name}
+          </p>}
           {loadingInvoice && (
             <p className="text-[12px] mt-2 flex items-center gap-2" style={{ color: "var(--gray-600)" }}>
               <Loader2 size={14} className="animate-spin" /> Loading line items…
@@ -340,7 +353,7 @@ export default function DeliveryChallanPage() {
           )}
         </div>
 
-        {invoiceId && !loadingInvoice && (
+        {invoiceId && selectedInvoice && !loadingInvoice && (
           <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-5 mb-5" style={{ boxShadow: "var(--shadow-sm)" }}>
             <h2 className="text-sm font-bold mb-3" style={{ color: "var(--gray-900)" }}>Products to deliver</h2>
             {printRows.length ? (
@@ -360,7 +373,7 @@ export default function DeliveryChallanPage() {
           </div>
         )}
 
-        {invoiceId ? (
+        {invoiceId && selectedInvoice && !loadingInvoice ? (
           <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-5 space-y-4 mb-5" style={{ boxShadow: "var(--shadow-sm)" }}>
             <p className="text-[11px] font-bold uppercase tracking-wide m-0" style={{ color: "var(--gray-800)" }}>
               Edit challan header (optional)
