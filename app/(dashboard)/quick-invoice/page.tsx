@@ -21,6 +21,7 @@ import { createExpense } from "@/lib/expenses";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/UserContext";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { invoiceProductOption } from "@/lib/productOptions";
 import { confirmDialog } from "@/components/ConfirmModal";
 import { logActivity } from "@/lib/activityLog";
 import { ProductCreateModal } from "@/components/ProductCreateModal";
@@ -1780,7 +1781,7 @@ function WalkInInvoiceModal({
                     <SearchableSelect
                       value={item.productId ?? products.find((p) => p.name === item.product)?.id ?? ""}
                       onChange={(v) => updateItem(idx, "productId", v)}
-                      options={products.map((p) => ({ value: p.id, searchText: `${p.name} ${p.code ?? ""}`, label: p.name }))}
+                      options={products.map(invoiceProductOption)}
                       maxResults={10}
                       placeholder="— Product —"
                       inputClassName={sm}

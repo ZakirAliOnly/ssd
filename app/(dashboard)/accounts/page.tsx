@@ -29,6 +29,7 @@ import {
 } from "@/lib/whatsappWaMe";
 import { useUser } from "@/lib/UserContext";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { invoiceProductOption } from "@/lib/productOptions";
 import { confirmDialog } from "@/components/ConfirmModal";
 import { logActivity } from "@/lib/activityLog";
 import { ProductCreateModal } from "@/components/ProductCreateModal";
@@ -2018,7 +2019,7 @@ export default function AccountsPage() {
                             value={item.productId ?? invProducts.find((p) => p.name === item.product)?.id ?? ""}
                             onChange={(v) => updateInvItem(idx, "productId", v)}
                             maxResults={10}
-                            options={invProducts.map((p) => ({ value: p.id, searchText: `${p.name} ${p.code ?? ""}`, label: p.name }))}
+                            options={invProducts.map(invoiceProductOption)}
                             placeholder="— Product —"
                             inputClassName="border border-[var(--gray-200)] rounded-[6px] px-2 py-1.5 text-[12px] outline-none bg-white focus:border-[var(--blue)] w-full"
                             onCreate={(q) => setProductCreate({ idx, initialName: q })}

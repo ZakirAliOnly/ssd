@@ -31,6 +31,7 @@ import { confirmDialog } from "@/components/ConfirmModal";
 import { logActivity } from "@/lib/activityLog";
 import { buildSupplierPaymentWhatsAppMessage, openWhatsAppNewTab } from "@/lib/whatsappWaMe";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { invoiceProductOption } from "@/lib/productOptions";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PrintFooter } from "@/components/PrintFooter";
 
@@ -2104,10 +2105,10 @@ function PoModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, saving]);
 
-  const [products, setProducts] = useState<{ id: string; code: string | null; name: string; cost_price: number; expiry_date: string | null }[]>([]);
+  const [products, setProducts] = useState<{ id: string; code: string | null; name: string; description: string | null; cost_price: number; expiry_date: string | null }[]>([]);
   useEffect(() => {
     let active = true;
-    void db.from("products").select("id, code, name, cost_price, expiry_date").order("name").then(({ data, error }) => {
+    void db.from("products").select("id, code, name, description, cost_price, expiry_date").order("name").then(({ data, error }) => {
       if (!active) return;
       if (error) { showToast(error.message, "err"); return; }
       setProducts(data ?? []);
@@ -2320,7 +2321,7 @@ function PoModal({
                             value={it.productId ?? it.description}
                             onChange={(value) => selectProduct(idx, value)}
                             options={[
-                              ...products.map(p => ({ value: p.id, label: `${p.code ? `#${p.code} - ` : ""}${p.name}` })),
+                              ...products.map(invoiceProductOption),
                               ...(!it.productId && it.description ? [{ value: it.description, label: it.description }] : []),
                               ...(it.productId && !products.some(p => p.id === it.productId) ? [{ value: it.productId, label: it.description }] : []),
                             ]}
