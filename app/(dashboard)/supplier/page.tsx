@@ -1,5 +1,6 @@
 "use client";
 
+import { hasWhatsAppAutomation } from "@/lib/whatsappAutomation";
 import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { db, savePurchase } from "@/lib/db";
 import { showToast } from "@/components/Toast";
@@ -813,7 +814,9 @@ export default function SupplierPage() {
         description: spDesc.trim() || undefined,
         remainingPayable,
       });
-      if (!openWhatsAppNewTab(paySupplierTarget.phone || "", waMsg)) {
+      if (await hasWhatsAppAutomation("supplier_payment")) {
+        showToast("Payment saved. Automatic WhatsApp receipt added to the queue for consent and delivery checks.", "ok");
+      } else if (!openWhatsAppNewTab(paySupplierTarget.phone || "", waMsg)) {
         showToast("Payment saved. Add supplier phone to open WhatsApp notification.", "info");
       }
       closePaySupplierModal();
@@ -1034,7 +1037,9 @@ export default function SupplierPage() {
               description: `Advance/paid amount for PO ${assignedPoNumber}`,
               remainingPayable: Math.max(0, balanceDue),
             });
-            if (!openWhatsAppNewTab(sup.phone || "", waMsg)) {
+            if (await hasWhatsAppAutomation("supplier_payment")) {
+              showToast("Payment saved. Automatic WhatsApp receipt added to the queue for consent and delivery checks.", "ok");
+            } else if (!openWhatsAppNewTab(sup.phone || "", waMsg)) {
               showToast("PO saved. Add supplier phone to send WhatsApp payment notice.", "info");
             }
           }

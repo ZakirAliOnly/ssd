@@ -75,7 +75,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="min-h-screen" style={{ background: "var(--bg)" }}>
         <TopNav />
         <main className="pt-[var(--header-h)] min-h-screen">
-          <div className="p-6 lg:p-8 pb-14">
+          <div className="p-3 sm:p-6 lg:p-8 pb-16">
             {children}
           </div>
         </main>

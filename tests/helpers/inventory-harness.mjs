@@ -109,6 +109,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
       },
       async upsert({ where, create, update }) { return await api.findUnique({ where }) ? api.update({ where, data: update }) : api.create({ data: create }); },
       async createMany({ data }) { for (const row of data) await api.create({ data: row }); },
+      async createManyAndReturn({ data }) { return Promise.all(data.map(row => api.create({ data: row }))); },
       async delete({ where }) { const row = await api.findUniqueOrThrow({ where }); await api.deleteMany({ where }); return row; },
       async deleteMany({ where }) {
         const rows = state[key].filter(row => matches(row, where));
@@ -139,6 +140,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
   const module = { exports: {} };
   const dependencies = {
     "@/lib/partyInvoiceSettlement": partyInvoiceSettlement,
+    "@/lib/whatsappOutbox": { enqueueInvoice: async () => {}, enqueuePayment: async () => {} },
     "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
     "@/lib/prisma": { prisma }, "@/lib/auth": { COOKIE_NAME: "auth", verifyToken: async () => ({ sub: randomUUID(), email: "test@example.com", full_name: "Test" }) },
     "@/lib/inventory": inventory, "@/lib/productValidation": productValidation, "@/lib/moduleAccess": moduleAccess,
