@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { forbiddenWhatsApp, whatsappUser, whatsAppError } from "@/lib/whatsappApi";
 
 export async function POST(req: NextRequest) {
-  if (!await whatsappUser(req)) return forbiddenWhatsApp();
+  if (!await whatsappUser(req)) return forbiddenWhatsApp(req);
   const { id, action } = await req.json();
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id) || !["retry", "cancel"].includes(action)) return whatsAppError("Invalid queue action.");
   // Unknown/processing outcomes are intentionally never retried: WhatsApp may have
