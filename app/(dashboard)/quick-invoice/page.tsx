@@ -188,7 +188,6 @@ export default function InvoicePage() {
   const router = useRouter();
   const { methods: paymentMethods } = usePaymentMethods();
   const [products, setProducts] = useState<InvoiceProduct[]>([]);
-  const [nextNum, setNextNum] = useState(1);
   const [savedInvoices, setSavedInvoices] = useState<SavedInvoice[]>([]);
   const [allAccounts, setAllAccounts] = useState<{ id: string; name: string; category: string }[]>([]);
   const [draft, setDraft] = useState<WalkInDraft | null>(null);
@@ -340,21 +339,6 @@ export default function InvoicePage() {
     void refreshWalkInStats();
   }
 
-  const refreshCount = useCallback(async () => {
-    const [{ data: qiData }, { data: invData }] = await Promise.all([
-      db.from("quick_invoices").select("invoice_number").order("created_at", { ascending: false }).limit(1),
-      db.from("invoices").select("invoice_number").order("created_at", { ascending: false }).limit(1),
-    ]);
-    let maxNum = 0;
-    [qiData?.[0], invData?.[0]].forEach((row) => {
-      if (row?.invoice_number) {
-        const m = (row.invoice_number as string).match(/(\d+)$/);
-        if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
-      }
-    });
-    setNextNum(maxNum + 1);
-  }, []);
-
   const fetchProducts = useCallback(async () => {
     const { data } = await db.from("products").select("id, code, name, sale_price, description, pricing_type, expiry_date, quantity, product_categories(name)");
     if (data) {
@@ -373,11 +357,10 @@ export default function InvoicePage() {
   }, []);
 
   useEffect(() => {
-    refreshCount();
     fetchSaved();
     void refreshWalkInStats();
     void fetchProducts();
-  }, [refreshCount, fetchSaved, refreshWalkInStats, fetchProducts]);
+  }, [fetchSaved, refreshWalkInStats, fetchProducts]);
 
   // ── Inline product-create modal state (triggered from product picker rows) ──
   const [productCreate, setProductCreate] = useState<{ idx: number; initialName: string } | null>(null);
@@ -440,7 +423,7 @@ export default function InvoicePage() {
   function openModal() {
     void fetchProducts();
     setDraft({
-      invoiceNumber: `SSD${String(nextNum).padStart(3, "0")}`,
+      invoiceNumber: "",
       clientName: "",
       clientPhone: "",
       description: "",
@@ -618,12 +601,8 @@ export default function InvoicePage() {
           );
         }
       } else {
-        // Save the invoice, canonical items, and stock together — the server assigns invoice_number atomically
-        // (with retry on collision), so this is the single source of truth for
-        // the number. Whatever `inv.invoiceNumber` shows on screen is only a
-        // preview; the confirmed number below is what actually gets saved.
+        // Assign the number only when the server saves the invoice and stock.
         const { data: invData, error: invErr } = await saveInvoice({
-            invoice_number: inv.invoiceNumber,
             client_name: clientName,
             client_phone: inv.clientPhone.trim(),
             invoice_date: today,
@@ -724,7 +703,6 @@ export default function InvoicePage() {
       setDraft(null);
       setSaving(false);
       void fetchProducts();
-      refreshCount();
       fetchSaved();
       void refreshWalkInStats();
       if (goToExpense) router.push("/expense");
@@ -803,7 +781,7 @@ export default function InvoicePage() {
     const { subtotal, grandTotal, amountReceived, balanceDue, paymentStatus } = computeWalkInPayment(d);
     return {
       invoice: {
-        invoice_number: d.invoiceNumber,
+        invoice_number: d.invoiceNumber || "Draft (unsaved)",
         client_name: clientName,
         client_phone: d.clientPhone.trim(),
         invoice_date: todayISO(),
@@ -1020,7 +998,6 @@ export default function InvoicePage() {
       showToast("Invoice deleted", "ok");
       void fetchProducts();
       void fetchSaved();
-      void refreshCount();
       void refreshWalkInStats();
     } finally {
       setDeletingId(null);
@@ -1121,7 +1098,7 @@ export default function InvoicePage() {
       a.href = url;
       const safe = (s: string) => s.replace(/[/\\?%*:|"<>]/g, "-").trim();
       const draftParty = safe(draft.clientName.trim() || "Customer");
-      const draftNum = safe(draft.invoiceNumber);
+      const draftNum = safe(draft.invoiceNumber || "Draft");
       const draftDate = safe(todayISO());
       a.download = `${draftParty} - ${draftNum} - ${draftDate}.pdf`;
       document.body.appendChild(a);
@@ -1694,7 +1671,7 @@ function WalkInInvoiceModal({
             <h2 className="text-[15px] font-extrabold text-white tracking-tight">
               {draft.editingInvoiceId ? "Edit invoice" : "New walk-in invoice"}
             </h2>
-            <p className="text-[11px] text-white/75 mt-0.5 font-mono font-bold">{draft.invoiceNumber}</p>
+            <p className="text-[11px] text-white/75 mt-0.5 font-mono font-bold">{draft.invoiceNumber || "Number assigned on save"}</p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <button

@@ -121,7 +121,7 @@ export default function AccountsPage() {
   const [invoiceAccount, setInvoiceAccount] = useState<Account | null>(null);
   const [invItems, setInvItems] = useState<InvItem[]>([blankInvItem()]);
   const [invProducts, setInvProducts] = useState<{ id: string; code: string | null; name: string; sale_price: number; description: string | null; pricing_type?: string | null; expiry_date?: string | null; quantity?: number; product_categories?: { name: string } | null }[]>([]);
-  const [invNextNum, setInvNextNum] = useState("SSD001");
+  const [invNextNum, setInvNextNum] = useState("");
   const [invSaving, setInvSaving] = useState(false);
   const [invAmountPaid, setInvAmountPaid] = useState("");
   const [invPayMethod, setInvPayMethod] = useState<PaymentMethod>("Cash");
@@ -257,23 +257,7 @@ export default function AccountsPage() {
   useEffect(() => {
     fetchData();
     void fetchInvProducts();
-    refreshInvNum();
   }, [fetchData, fetchInvProducts]);
-
-  async function refreshInvNum() {
-    const [{ data: qiData }, { data: invData }] = await Promise.all([
-      db.from("quick_invoices").select("invoice_number").order("created_at", { ascending: false }).limit(1),
-      db.from("invoices").select("invoice_number").order("created_at", { ascending: false }).limit(1),
-    ]);
-    let maxNum = 0;
-    [qiData?.[0], invData?.[0]].forEach((row) => {
-      if (row?.invoice_number) {
-        const m = (row.invoice_number as string).match(/(\d+)$/);
-        if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
-      }
-    });
-    setInvNextNum(`SSD${String(maxNum + 1).padStart(3, "0")}`);
-  }
 
   const filtered = accounts.filter((a) => {
     const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase());
@@ -514,9 +498,9 @@ export default function AccountsPage() {
     setInvSalesTaxPct("");
     setInvBraPct("");
     setEditingInvoiceId(null);
+    setInvNextNum("");
     setEditingInvoiceOldBalanceDue(0);
     setEditingInvoiceOldAmountReceived(0);
-    refreshInvNum();
     setShowInvoiceModal(true);
   }
 
@@ -1016,9 +1000,8 @@ export default function AccountsPage() {
       // Save the invoice, canonical items, and stock together — the server assigns invoice_number atomically
       // (with retry on collision, see createInvoiceWithUniqueNumber in
       // app/api/db/route.ts), so this is the single source of truth for the
-      // number. `invNextNum` on screen is only a preview before this resolves.
+      // number, assigned only when saving succeeds.
       const { data: invData, error: invErr } = await saveInvoice({
-        invoice_number: invNextNum,
         client_name: invoiceAccount.name,
         invoice_date: today,
         subtotal,
@@ -1139,7 +1122,6 @@ export default function AccountsPage() {
         closeInvoiceModal();
         setInvSaving(false);
         fetchData();
-        refreshInvNum();
         // Give React one tick to render the template, then print
         await new Promise((r) => setTimeout(r, 150));
         await printViewingInvoice();
@@ -1148,7 +1130,6 @@ export default function AccountsPage() {
         closeInvoiceModal();
         setInvSaving(false);
         fetchData();
-        refreshInvNum();
       }
 
       if (printType === "challan" && invData) {
@@ -1959,7 +1940,7 @@ export default function AccountsPage() {
               style={{ background: "linear-gradient(90deg, var(--blue-deeper), var(--blue-dark))" }}>
               <div>
                 <h2 className="text-[15px] font-bold text-white">{editingInvoiceId ? "Edit Invoice" : "New Invoice"}</h2>
-                <p className="text-[11px] mt-0.5 text-white/60">{invoiceAccount.name} — {invNextNum}</p>
+                <p className="text-[11px] mt-0.5 text-white/60">{invoiceAccount.name} — {invNextNum || "Number assigned on save"}</p>
               </div>
               <button onClick={closeInvoiceModal}
                 className="w-7 h-7 rounded-full flex items-center justify-center border-none cursor-pointer"
@@ -2350,7 +2331,7 @@ export default function AccountsPage() {
                 <button onClick={() => void handleSaveInvoice()} disabled={invSaving}
                   className="inline-flex items-center gap-1.5 px-5 py-2 rounded-[9px] text-[12.5px] font-semibold border-none cursor-pointer text-white disabled:opacity-60"
                   style={{ background: "linear-gradient(135deg, var(--blue-deeper), var(--blue))", boxShadow: "0 2px 10px rgba(2,132,199,.28)" }}>
-                  <FileText size={13} /> {invSaving ? "Saving…" : editingInvoiceId ? `Update Invoice ${invNextNum}` : `Save Invoice ${invNextNum}`}
+                  <FileText size={13} /> {invSaving ? "Saving…" : editingInvoiceId ? `Update Invoice ${invNextNum}` : "Save Invoice"}
                 </button>
                 </div>
               </div>

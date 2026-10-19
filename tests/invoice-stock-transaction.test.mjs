@@ -120,3 +120,18 @@ test("repeated saves and deletions never double-deduct or double-restore", async
   assert.equal(h.state().products[0].quantity, 10);
   assert.equal(h.state().invoices.length, 0);
 });
+
+
+test("invoice numbers are assigned on save, shared across invoice types, and preserved on edit", async () => {
+  const h = harness();
+  const save = (data, invoiceId) => h.call({ table: "invoices", operation: "save_invoice", data, items: [{ qty: 1, rate: 10, amount: 10 }], ...(invoiceId ? { invoiceId } : {}) });
+  const first = await save({ client_name: "Walk-in", is_walk_in: true, invoice_number: "SSD999" });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.data.invoice_number, "SSD001");
+  const second = await save({ client_name: "Party", is_walk_in: false, invoice_number: "SSD999" });
+  assert.equal(second.status, 200);
+  assert.equal(second.body.data.invoice_number, "SSD002");
+  const edited = await save({ client_name: "Updated", invoice_number: "SSD999" }, first.body.data.id);
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.data.invoice_number, "SSD001");
+});

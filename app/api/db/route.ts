@@ -262,17 +262,16 @@ async function createPurchaseOrderWithUniquePoNumber(
   throw lastErr ?? new Error("Failed to assign unique po_number after retries");
 }
 
-// Atomically assign the next sequential invoice_number ("SSD0xx") on insert.
-// The client must not send invoice_number — whatever it sends is discarded.
-// Walk-in and party invoices share ONE number sequence spread across both the
-// `invoices` and `quick_invoices` tables, so max(suffix)+1 is computed across
-// both. Retries on P2002 if a concurrent insert (from another tab/user) beat
-// us to that number — this is what actually fixes the race that let two
-// invoices collide on the same client-computed number.
+// Assign a shared walk-in/party number inside the save transaction. The
+// transaction lock serializes allocation across users and server instances.
 async function createInvoiceWithUniqueNumber(
   data: Record<string, unknown>,
-  client: Prisma.TransactionClient = prisma,
+  client?: Prisma.TransactionClient,
 ): Promise<{ id: string } & Record<string, unknown>> {
+  if (!client) {
+    return prisma.$transaction(tx => createInvoiceWithUniqueNumber(data, tx), { timeout: 15000 });
+  }
+  await client.$queryRawUnsafe("SELECT pg_advisory_xact_lock(734821, 1)::text");
   const stripped = { ...data };
   delete stripped.invoice_number;
 
@@ -483,6 +482,8 @@ export async function POST(req: NextRequest) {
       if (body.invoiceId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.invoiceId)) throw new InventoryError("Invalid invoice ID.");
       const items = invoiceStockLines(body.items);
       const header = coerceDates(data, "invoices");
+      // Assigned invoice numbers remain unchanged on edit.
+      delete header.invoice_number;
       if ("items" in header || "id" in header) throw new InventoryError("Invalid invoice fields.");
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
