@@ -815,7 +815,7 @@ export default function SupplierPage() {
         remainingPayable,
       });
       if (await hasWhatsAppAutomation("supplier_payment")) {
-        showToast("Payment saved. Automatic WhatsApp receipt added to the queue for consent and delivery checks.", "ok");
+        showToast("Payment saved. Automatic WhatsApp receipt added to the queue for delivery checks.", "ok");
       } else if (!openWhatsAppNewTab(paySupplierTarget.phone || "", waMsg)) {
         showToast("Payment saved. Add supplier phone to open WhatsApp notification.", "info");
       }
@@ -1038,7 +1038,7 @@ export default function SupplierPage() {
               remainingPayable: Math.max(0, balanceDue),
             });
             if (await hasWhatsAppAutomation("supplier_payment")) {
-              showToast("Payment saved. Automatic WhatsApp receipt added to the queue for consent and delivery checks.", "ok");
+              showToast("Payment saved. Automatic WhatsApp receipt added to the queue for delivery checks.", "ok");
             } else if (!openWhatsAppNewTab(sup.phone || "", waMsg)) {
               showToast("PO saved. Add supplier phone to send WhatsApp payment notice.", "info");
             }

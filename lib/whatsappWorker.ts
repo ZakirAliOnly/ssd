@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { MAX_ATTEMPTS, MIN_SEND_DELAY_SECONDS, retryDelaySeconds } from "@/lib/whatsappPolicy";
+import { MAX_ATTEMPTS, MIN_SEND_DELAY_SECONDS, retryDelaySeconds, isWhatsAppRecipientBlocked } from "@/lib/whatsappPolicy";
 
 export type WhatsAppTransport = {
   senderId: string;
@@ -27,7 +27,7 @@ export async function processWhatsAppQueue(transport: WhatsAppTransport, owner: 
     const eventEnabled = job.kind === "invoice" ? settings.invoice_enabled : job.kind === "payment_received" ? settings.received_enabled : settings.supplier_enabled;
     const sourceExists = job.kind === "invoice" ? await tx.invoice.count({ where: { id: job.source_id } }) : await tx.cashbook.count({ where: { id: job.source_id } });
     const reason = job.phone_number_id !== settings.phone_number_id ? "Linked account changed" : !eventEnabled ? "This automation is paused"
-      : !sourceExists ? "Source transaction was deleted" : !contact?.opted_in_at || contact.opted_out_at ? "Recipient consent required"
+      : !sourceExists ? "Source transaction was deleted" : isWhatsAppRecipientBlocked(contact) ? "Recipient opted out"
         : now.getTime() - job.created_at.getTime() > 7 * 86400000 ? "Message is older than seven days; review and send manually" : "";
     if (reason) {
       await tx.whatsAppMessage.update({ where: { id: job.id }, data: { status: "blocked", reason } });
@@ -58,8 +58,8 @@ export async function processWhatsAppQueue(transport: WhatsAppTransport, owner: 
     const stillEnabled = job.kind === "invoice" ? current?.invoice_enabled : job.kind === "payment_received" ? current?.received_enabled : current?.supplier_enabled;
     if (!current?.enabled || !stillEnabled || !current.connection_requested || current.connection_state !== "ready"
       || current.worker_owner !== owner || !current.worker_lease_until || current.worker_lease_until <= new Date()
-      || current.phone_number_id !== transport.senderId || !transport.isReady() || !recipient?.opted_in_at || recipient.opted_out_at) {
-      await update("blocked", "Sending paused, account disconnected, or recipient consent withdrawn");
+      || current.phone_number_id !== transport.senderId || !transport.isReady() || isWhatsAppRecipientBlocked(recipient)) {
+      await update("blocked", "Sending paused, account disconnected, or recipient opted out");
       return { processed: true };
     }
     submitted = true;

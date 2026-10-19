@@ -1310,7 +1310,7 @@ export default function AccountsPage() {
       remainingBalanceSigned: postSigned,
     });
     if (await hasWhatsAppAutomation("payment_received")) {
-      showToast("Payment saved. Automatic WhatsApp receipt added to the queue for consent and delivery checks.", "ok");
+      showToast("Payment saved. Automatic WhatsApp receipt added to the queue for delivery checks.", "ok");
     } else if (!openWhatsAppNewTab(party.whatsapp || party.phone || "", msg)) {
       showToast("Payment saved. Add a valid WhatsApp number on the party to open chat.", "err");
     } else {

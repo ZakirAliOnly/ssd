@@ -1,6 +1,6 @@
 import type { Cashbook, Prisma } from "@prisma/client";
 import { buildInvoiceShareWhatsAppMessage, buildPaymentReceivedWhatsAppMessage, buildSupplierPaymentWhatsAppMessage } from "@/lib/whatsappWaMe";
-import { normalizeWhatsAppPhone, type WhatsAppEvent } from "@/lib/whatsappPolicy";
+import { normalizeWhatsAppPhone, isWhatsAppRecipientBlocked, type WhatsAppEvent } from "@/lib/whatsappPolicy";
 import { computePartySignedBalance } from "@/lib/partyBalance";
 import { isLedgerOnlyEntry } from "@/lib/cashbookEntries";
 import type { Invoice, CashbookEntry } from "@/lib/database.types";
@@ -17,7 +17,7 @@ async function enabled(tx: Tx, kind: WhatsAppEvent) {
 async function enqueue(tx: Tx, input: { kind: WhatsAppEvent; sourceId: string; phone: string; name: string; body: string; sender: string }, refreshPending = false) {
   const phone = normalizeWhatsAppPhone(input.phone);
   const contact = phone ? await tx.whatsAppContact.findUnique({ where: { phone } }) : null;
-  const reason = !phone ? "Missing or invalid recipient number" : !contact?.opted_in_at || contact.opted_out_at ? "Recipient consent required" : "";
+  const reason = !phone ? "Missing or invalid recipient number" : isWhatsAppRecipientBlocked(contact) ? "Recipient opted out" : "";
   const data = { phone: phone ?? "", phone_number_id: input.sender, recipient_name: input.name, body: input.body,
     status: reason ? "blocked" : "queued", reason };
   if (refreshPending) {

@@ -21,3 +21,17 @@ export function consentKeyword(text: string): "stop" | "start" | null {
   if (["start", "subscribe"].includes(word)) return "start";
   return null;
 }
+
+// These old connection resets were not recipient opt-outs. Keep existing
+// installations usable without rewriting history or requiring a migration.
+export const LEGACY_WHATSAPP_RESETS = [
+  "Linked account changed",
+  "WhatsApp account disconnected",
+  "Transport changed; consent must be recorded again",
+] as const;
+
+export function isWhatsAppRecipientBlocked(contact?: {
+  opted_out_at?: unknown; consent_source?: string | null;
+} | null): boolean {
+  return !!contact?.opted_out_at && !LEGACY_WHATSAPP_RESETS.some(source => source === contact.consent_source);
+}

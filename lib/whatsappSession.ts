@@ -34,7 +34,7 @@ export async function recordConnectionReady(owner: string, generation: number, s
       || !settings.worker_lease_until || settings.worker_lease_until <= new Date()) return false;
     if (settings.phone_number_id && settings.phone_number_id !== sender) {
       await tx.whatsAppMessage.updateMany({ where: { status: { in: ["queued", "blocked"] } }, data: { status: "cancelled", reason: "Linked WhatsApp account changed" } });
-      await tx.whatsAppContact.updateMany({ data: { opted_in_at: null, opted_out_at: new Date(), consent_source: "Linked account changed", last_inbound_at: null } });
+      await tx.whatsAppContact.updateMany({ data: { opted_in_at: null, last_inbound_at: null } });
     }
     await tx.whatsAppSettings.update({ where: { id: 1 }, data: { connection_state: "ready", connection_error: "", qr_data: "", qr_expires_at: null,
       phone_number_id: sender, display_phone: sender.split("@")[0].split(":")[0], connected_at: new Date(),
