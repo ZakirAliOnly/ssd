@@ -4,6 +4,6 @@ export function invoiceProductOption(product: { id: string; name: string; code?:
   return {
     value: product.id,
     searchText: product.name + " " + (product.code ?? ""),
-    label: description ? product.name + " ? " + description : product.name,
+    label: description ? product.name + " - " + description : product.name,
   };
 }
