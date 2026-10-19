@@ -13,6 +13,8 @@ export type LedgerRow = {
   method?: string;
   /** Set on invoice rows so consumers can attach the invoice's line items. */
   invoiceId?: string;
+  /** Set only on purchase postings, never supplier payment rows. */
+  purchaseOrderId?: string;
 };
 
 export function ledgerWithRunningBalance(rows: LedgerRow[]): (LedgerRow & { balance: number })[] {
