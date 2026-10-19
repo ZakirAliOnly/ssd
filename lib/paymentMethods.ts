@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/db";
+import { isLedgerOnlyEntry } from "@/lib/cashbookEntries";
+export { isOpeningBalanceEntry, isBalanceAdjustmentEntry, isLedgerOnlyEntry } from "@/lib/cashbookEntries";
 
 /** A payment method as configured by the admin in /payment-methods.
  *  Methods are user-defined now (CR-14); the type is just `string` so consumers
@@ -24,24 +26,6 @@ export function normalizePaymentMethod(raw: string | null | undefined): PaymentM
   if (!s) return DEFAULT_FALLBACK;
   if (s === "Mobile Wallet") return "EasyPaisa";
   return s;
-}
-
-/** Returns true for cashbook entries that represent an opening balance.
- *  These entries exist only for the ledger — they must NOT be counted in Cash in Hand. */
-export function isOpeningBalanceEntry(entry: { description?: string | null }): boolean {
-  return /^opening balance/i.test(entry.description ?? "");
-}
-
-/** Returns true for cashbook entries that represent an account opening-balance adjustment.
- *  These exist only for the ledger audit trail — they must NOT be counted in Cash in Hand. */
-export function isBalanceAdjustmentEntry(entry: { method?: string | null; description?: string | null }): boolean {
-  return (entry.method ?? "").trim().toLowerCase() === "adjustment"
-      || /^balance adjustment/i.test(entry.description ?? "");
-}
-
-/** Cashbook entries that represent ledger-only bookkeeping (not real cash movements). */
-export function isLedgerOnlyEntry(entry: { method?: string | null; description?: string | null }): boolean {
-  return isOpeningBalanceEntry(entry) || isBalanceAdjustmentEntry(entry);
 }
 
 /** Net balance per method:

@@ -18,7 +18,7 @@ const phone = "923001234567";
 const owner = "test-worker";
 const sender = "923009999999@s.whatsapp.net";
 let sends = [], transportError = null, lookupError = null, transportGate = null, registered = true, connected = true;
-const load = tsLoader({ "@/lib/prisma": { prisma: db }, "@/lib/auth": { COOKIE_NAME: "auth", verifyToken: async token => token === "admin" ? { sub: adminId, email: "test@example.invalid", full_name: "Test" } : null } });
+const load = tsLoader({ "@/lib/prisma": { prisma: db }, "@/lib/auth": { COOKIE_NAME: "auth", verifyToken: async token => token === "admin" ? { sub: adminId, email: "test@example.invalid", full_name: "Test" } : null } }, { serverOnly: true });
 const { enqueueInvoice, enqueuePayment } = load("lib/whatsappOutbox.ts");
 const worker = load("lib/whatsappWorker.ts");
 const session = load("lib/whatsappSession.ts");
@@ -73,6 +73,30 @@ describe("WhatsApp connection outbox, session and worker against PostgreSQL", { 
     assert.equal(await db.whatsAppMessage.count(), 1);
     const queued = await db.whatsAppMessage.findFirstOrThrow();
     assert.match(queued.body, /Invoice \*/); assert.match(queued.body, /Rs 500/);
+  });
+
+  test("first paid walk-in invoice and its payment save with automation off and on", async () => {
+    for (const enabled of [false, true]) {
+      await db.whatsAppSettings.update({ where: { id: 1 }, data: { enabled } });
+      const save = await dbRoute.POST(new NextRequest("http://localhost/api/db", { method: "POST", headers: { cookie: "auth=admin" }, body: JSON.stringify({
+        table: "invoices", operation: "save_invoice", data: { client_name: "Walk-in test", client_phone: phone,
+          invoice_date: "2026-10-18", subtotal: 500, grand_total: 500, amount_received: 200, balance_due: 300,
+          is_walk_in: true, payment_status: "Partial", payment_method: "Cash" },
+        items: [{ category: "Service", description: "Walk-in service", qty: 1, rate: 500, amount: 500 }],
+      }) }));
+      const saved = await save.json();
+      assert.equal(saved.error, null);
+      const payment = await dbRoute.POST(new NextRequest("http://localhost/api/db", { method: "POST", headers: { cookie: "auth=admin" }, body: JSON.stringify({
+        table: "cashbook", operation: "insert", data: { type: "in", amount: 200, method: "Cash", date: "2026-10-18",
+          account_name: "Walk-in test", description: `Walk-in invoice ${saved.data.invoice_number}`, reference: saved.data.id },
+      }) }));
+      assert.equal((await payment.json()).error, null);
+      assert.equal(Number((await db.invoice.findUniqueOrThrow({ where: { id: saved.data.id } })).amount_received), 200);
+    }
+    assert.equal(await db.invoice.count(), 2);
+    assert.equal(await db.cashbook.count(), 2);
+    assert.equal(await db.whatsAppMessage.count(), 1);
+    assert.equal(sends.length, 0);
   });
 
   test("business save rolls back its notification if the enclosing transaction fails", async () => {
