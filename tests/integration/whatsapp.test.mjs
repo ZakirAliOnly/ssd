@@ -185,6 +185,51 @@ describe("WhatsApp connection outbox, session and worker against PostgreSQL", { 
     assert.equal((await settingsRoute.PATCH(new NextRequest("http://localhost/api/whatsapp/settings", { method: "PATCH", headers: { cookie: "auth=admin", origin: "https://evil.example" }, body: "{}" }))).status, 403);
   });
 
+  test("an administrator can connect and save settings through the HTTPS Nginx proxy", async () => {
+    const headers = { cookie: "auth=admin", origin: "https://ssd.addsmint.com", host: "ssd.addsmint.com", "x-forwarded-proto": "https", "sec-fetch-site": "same-origin" };
+    await db.whatsAppSettings.update({ where: { id: 1 }, data: { connection_state: "disconnected", connection_requested: false } });
+    const response = await load("app/api/whatsapp/connect/route.ts").POST(new NextRequest("http://localhost:3000/api/whatsapp/connect", { method: "POST", headers }));
+    assert.equal(response.status, 200);
+    assert.equal((await db.whatsAppSettings.findUniqueOrThrow({ where: { id: 1 } })).connection_state, "starting");
+    const saved = await load("app/api/whatsapp/settings/route.ts").PATCH(new NextRequest("http://localhost:3000/api/whatsapp/settings", {
+      method: "PATCH", headers, body: JSON.stringify({ enabled: false, invoice: true, received: true, supplier: true, delaySeconds: 20 }),
+    }));
+    assert.equal(saved.status, 200);
+    assert.equal((await db.whatsAppSettings.findUniqueOrThrow({ where: { id: 1 } })).delay_seconds, 20);
+  });
+
+  test("proxy origin validation rejects foreign origins and forged forwarded hosts", async () => {
+    const route = load("app/api/whatsapp/connect/route.ts");
+    const headers = { cookie: "auth=admin", host: "ssd.addsmint.com", "x-forwarded-proto": "https" };
+    for (const extra of [
+      { origin: "https://evil.example" },
+      { origin: "https://evil.example", "x-forwarded-host": "evil.example" },
+      { origin: "https://ssd.addsmint.com", "sec-fetch-site": "cross-site" },
+      { origin: "http://ssd.addsmint.com" },
+      { origin: "https://ssd.addsmint.com:444" },
+      { origin: "https://ssd.addsmint.com", "x-forwarded-proto": "https,http" },
+      { origin: "https://ssd.addsmint.com", host: "ssd.addsmint.com/evil" },
+    ]) {
+      const response = await route.POST(new NextRequest("http://localhost:3000/api/whatsapp/connect", { method: "POST", headers: { ...headers, ...extra } }));
+      assert.equal(response.status, 403);
+      assert.match((await response.json()).error, /origin/);
+    }
+    assert.equal((await route.POST(new NextRequest("http://localhost:3000/api/whatsapp/connect", { method: "POST", headers: { ...headers, origin: "https://ssd.addsmint.com", "x-forwarded-host": "ignored.example" } }))).status, 200);
+  });
+
+  test("proxy support does not grant administrator rights to sub-users or inactive accounts", async () => {
+    const route = load("app/api/whatsapp/connect/route.ts");
+    const headers = { cookie: "auth=admin", origin: "https://ssd.addsmint.com", host: "ssd.addsmint.com", "x-forwarded-proto": "https" };
+    try {
+      for (const data of [{ role: "sub_user", is_active: true }, { role: "super_admin", is_active: false }]) {
+        await db.user.update({ where: { id: adminId }, data });
+        const response = await route.POST(new NextRequest("http://localhost:3000/api/whatsapp/connect", { method: "POST", headers }));
+        assert.equal(response.status, 403);
+        assert.match((await response.json()).error, /Administrator/);
+      }
+    } finally { await db.user.update({ where: { id: adminId }, data: { role: "super_admin", is_active: true } }); }
+  });
+
   test("connection acknowledgements do not regress read to sent or failed", async () => {
     const job = await queuedInvoice(); await processWhatsAppQueue();
     const accepted = await db.whatsAppMessage.findUniqueOrThrow({ where: { id: job.id } });

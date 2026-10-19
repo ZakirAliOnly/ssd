@@ -4,7 +4,7 @@ import { forbiddenWhatsApp, whatsappUser, whatsAppError } from "@/lib/whatsappAp
 import { MIN_SEND_DELAY_SECONDS } from "@/lib/whatsappPolicy";
 
 export async function GET(req: NextRequest) {
-  if (!await whatsappUser(req)) return forbiddenWhatsApp();
+  if (!await whatsappUser(req)) return forbiddenWhatsApp(req);
   const settings = await prisma.whatsAppSettings.findUnique({ where: { id: 1 } });
   const workerRunning = !!settings?.worker_lease_until && settings.worker_lease_until > new Date();
   const messages = await prisma.whatsAppMessage.findMany({ orderBy: { created_at: "desc" }, take: 100 });
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!await whatsappUser(req)) return forbiddenWhatsApp();
+  if (!await whatsappUser(req)) return forbiddenWhatsApp(req);
   const { enabled, invoice, received, supplier, delaySeconds } = await req.json();
   if (![enabled, invoice, received, supplier].every(value => typeof value === "boolean")
     || !Number.isInteger(delaySeconds) || delaySeconds < MIN_SEND_DELAY_SECONDS || delaySeconds > 3600) return whatsAppError("Choose your automations and a delay between 10 and 3,600 seconds.");
@@ -31,7 +31,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  if (!await whatsappUser(req)) return forbiddenWhatsApp();
+  if (!await whatsappUser(req)) return forbiddenWhatsApp(req);
   await prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(8104701)::text`;
     await tx.whatsAppSettings.updateMany({ where: { id: 1 }, data: { enabled: false, connection_requested: false, logout_requested: true,

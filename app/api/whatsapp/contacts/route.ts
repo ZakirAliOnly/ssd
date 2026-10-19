@@ -5,7 +5,7 @@ import { normalizeWhatsAppPhone } from "@/lib/whatsappPolicy";
 
 export async function POST(req: NextRequest) {
   const user = await whatsappUser(req);
-  if (!user) return forbiddenWhatsApp();
+  if (!user) return forbiddenWhatsApp(req);
   const { phone: raw, name, optedIn, source } = await req.json();
   const phone = typeof raw === "string" ? normalizeWhatsAppPhone(raw) : null;
   if (!phone || typeof name !== "string" || name.length > 150 || typeof optedIn !== "boolean"
