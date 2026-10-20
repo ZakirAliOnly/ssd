@@ -12,7 +12,7 @@ export function ProductBatchList({ productId }: { productId: string }) {
   useEffect(() => {
     let active = true;
     void db.from("stock_batches").select("id, received_date, expiry_date, remaining_qty").eq("product_id", productId)
-      .gte("remaining_qty", 1).order("received_date").order("created_at").order("id").then(({ data, error }) => {
+      .gte("remaining_qty", 0.01).order("received_date").order("created_at").order("id").then(({ data, error }) => {
         if (!active) return;
         setBatches(data ?? []); setError(error?.message ?? "");
         setLoading(false);

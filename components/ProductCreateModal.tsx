@@ -1,5 +1,7 @@
 "use client";
 
+import { ProductPackagingFields, emptyPackaging } from "@/components/ProductPackagingFields";
+import { type Packaging } from "@/lib/productUnits";
 import { useEffect, useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import { ProductCategorySelect } from "@/components/ProductCategorySelect";
@@ -9,7 +11,7 @@ import { useSaving } from "@/lib/useSaving";
 import { ProductStockField } from "@/components/ProductStockField";
 import { ProductExpiryField } from "@/components/ProductExpiryField";
 
-export type CreatedProduct = {
+export type CreatedProduct = Packaging & {
   id: string;
   name: string;
   sale_price: number;
@@ -41,6 +43,7 @@ export function ProductCreateModal({
   onClose: () => void;
   onCreated: (p: CreatedProduct) => void;
 }) {
+  const [packaging, setPackaging] = useState({ ...emptyPackaging });
   const [fName, setFName] = useState(initialName);
   const [fCode, setFCode] = useState(() => nextProductCode(existingProducts));
   const [fCategoryId, setFCategoryId] = useState("");
@@ -79,6 +82,7 @@ export function ProductCreateModal({
       description: fDescription.trim(),
       cost_price: parseFloat(fCost) || 0,
       sale_price: parseFloat(fSale) || 0,
+      ...packaging,
       pricing_type: "standalone",
       category_id: fCategoryId,
       quantity,
@@ -88,7 +92,7 @@ export function ProductCreateModal({
       const { data, error } = await db.from("products").insert(payload).select("id").single();
       if (error || !data?.id) { showToast(error?.message || "Could not save product", "err"); return; }
       showToast("Product saved", "ok");
-      onCreated({ id: String(data.id), name: payload.name, sale_price: payload.sale_price, description: payload.description, pricing_type: payload.pricing_type, category_id: payload.category_id, quantity: payload.quantity, expiry_date: payload.expiry_date });
+      onCreated({ ...packaging, id: String(data.id), name: payload.name, sale_price: payload.sale_price, description: payload.description, pricing_type: payload.pricing_type, category_id: payload.category_id, quantity: payload.quantity, expiry_date: payload.expiry_date });
     } catch {
       showToast("Could not save product. Please try again.", "err");
     }
@@ -138,9 +142,10 @@ export function ProductCreateModal({
           </div>
 
           <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
-          <ProductStockField value={fQuantity} onChange={setFQuantity} disabled={saving} />
+          <ProductPackagingFields value={packaging} onChange={setPackaging} disabled={saving} />
+              <ProductStockField value={fQuantity} onChange={setFQuantity} disabled={saving} />
           <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving} />
-              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>Standalone (fixed price per unit)</div>
+              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Item Code</label>

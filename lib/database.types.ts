@@ -66,6 +66,8 @@ export interface Invoice {
 }
 
 export interface InvoiceItem {
+  unit?: string;
+  unit_factor?: number;
   discount_pct?: number;
   product_id?: string | null;
   stock_deducted_qty?: number;
@@ -292,6 +294,7 @@ export interface PurchaseOrderItem {
   description: string;
   product_id: string | null;
   expiry_date: string | null;
+  unit_factor?: number;
   stock_received_qty: number;
   unit: string;
   qty: number;

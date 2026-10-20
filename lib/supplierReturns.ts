@@ -1,10 +1,12 @@
 import type { Prisma } from "@prisma/client";
+import { lockInventoryUnits } from "./inventoryUnits";
 import { InventoryError, syncProductStock } from "./inventory";
 import { planInvoiceReturn, type ReturnSelection } from "./invoiceReturns";
 
 export async function saveSupplierReturn(tx: Prisma.TransactionClient, input: {
   invoiceId: string; requestId: string; date: string; reason: string; selections: ReturnSelection[];
 }, user: { email: string; name: string }) {
+  await lockInventoryUnits(tx);
   await tx.$queryRawUnsafe('SELECT id FROM purchase_orders WHERE id = $1::uuid FOR UPDATE', input.invoiceId);
   const existing = await tx.supplierReturn.findUnique({ where: { request_id: input.requestId } });
   if (existing) {
@@ -36,7 +38,7 @@ export async function saveSupplierReturn(tx: Prisma.TransactionClient, input: {
       if (changed.count !== 1) throw new InventoryError(`Not enough unsold stock remains from this purchase for ${line.product_name}. Reduce the return quantity.`);
     }
     await tx.supplierReturnItem.create({ data: { return_id: record.id, purchase_item_id: item.id, batch_id: batch?.id ?? null,
-      product_name: item.description, description: item.description, qty: line.qty, stock_removed_qty: removed, amount: line.amount } });
+      unit: item.unit, product_name: item.description, description: item.description, qty: line.qty, stock_removed_qty: removed, amount: line.amount } });
   }
   for (const id of productIds) await syncProductStock(tx, id);
   const credit = await tx.cashbook.create({ data: { type: "out", method: "Adjustment", amount: plan.amount,

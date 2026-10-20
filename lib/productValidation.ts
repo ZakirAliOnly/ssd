@@ -13,7 +13,17 @@ export function normalizeCategory(data: Record<string, unknown>) {
 }
 
 export function normalizeProduct(data: Record<string, unknown>, inserting: boolean): Record<string, unknown> {
-  if ("expected_quantity" in data || (!inserting && "quantity" in data)) {
+  for (const key of ["cost_price", "sale_price"]) if (key in data && (typeof data[key] !== "number" || !Number.isFinite(data[key]) || Number(data[key]) < 0 || Number(data[key]) > 9999999999.99)) throw new ProductValidationError("Enter a valid non-negative cost and sale price.");
+  if ("packaging_converted_at" in data) throw new ProductValidationError("Stock conversion history cannot be edited.");
+  if (inserting && "conversion_unit" in data) throw new ProductValidationError("New products start in base units.");
+  if ("packaging_enabled" in data && typeof data.packaging_enabled !== "boolean") throw new ProductValidationError("Choose a valid packaging setup.");
+  if (["base_unit", "pieces_per_packet", "packets_per_box", "packet_sale_price", "box_sale_price"].some(key => key in data)) {
+    if (typeof data.base_unit !== "string" || !data.base_unit.trim() || data.base_unit.length > 30) throw new ProductValidationError("Enter a base unit name, such as Piece or Vial.");
+    const pieces = Number(data.pieces_per_packet), packets = Number(data.packets_per_box);
+    if (!Number.isInteger(pieces) || !Number.isInteger(packets) || pieces < 1 || packets < 1 || pieces * packets > 1000000) throw new ProductValidationError("Packaging sizes must be whole numbers from 1; a box can contain at most 1,000,000 base units.");
+    for (const key of ["packet_sale_price", "box_sale_price"]) if (!Number.isFinite(Number(data[key])) || Number(data[key]) < 0 || Number(data[key]) > 9999999999.99) throw new ProductValidationError("Enter valid packet and box prices.");
+  }
+  if (("expected_quantity" in data && !("conversion_unit" in data)) || (!inserting && "quantity" in data)) {
     if (inserting || !("quantity" in data) || !validStock(data.expected_quantity)) {
       throw new ProductValidationError("Reload the product before editing its stock quantity.");
     }

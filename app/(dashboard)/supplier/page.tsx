@@ -32,6 +32,8 @@ import { confirmDialog } from "@/components/ConfirmModal";
 import { logActivity } from "@/lib/activityLog";
 import { buildSupplierPaymentWhatsAppMessage, openWhatsAppNewTab } from "@/lib/whatsappWaMe";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
+import { productUnits, type Packaging } from "@/lib/productUnits";
 import { invoiceProductOption } from "@/lib/productOptions";
 import { PrintHeader } from "@/components/PrintHeader";
 import { LedgerLineItems } from "@/components/LedgerLineItems";
@@ -51,6 +53,8 @@ interface SupplierRow {
 interface PoLine {
   id?: string;
   stockReceivedQty?: number;
+  unit?: string;
+  unitFactor?: number;
   description: string;
   qty: number;
   rate: number;
@@ -89,7 +93,7 @@ function blankLine(): PoLine {
 
 function purchaseItemsPayload(items: PoLine[]) {
   return items.map(item => ({ id: item.id, product_id: item.productId, description: item.description,
-    expiry_date: item.expiryDate, qty: item.qty, rate: item.rate }));
+    unit: item.unit, unit_factor: item.unitFactor, expiry_date: item.expiryDate, qty: item.qty, rate: item.rate }));
 }
 
 function calcLine(line: PoLine): PoLine {
@@ -459,13 +463,13 @@ export default function SupplierPage() {
     if (poErr || !poRow) { showToast(poErr?.message || "Could not load PO", "err"); return; }
     const { data: itemRows, error: itemErr } = await db
       .from("purchase_order_items")
-      .select("id, description, product_id, expiry_date, stock_received_qty, qty, rate, amount")
+      .select("id, description, product_id, expiry_date, stock_received_qty, unit, unit_factor, qty, rate, amount")
       .eq("purchase_order_id", po.id)
       .order("id", { ascending: true });
     if (itemErr) { showToast(itemErr.message, "err"); return; }
     const items: PoLine[] = ((itemRows ?? []) as Record<string, unknown>[]).map((it) => ({
       id: String(it.id),
-      stockReceivedQty: Number(it.stock_received_qty),
+      stockReceivedQty: Number(it.stock_received_qty), unit: String(it.unit || "unit"), unitFactor: Number(it.unit_factor || 1),
       description: String(it.description ?? ""),
       qty: Number(it.qty),
       rate: Number(it.rate),
@@ -849,7 +853,7 @@ export default function SupplierPage() {
       items: items.map((it) => ({
         description: it.description,
         expiry_date: it.expiryDate,
-        qty: it.qty,
+        unit: it.unit, qty: it.qty,
         rate: it.rate,
         amount: it.amount,
       })),
@@ -887,7 +891,7 @@ export default function SupplierPage() {
       items: ((rows ?? []) as Record<string, unknown>[]).map((it) => ({
         description: String(it.description ?? ""),
         expiry_date: it.expiry_date ? String(it.expiry_date).slice(0, 10) : null,
-        qty: Number(it.qty),
+        unit: String(it.unit || "unit"), qty: Number(it.qty),
         rate: Number(it.rate),
         amount: Number(it.amount),
       })),
@@ -1006,7 +1010,7 @@ export default function SupplierPage() {
         setEditPoId(String(poRow.id));
         setPoDraft(current => current ? { ...current, items: (poRow.items as Record<string, unknown>[]).map(row => ({
           id: String(row.id), productId: row.product_id ? String(row.product_id) : null,
-          stockReceivedQty: Number(row.stock_received_qty),
+          stockReceivedQty: Number(row.stock_received_qty), unit: String(row.unit || "unit"), unitFactor: Number(row.unit_factor || 1),
           description: String(row.description), qty: Number(row.qty), rate: Number(row.rate), amount: Number(row.amount),
           expiryDate: row.expiry_date ? String(row.expiry_date).slice(0, 10) : null,
         })) } : null);
@@ -2138,10 +2142,10 @@ function PoModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, saving]);
 
-  const [products, setProducts] = useState<{ id: string; code: string | null; name: string; description: string | null; cost_price: number; expiry_date: string | null }[]>([]);
+  const [products, setProducts] = useState<(Packaging & { id: string; code: string | null; name: string; description: string | null; cost_price: number; expiry_date: string | null })[]>([]);
   useEffect(() => {
     let active = true;
-    void db.from("products").select("id, code, name, description, cost_price, expiry_date").order("name").then(({ data, error }) => {
+    void db.from("products").select("id, code, name, description, cost_price, expiry_date, packaging_enabled, base_unit, pieces_per_packet, packets_per_box").order("name").then(({ data, error }) => {
       if (!active) return;
       if (error) { showToast(error.message, "err"); return; }
       setProducts(data ?? []);
@@ -2156,7 +2160,7 @@ function PoModal({
     setDraft(d => {
       if (!d) return null;
       const items = [...d.items];
-      items[idx] = calcLine({ ...items[idx], productId: product?.id ?? null,
+      items[idx] = calcLine({ ...items[idx], unit: productUnits(product)[0].value, unitFactor: 1, productId: product?.id ?? null,
         description: product?.name ?? "", expiryDate: product?.expiry_date?.slice(0, 10) ?? null,
         rate: product ? Number(product.cost_price) : 0 });
       return { ...d, items };
@@ -2168,6 +2172,10 @@ function PoModal({
       if (!d) return null;
       const items = [...d.items];
       let line = { ...items[idx], [field]: value } as PoLine;
+      if (field === "unit") {
+        const product = products.find(p => p.id === line.productId);
+        if (product) { const unitFactor = productUnits(product).find(u => u.value === value)?.factor ?? 1; line = { ...line, unitFactor, rate: Math.round(Number(product.cost_price) * unitFactor * 100) / 100 }; }
+      }
       line = calcLine(line);
       items[idx] = line;
       return { ...d, items };
@@ -2361,6 +2369,7 @@ function PoModal({
                             placeholder="Select product"
                             inputClassName={sm}
                           />
+                          <InvoiceUnitSelect product={products.find(p => p.id === it.productId)} unit={it.unit} factor={it.unitFactor} onChange={u => updateLine(idx, "unit", u)} />
                           {it.id && it.stockReceivedQty === 0 && <p className="mt-1 text-[10px] text-[var(--gray-700)]">Historical purchase; existing stock is counted in opening batches.</p>}
                         </td>
                         <td className="px-2 py-2 min-w-[120px] text-[var(--gray-700)]">

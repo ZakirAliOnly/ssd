@@ -70,7 +70,7 @@ export function ReturnHistory({ onPrint }: { onPrint: (entry: ReturnHistoryEntry
         <thead><tr>{["Product / Description", "Returned qty", type === "supplier" ? "Stock removed" : "Stock restored", "Credit"].map((h, i) => <th key={h} scope="col" className={`${DT.thDense} ${i === 3 ? "text-right" : i ? "text-center" : "text-left"}`} style={DT.thStyle}>{h}</th>)}</tr></thead>
         <tbody>{detail.items.map(item => <tr key={item.id} className={DT.row}>
           <td className={DT.tdDense}><strong>{item.product_name}</strong><div className="text-sm whitespace-pre-wrap break-words">{item.description}</div></td>
-          <td className={`${DT.tdDense} text-center tabular-nums`}>{Number(item.qty)}</td>
+          <td className={`${DT.tdDense} text-center tabular-nums`}>{Number(item.qty)} {item.unit}</td>
           <td className={`${DT.tdDense} text-center tabular-nums`}>{Number(item.stock_restored_qty)}</td>
           <td className={`${DT.tdDense} text-right font-mono`}>{formatCurrency(Number(item.amount))}</td>
         </tr>)}</tbody>

@@ -1,5 +1,7 @@
 "use client";
 
+import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
+import { productUnits, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
 import { InvoiceDiscountSummary } from "@/components/InvoiceDiscountSummary";
 import { InvoiceLineDiscount } from "@/components/InvoiceLineDiscount";
@@ -26,7 +28,7 @@ import { confirmDialog } from "@/components/ConfirmModal";
 import { logActivity } from "@/lib/activityLog";
 import { ProductCreateModal } from "@/components/ProductCreateModal";
 
-interface InvoiceProduct {
+interface InvoiceProduct extends Packaging {
   id: string;
   code: string | null;
   name: string;
@@ -47,6 +49,9 @@ interface Item {
   lineType: "product" | "labor";
   product: string;
   productId?: string | null;
+  sourceItemId?: string;
+  unit?: string;
+  unitFactor?: number;
   discountPct?: number;
   laborType: string;
   description: string;
@@ -132,6 +137,7 @@ interface InvoicePdfPayload {
     sqft: number;
     rate: number;
     qty: number;
+    unit?: string;
     amount: number;
     discount_pct?: number;
   }>;
@@ -340,7 +346,7 @@ export default function InvoicePage() {
   }
 
   const fetchProducts = useCallback(async () => {
-    const { data } = await db.from("products").select("id, code, name, sale_price, description, pricing_type, expiry_date, quantity, product_categories(name)");
+    const { data } = await db.from("products").select("id, code, name, sale_price, description, pricing_type, expiry_date, quantity, packaging_enabled, base_unit, pieces_per_packet, packets_per_box, packet_sale_price, box_sale_price, product_categories(name)");
     if (data) {
       const sorted = [...data].sort((a, b) => {
         const an = parseInt(String(a.code ?? ""), 10);
@@ -369,7 +375,7 @@ export default function InvoicePage() {
   const pendingProductIdsRef = useRef<string[]>([]);
   const invoiceSaveRef = useRef(false);
 
-  const handleProductCreated = useCallback(async (newProduct: { id: string; name: string; sale_price: number; description?: string | null; pricing_type?: string | null; expiry_date?: string | null; quantity?: number }) => {
+  const handleProductCreated = useCallback(async (newProduct: Packaging & { id: string; name: string; sale_price: number; description?: string | null; pricing_type?: string | null; expiry_date?: string | null; quantity?: number }) => {
     pendingProductIdsRef.current.push(newProduct.id);
     await fetchProducts();
     const idx = productCreate?.idx;
@@ -384,7 +390,7 @@ export default function InvoicePage() {
       let item: Item = {
         ...cur,
         product: newProduct.name,
-        productId: newProduct.id,
+        productId: newProduct.id, unit: productUnits(newProduct)[0].value, unitFactor: 1, sourceItemId: undefined,
         rate: Number(newProduct.sale_price) || 0,
         pricingType: "standalone",
       };
@@ -458,7 +464,7 @@ export default function InvoicePage() {
     }
     const { data: rows, error: itemErr } = await db
       .from("invoice_items")
-      .select("product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
+      .select("id, unit, unit_factor, product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
       .eq("invoice_id", inv.id)
       .order("id", { ascending: true });
     if (itemErr) {
@@ -471,7 +477,7 @@ export default function InvoicePage() {
       const pricingType = "standalone" as const;
       return {
         lineType: "product" as const,
-        product: productName,
+        product: productName, sourceItemId: String(r.id), unit: String(r.unit || "unit"), unitFactor: Number(r.unit_factor || 1),
         productId: r.product_id ? String(r.product_id) : dbProd?.id ?? null,
         laborType: "",
         description: String(r.description ?? ""),
@@ -530,7 +536,7 @@ export default function InvoicePage() {
         product_id: it.lineType === "product" ? (it.productId ?? products.find(p => p.name === it.product)?.id ?? null) : null,
         category: it.lineType === "labor" ? "Labor" : it.product,
         description: it.lineType === "labor" ? it.laborType : it.description.trim(),
-        width: it.width, height: it.height, sqft: it.sqft, rate: it.rate, qty: it.qty, amount: it.total, discount_pct: it.discountPct ?? 0,
+        source_item_id: it.sourceItemId, unit: it.unit, unit_factor: it.unitFactor, width: it.width, height: it.height, sqft: it.sqft, rate: it.rate, qty: it.qty, amount: it.total, discount_pct: it.discountPct ?? 0,
       }));
 
       setSaving(true);
@@ -729,7 +735,7 @@ export default function InvoicePage() {
     }
     const { data: rows, error: itemErr } = await db
       .from("invoice_items")
-      .select("product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
+      .select("id, unit, unit_factor, product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
       .eq("invoice_id", invId)
       .order("id", { ascending: true });
     if (itemErr) {
@@ -770,7 +776,7 @@ export default function InvoicePage() {
         sqft: 0,
         rate: Number(it.rate),
         discount_pct: Number(it.discount_pct ?? 0),
-        qty: Number(it.qty),
+        unit: String(it.unit || "unit"), qty: Number(it.qty),
         amount: Number(it.amount),
       })),
     };
@@ -811,7 +817,7 @@ export default function InvoicePage() {
         height: it.height,
         sqft: it.sqft,
         rate: it.rate,
-        qty: it.qty,
+        unit: it.unit, qty: it.qty,
         amount: it.total,
         discount_pct: it.discountPct ?? 0,
       })),
@@ -1016,7 +1022,7 @@ export default function InvoicePage() {
     }
     const { data: itemRows, error: itemErr } = await db
       .from("invoice_items")
-      .select("product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
+      .select("id, unit, unit_factor, product_id, category, description, width, height, sqft, rate, qty, amount, discount_pct")
       .eq("invoice_id", inv.id)
       .order("id", { ascending: true });
     if (itemErr) {
@@ -1030,7 +1036,7 @@ export default function InvoicePage() {
       height: 0,
       sqft: 0,
       rate: Number(r.rate),
-      qty: Number(r.qty),
+      unit: String(r.unit || "unit"), qty: Number(r.qty),
       amount: Number(r.amount),
     }));
     const msg = buildInvoiceShareWhatsAppMessage({
@@ -1476,7 +1482,7 @@ export default function InvoicePage() {
                   <div style={{ fontWeight: 700 }}>{it.category}</div>
                   {it.description && <div style={{ whiteSpace: "pre-wrap" }}>{it.description}</div>}
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontVariantNumeric: "tabular-nums" }}>
-                    <span>{it.qty} x {formatCurrency(invoiceUnitRate(it))}</span><strong>{formatCurrency(it.amount)}</strong>
+                    <span>{it.qty} {it.unit && unitLabel(it.unit)} x {formatCurrency(invoiceUnitRate(it))}</span><strong>{formatCurrency(it.amount)}</strong>
                   </div>
                   <InvoiceLineDiscount line={it} />
                 </div>
@@ -1606,7 +1612,7 @@ function WalkInInvoiceModal({
       let item = { ...items[idx], [field]: value };
       if (field === "productId") {
         const dbProd = products.find((p) => p.id === value);
-        item = { ...item, productId: dbProd?.id ?? null, product: dbProd?.name ?? "", description: dbProd?.description?.trim() ?? "", rate: dbProd ? Number(dbProd.sale_price) || 0 : 0 };
+        item = { ...item, unit: productUnits(dbProd)[0].value, unitFactor: 1, sourceItemId: undefined, productId: dbProd?.id ?? null, product: dbProd?.name ?? "", description: dbProd?.description?.trim() ?? "", rate: dbProd ? Number(dbProd.sale_price) || 0 : 0 };
         if (dbProd) {
           const isStandalone = dbProd.pricing_type === "standalone";
           item = { ...item, productId: dbProd.id, rate: dbProd.sale_price, pricingType: "standalone" };
@@ -1615,6 +1621,10 @@ function WalkInInvoiceModal({
             item = { ...item, description: dbProd.description.trim() };
           }
         }
+      }
+      if (field === "unit") {
+        const product = products.find(p => p.id === item.productId);
+        if (product) item = { ...item, sourceItemId: undefined, unitFactor: productUnits(product).find(u => u.value === value)?.factor ?? 1, rate: unitSalePrice(product, String(value)) };
       }
       if (field === "lineType" && value === "labor") {
         item = { ...item, product: "", width: 0, height: 0, sqft: 1, pricingType: "standalone" };
@@ -1766,6 +1776,7 @@ function WalkInInvoiceModal({
                       onCreate={(q) => onRequestCreateProduct(idx, q)}
                       createLabel="+ Add new product"
                     />
+                    <InvoiceUnitSelect product={products.find(p => p.id === item.productId)} unit={item.unit} factor={item.unitFactor} onChange={u => updateItem(idx, "unit", u)} />
                   </td>
                   <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ minWidth: 200 }}>
                     <textarea

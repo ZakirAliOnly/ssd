@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { settlePartyInvoices, partySettlementTransaction } from "@/lib/partyInvoiceSettlement";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
+import { lockInventoryUnits, resolveLineUnit, convertProductUnits } from "@/lib/inventoryUnits";
 import { normalizeCategory, normalizeProduct, ProductValidationError } from "@/lib/productValidation";
 import { purchaseLines, purchaseDate, receivePurchaseItems } from "@/lib/purchaseInventory";
 import type { Prisma } from "@prisma/client";
@@ -445,6 +446,7 @@ export async function POST(req: NextRequest) {
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
           const saved = await prisma.$transaction(async tx => {
+            await lockInventoryUnits(tx);
             await tx.$queryRawUnsafe('SELECT id FROM purchase_orders WHERE id = $1::uuid FOR UPDATE', id);
             if (body.purchaseId) {
               const returns = await tx.supplierReturn.findMany({ where: { purchase_order_id: id }, take: 1 });
@@ -489,6 +491,7 @@ export async function POST(req: NextRequest) {
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
           const saved = await prisma.$transaction(async tx => {
+            await lockInventoryUnits(tx);
             // Updating the header locks the invoice before reading its old items.
             if (body.invoiceId) {
               await tx.$queryRawUnsafe('SELECT id FROM invoices WHERE id = $1::uuid FOR UPDATE', body.invoiceId);
@@ -505,9 +508,17 @@ export async function POST(req: NextRequest) {
               if (matching.length > 1) throw new InventoryError("Select the product again so its stock can be identified.");
               if (matching.length === 1) line.product_id = matching[0].id;
             }
-            const stockLines = await applyStockChange(tx, previous.map(line => ({ ...line, qty: Number(line.qty), stock_deducted_qty: Number(line.stock_deducted_qty) })), items, invoice.id);
+            const normalizedItems = [];
+            for (const line of items) {
+              const { source_item_id, ...fields } = line;
+              const old = source_item_id ? previous.find(p => p.id === source_item_id) : undefined;
+              if (source_item_id && !old) throw new InventoryError("Invoice item changed. Reopen the invoice.");
+              const units = await resolveLineUnit(tx, line.product_id, line.unit, line.unit_factor, old);
+              normalizedItems.push({ ...fields, ...units });
+            }
+            const stockLines = await applyStockChange(tx, previous.map(line => ({ ...line, qty: Number(line.qty), unit_factor: Number(line.unit_factor ?? 1), stock_deducted_qty: Number(line.stock_deducted_qty) })), normalizedItems, invoice.id);
             await tx.invoiceItem.deleteMany({ where: { invoice_id: invoice.id } });
-            await tx.invoiceItem.createMany({ data: items.map((line, index) => ({ ...line, invoice_id: invoice.id, stock_deducted_qty: stockLines[index].stock_deducted_qty })) as Prisma.InvoiceItemCreateManyInput[] });
+            await tx.invoiceItem.createMany({ data: normalizedItems.map((line, index) => ({ ...line, invoice_id: invoice.id, stock_deducted_qty: stockLines[index].stock_deducted_qty })) as Prisma.InvoiceItemCreateManyInput[] });
             if (!invoice.is_walk_in) await settlePartyInvoices(tx, String(invoice.client_name ?? ""));
             await enqueueInvoice(tx, invoice.id, !!body.invoiceId);
             return await tx.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
@@ -641,6 +652,7 @@ export async function POST(req: NextRequest) {
         await prisma.$transaction(async tx => {
           const purchases = await tx.purchaseOrder.findMany({ where, orderBy: { id: "asc" } });
           for (const purchase of purchases) {
+            await lockInventoryUnits(tx);
             await tx.$queryRawUnsafe('SELECT id FROM purchase_orders WHERE id = $1::uuid FOR UPDATE', purchase.id);
             const fresh = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } });
             const returns = await tx.supplierReturn.findMany({ where: { purchase_order_id: purchase.id } });
@@ -678,18 +690,31 @@ export async function POST(req: NextRequest) {
         });
         return NextResponse.json({ data: null, error: null });
       }
-      if (table === "products" && "quantity" in updateData) {
-        const { quantity, expected_quantity, ...fields } = updateData;
+      if (table === "products") {
+        const { quantity, expected_quantity, conversion_unit, ...fields } = updateData as Record<string, unknown>;
         await prisma.$transaction(async tx => {
+          await lockInventoryUnits(tx);
           const products = await tx.product.findMany({ where, orderBy: { id: "asc" } });
           if (products.length !== 1) throw new InventoryError("Select one product to adjust its stock.");
           const id = products[0].id;
           await tx.$queryRawUnsafe('SELECT id FROM products WHERE id = $1::uuid FOR UPDATE', id);
           const product = await tx.product.findUniqueOrThrow({ where: { id } });
-          if (Number(product.quantity) !== Number(expected_quantity)) throw new InventoryError("Stock changed while you were editing. Reopen the product and try again.");
-          await adjustProductStock(tx, product, Number(quantity));
+          if ((quantity != null || conversion_unit != null) && Number(product.quantity) !== Number(expected_quantity)) throw new InventoryError("Stock changed while you were editing. Reopen the product and try again.");
+          if (product.packaging_enabled && !("packaging_enabled" in fields) && ("cost_price" in fields || "sale_price" in fields)) throw new InventoryError("Reload the product packaging before changing its prices.");
+          if (product.packaging_enabled && fields.packaging_enabled === false) throw new InventoryError("Packaging cannot be disabled after configuration.");
+          if (!product.packaging_enabled && fields.packaging_enabled === true) {
+            if (!["piece", "packet", "box"].includes(String(conversion_unit))) throw new InventoryError("Choose what current stock represents before configuring packaging.");
+            const factor = conversion_unit === "piece" ? 1 : Number(fields.pieces_per_packet) * (conversion_unit === "box" ? Number(fields.packets_per_box) : 1);
+            if (quantity != null) throw new InventoryError("Convert existing units separately from a stock adjustment.");
+            await convertProductUnits(tx, id, factor, Number(expected_quantity));
+            // Preserve total stock cost while changing its basis.
+            fields.cost_price = Number(product.cost_price) / factor;
+            await tx.activityLog.create({ data: { action: "update", entity_type: "product", entity_id: id,
+              title: `Stock unit conversion: ${product.name}`, subtitle: `${product.quantity} original units × ${factor} = ${Number(product.quantity) * factor} ${fields.base_unit || "Piece"}`, user_email: authUser.email, user_name: authUser.name } });
+          } else if (conversion_unit != null) throw new InventoryError("This product was already configured. Reload before saving.");
+          if (quantity != null) await adjustProductStock(tx, { ...product, cost_price: typeof fields.cost_price === "number" ? fields.cost_price : product.cost_price }, Number(quantity));
           await tx.product.update({ where: { id }, data: coerceDates(fields, table) as Prisma.ProductUncheckedUpdateInput });
-        });
+        }, { timeout: 20000 });
         return NextResponse.json({ data: null, error: null });
       }
       await model.updateMany({ where, data: coerceDates(updateData, table) });
@@ -736,6 +761,7 @@ export async function POST(req: NextRequest) {
         await prisma.$transaction(async tx => {
           const purchases = await tx.purchaseOrder.findMany({ where, orderBy: { id: "asc" } });
           for (const purchase of purchases) {
+            await lockInventoryUnits(tx);
             await tx.$queryRawUnsafe('SELECT id FROM purchase_orders WHERE id = $1::uuid FOR UPDATE', purchase.id);
             const fresh = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } });
             const returns = await tx.supplierReturn.findMany({ where: { purchase_order_id: purchase.id }, take: 1 });
@@ -758,6 +784,7 @@ export async function POST(req: NextRequest) {
       if (["purchase_order_items", "stock_batches"].includes(table)) throw new InventoryError("Purchase batches cannot be deleted directly. Edit the purchase invoice instead.");
       if (table === "products") {
         await prisma.$transaction(async tx => {
+          await lockInventoryUnits(tx);
           const products = await tx.product.findMany({ where, select: { id: true }, orderBy: { id: "asc" } });
           for (const product of products) await tx.$queryRawUnsafe('SELECT id FROM products WHERE id = $1::uuid FOR UPDATE', product.id);
           const batches = await tx.stockBatch.findMany({ where: { product_id: { in: products.map(product => product.id) } } });
@@ -772,6 +799,7 @@ export async function POST(req: NextRequest) {
       }
       if (table === "invoice_items" || table === "invoices") {
         await prisma.$transaction(async tx => {
+          await lockInventoryUnits(tx);
           const matches = table === "invoices"
             ? await tx.invoice.findMany({ where, select: { id: true } })
             : await tx.invoiceItem.findMany({ where, select: { invoice_id: true } });
@@ -782,7 +810,7 @@ export async function POST(req: NextRequest) {
           if (returns.length) throw new InventoryError("Invoices with returns cannot be deleted. Return history must remain intact.");
           const itemWhere = table === "invoices" ? { invoice_id: { in: ids } } : where;
           const lines = await tx.invoiceItem.findMany({ where: itemWhere });
-          for (const id of [...new Set(ids)].sort()) await applyStockChange(tx, lines.filter(line => line.invoice_id === id).map(line => ({ ...line, qty: Number(line.qty), stock_deducted_qty: Number(line.stock_deducted_qty) })), [], id);
+          for (const id of [...new Set(ids)].sort()) await applyStockChange(tx, lines.filter(line => line.invoice_id === id).map(line => ({ ...line, qty: Number(line.qty), unit_factor: Number(line.unit_factor ?? 1), stock_deducted_qty: Number(line.stock_deducted_qty) })), [], id);
           await auditDeletion(tx, table, table === "invoices" ? { id: { in: ids } } : { id: { in: lines.map(line => line.id) } });
           if (table === "invoices") await tx.invoice.deleteMany({ where: { id: { in: ids } } });
           else await tx.invoiceItem.deleteMany({ where: { id: { in: lines.map(line => line.id) } } });

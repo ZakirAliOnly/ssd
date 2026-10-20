@@ -1,4 +1,4 @@
-export type ReturnHistoryItem = { id: string; product_name: string; description: string; qty: string; amount: string; stock_restored_qty: string };
+export type ReturnHistoryItem = { unit?: string; id: string; product_name: string; description: string; qty: string; amount: string; stock_restored_qty: string };
 export type ReturnHistoryEntry = {
   id: string; type: "sales" | "supplier"; return_date: string; created_at: string; reason: string; amount: string; created_by_name: string;
   invoice_number: string; party: string; invoice_date: string; scope: "Whole invoice" | "Remaining invoice" | "Selected items";

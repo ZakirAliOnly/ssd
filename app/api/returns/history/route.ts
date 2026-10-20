@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
           invoice_date: r.purchase_order.order_date.toISOString(), party: r.purchase_order.supplier_name,
           scope: returnScope(r.purchase_order.items, r.items.map(i => ({ id: i.purchase_item_id, qty: i.qty })),
             r.purchase_order.returns.filter(p => p.created_at < r.created_at || (+p.created_at === +r.created_at && p.id < r.id)).flatMap(p => p.items.map(i => ({ id: i.purchase_item_id, qty: i.qty })))),
-          items: r.items.map(i => ({ id: i.id, product_name: i.product_name, description: i.description, qty: String(i.qty), amount: String(i.amount), stock_restored_qty: String(i.stock_removed_qty) })),
+          items: r.items.map(i => ({ id: i.id, unit: i.unit, product_name: i.product_name, description: i.description, qty: String(i.qty), amount: String(i.amount), stock_restored_qty: String(i.stock_removed_qty) })),
         }));
         return { returns, count, page };
       }
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
         invoice_date: r.invoice.invoice_date.toISOString(), party: r.invoice.client_name || "Walk-in",
         scope: returnScope(r.invoice.items, r.items.map(i => ({ id: i.invoice_item_id, qty: i.qty })),
           r.invoice.returns.filter(p => p.created_at < r.created_at || (+p.created_at === +r.created_at && p.id < r.id)).flatMap(p => p.items.map(i => ({ id: i.invoice_item_id, qty: i.qty })))),
-        items: r.items.map(i => ({ id: i.id, product_name: i.product_name, description: i.description, qty: String(i.qty), amount: String(i.amount), stock_restored_qty: String(i.stock_restored_qty) })),
+        items: r.items.map(i => ({ id: i.id, unit: i.unit, product_name: i.product_name, description: i.description, qty: String(i.qty), amount: String(i.amount), stock_restored_qty: String(i.stock_restored_qty) })),
       }));
       return { returns, count, page };
     }, { isolationLevel: "RepeatableRead" });

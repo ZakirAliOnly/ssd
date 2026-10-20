@@ -12,15 +12,16 @@ const compile = path => ts.transpileModule(readFileSync(new URL(path, import.met
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const compiled = compile("../../app/api/db/route.ts");
+const inventoryUnits = (await import("./load-ts.mjs")).tsLoader({ "./inventory": inventory })("lib/inventoryUnits.ts");
 const purchaseModule = { exports: {} };
 new Function("require", "module", "exports", compile("../../lib/purchaseInventory.ts"))(
-  name => name === "./inventory" ? inventory : require(name), purchaseModule, purchaseModule.exports);
+  name => name === "./inventoryUnits" ? inventoryUnits : name === "./inventory" ? inventory : require(name), purchaseModule, purchaseModule.exports);
 const returnModule = { exports: {} };
 new Function("require", "module", "exports", compile("../../lib/invoiceReturns.ts"))(
-  name => name === "./inventory" ? inventory : require(name), returnModule, returnModule.exports);
+  name => name === "./inventoryUnits" ? inventoryUnits : name === "./inventory" ? inventory : require(name), returnModule, returnModule.exports);
 const supplierReturnModule = { exports: {} };
 new Function("require", "module", "exports", compile("../../lib/supplierReturns.ts"))(
-  name => name === "./inventory" ? inventory : name === "./invoiceReturns" ? returnModule.exports : require(name), supplierReturnModule, supplierReturnModule.exports);
+  name => name === "./inventoryUnits" ? inventoryUnits : name === "./inventory" ? inventory : name === "./invoiceReturns" ? returnModule.exports : require(name), supplierReturnModule, supplierReturnModule.exports);
 
 /** Rollback-capable adapter exercising the real route and batch algorithms. */
 export function harness(profile = { role: "super_admin", modules: [], is_active: true }, openingQty = 10) {
@@ -143,7 +144,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     "@/lib/whatsappOutbox": { enqueueInvoice: async () => {}, enqueuePayment: async () => {} },
     "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
     "@/lib/prisma": { prisma }, "@/lib/auth": { COOKIE_NAME: "auth", verifyToken: async () => ({ sub: randomUUID(), email: "test@example.com", full_name: "Test" }) },
-    "@/lib/inventory": inventory, "@/lib/productValidation": productValidation, "@/lib/moduleAccess": moduleAccess,
+    "@/lib/inventoryUnits": inventoryUnits, "@/lib/inventory": inventory, "@/lib/productValidation": productValidation, "@/lib/moduleAccess": moduleAccess,
     "@/lib/purchaseInventory": purchaseModule.exports,
     "@/lib/invoiceReturns": returnModule.exports,
     "@/lib/supplierReturns": supplierReturnModule.exports,
