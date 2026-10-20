@@ -45,7 +45,7 @@ export async function enqueueInvoice(tx: Tx, id: string, refreshPending = false)
   const parties = !invoice.is_walk_in ? await tx.account.findMany({ where: { name: invoice.client_name }, take: 2 }) : [];
   const party = parties.length === 1 ? parties[0] : null;
   const items = invoice.items.map(line => ({ category: line.category, description: line.description,
-    width: Number(line.width), height: Number(line.height), sqft: Number(line.sqft), rate: Number(line.rate), qty: Number(line.qty), amount: Number(line.amount) }));
+    width: Number(line.width), height: Number(line.height), sqft: Number(line.sqft), rate: Number(line.rate), qty: Number(line.qty), unit: line.unit, amount: Number(line.amount) }));
   const input = { invoiceNumber: invoice.invoice_number, clientName: invoice.client_name, invoiceDate: iso(invoice.invoice_date),
     grandTotal: Number(invoice.grand_total), amountReceived: Number(invoice.amount_received), balanceDue: Number(invoice.balance_due),
     paymentStatus: invoice.payment_status, invoiceDescription: invoice.job_notes || invoice.job_name, items };

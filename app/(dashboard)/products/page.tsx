@@ -1,5 +1,7 @@
 "use client";
 
+import { ProductPackagingFields, emptyPackaging } from "@/components/ProductPackagingFields";
+import { stockDisplay, unitSalePrice, type Packaging } from "@/lib/productUnits";
 import { useState, useEffect, useCallback } from "react";
 import { ProductCategoryModal } from "@/components/ProductCategoryModal";
 import { ProductCategorySelect } from "@/components/ProductCategorySelect";
@@ -15,7 +17,7 @@ import { useUser } from "@/lib/UserContext";
 import { useSaving } from "@/lib/useSaving";
 
 
-interface Product {
+interface Product extends Packaging {
   id: string;
   code: string;
   name: string;
@@ -49,6 +51,7 @@ export default function ProductsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  const [packaging, setPackaging] = useState({ ...emptyPackaging });
   const [fName, setFName] = useState("");
   const [fCode, setFCode] = useState("");
   const [fCategoryId, setFCategoryId] = useState("");
@@ -56,6 +59,11 @@ export default function ProductsPage() {
   const [fCost, setFCost] = useState("");
   const [fSale, setFSale] = useState("");
   const [fQuantity, setFQuantity] = useState("0");
+  const [conversionUnit, setConversionUnit] = useState("piece");
+  const [conversionConfirmed, setConversionConfirmed] = useState(false);
+  const converting = !!editingId && packaging.packaging_enabled && !products.find(p => p.id === editingId)?.packaging_enabled;
+  const conversionFactor = conversionUnit === "piece" ? 1 : packaging.pieces_per_packet * (conversionUnit === "box" ? packaging.packets_per_box : 1);
+  const effectiveCost = converting ? Number(products.find(p => p.id === editingId)?.cost_price || 0) / Math.max(1, conversionFactor) : Number(fCost) || 0;
   const [originalQuantity, setOriginalQuantity] = useState(0);
   const [fNonExpiry, setFNonExpiry] = useState(true);
   const [fExpiryDate, setFExpiryDate] = useState("");
@@ -83,6 +91,9 @@ export default function ProductsPage() {
   }, []);
 
   function openAdd() {
+    setPackaging({ ...emptyPackaging });
+    setConversionUnit("piece");
+    setConversionConfirmed(false);
     setFNonExpiry(true);
     setFExpiryDate("");
     setFQuantity("0");
@@ -93,6 +104,8 @@ export default function ProductsPage() {
   }
 
   function openEdit(p: Product) {
+    setPackaging({ ...emptyPackaging, packaging_enabled: !!p.packaging_enabled, base_unit: p.base_unit || "Piece", pieces_per_packet: p.pieces_per_packet || 1, packets_per_box: p.packets_per_box || 1, packet_sale_price: Number(p.packet_sale_price || 0), box_sale_price: Number(p.box_sale_price || 0) });
+    setConversionUnit("piece"); setConversionConfirmed(false);
     setOriginalQuantity(p.quantity ?? 0);
     setFQuantity(String(p.quantity ?? 0));
     setFNonExpiry(!p.expiry_date);
@@ -116,6 +129,7 @@ export default function ProductsPage() {
 
   async function handleSave() {
     if (!fNonExpiry && !fExpiryDate) { showToast("Enter the expiry date", "err"); return; }
+    if (converting && !conversionConfirmed) { showToast("Review and confirm the existing stock conversion", "err"); return; }
     const quantity = Number(fQuantity);
     if (!fQuantity.trim() || !Number.isFinite(quantity) || Math.abs(quantity - Math.round(quantity * 100) / 100) > 0.00000001 || quantity < 0 || quantity > 2147483647) {
       showToast("Enter stock quantity of zero or more with up to two decimal places", "err"); return;
@@ -129,9 +143,10 @@ export default function ProductsPage() {
       description: fDescription.trim(),
       cost_price: parseFloat(fCost) || 0,
       sale_price: parseFloat(fSale) || 0,
+      ...packaging,
       pricing_type: "standalone",
       category_id: fCategoryId,
-      ...(!editingId ? { quantity } : quantity !== originalQuantity ? { quantity, expected_quantity: originalQuantity } : {}),
+      ...(converting ? { conversion_unit: conversionUnit, expected_quantity: originalQuantity } : !editingId ? { quantity } : quantity !== originalQuantity ? { quantity, expected_quantity: originalQuantity } : {}),
       ...(!editingId ? { expiry_date: fNonExpiry ? null : fExpiryDate } : {}),
     };
 
@@ -169,7 +184,7 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-extrabold" style={{ color: "var(--gray-900)" }}>Products</h1>
-          <p className="text-xs mt-0.5" style={{ color: "var(--gray-800)" }}>Manage your product & pricing catalogue</p>
+          <p className="text-xs mt-0.5" style={{ color: "var(--gray-800)" }}>Manage products, packaging and pricing. Pack stock is shown as equivalent quantities.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
         <button type="button" onClick={() => setShowCategoryModal(true)}
@@ -257,7 +272,7 @@ export default function ProductsPage() {
                         </span>
                       </td>
                       <td className={`${DT.td} ${DT.cellPrimary}`} style={{ color: "var(--gray-900)" }}>
-                        {p.name}
+                        {p.name}{p.packaging_enabled && <small className="block font-normal text-xs">Packet: {p.pieces_per_packet} {p.base_unit}; box: {p.packets_per_box} packets</small>}
                       </td>
                       <td className={`${DT.td} max-w-[220px] sm:max-w-[280px]`} style={{ color: "var(--gray-800)" }}>
                         {p.description?.trim() ? (
@@ -267,12 +282,13 @@ export default function ProductsPage() {
                         )}
                       </td>
                       <td className={DT.td}><span className="text-[12px]" style={{ color: "var(--gray-800)" }}>{p.product_categories?.name ?? "Uncategorized"}</span></td>
-                      <td className={`${DT.td} ${DT.cellMono}`} style={{ color: p.quantity === 0 ? "var(--red)" : "var(--gray-900)" }}>{p.quantity ?? 0}</td>
+                      <td className={`${DT.td} ${DT.cellMono}`} style={{ color: p.quantity === 0 ? "var(--red)" : "var(--gray-900)" }}>{stockDisplay(p.quantity ?? 0, p)}</td>
                       <td className={`${DT.td} ${DT.cellMono}`} style={{ color: "var(--gray-900)" }}>
                         {formatCurrency(p.cost_price)}
                       </td>
                       <td className={`${DT.td} font-mono font-bold text-[15px]`} style={{ color: "var(--blue-deeper)" }}>
                         {formatCurrency(p.sale_price)}
+                        {p.packaging_enabled && <small className="block text-xs font-normal">per {p.base_unit}; {p.pieces_per_packet! > 1 && <>packet {formatCurrency(unitSalePrice(p, "packet"))}; </>}{p.packets_per_box! > 1 && <>box {formatCurrency(unitSalePrice(p, "box"))}</>}</small>}
                       </td>
                       <td className={DT.td}>
                         <span className={DT.badge}
@@ -349,10 +365,24 @@ export default function ProductsPage() {
 
               {/* Pricing Type */}
               <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
-              <ProductStockField value={fQuantity} onChange={setFQuantity} disabled={saving} />
+              <ProductPackagingFields value={packaging} onChange={p => { setPackaging(p); setConversionConfirmed(false);
+                const old = products.find(row => row.id === editingId);
+                if (old && !old.packaging_enabled) { const factor = conversionUnit === "piece" ? 1 : p.pieces_per_packet * (conversionUnit === "box" ? p.packets_per_box : 1); if (factor > 0 && factor !== conversionFactor) setFSale(String(Math.round(Number(old.sale_price) / factor * 100) / 100)); }
+              }} disabled={saving} locked={!!editingId && !!products.find(p => p.id === editingId)?.packaging_enabled} />
+              <ProductStockField value={fQuantity} onChange={setFQuantity} disabled={saving || converting} />
+              {converting && <div className="col-span-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm space-y-2">
+                <label>What does the existing stock quantity represent?<select aria-label="Existing stock unit" className="block w-full border rounded p-2 mt-1" value={conversionUnit} onChange={e => { setConversionUnit(e.target.value); setConversionConfirmed(false);
+                    const factor = e.target.value === "piece" ? 1 : packaging.pieces_per_packet * (e.target.value === "box" ? packaging.packets_per_box : 1);
+                    setFSale(String(Math.round(Number(products.find(p => p.id === editingId)?.sale_price || 0) / factor * 100) / 100)); }}>
+                  <option value="piece">Pieces / base units</option><option value="packet">Packets</option><option value="box">Boxes</option>
+                </select></label>
+                <p>{originalQuantity} existing units × {conversionFactor} = <strong>{originalQuantity * conversionFactor} {packaging.base_unit}</strong>.</p>
+                <p>Cost per {packaging.base_unit}: Rs {(Number(products.find(p => p.id === editingId)?.cost_price || 0) / conversionFactor).toFixed(8)}. Total stock cost stays the same. Invoice quantities and amounts are preserved.</p>
+                <label className="flex gap-2"><input type="checkbox" checked={conversionConfirmed} onChange={e => setConversionConfirmed(e.target.checked)} /> I confirm this one-time conversion.</label>
+              </div>}
               <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving || !!editingId} />
               {editingId && <ProductBatchList productId={editingId} />}
-              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>Standalone (fixed price per unit)</div>
+              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
 
               {/* Item Code */}
               <div className="flex flex-col gap-1">
@@ -368,7 +398,7 @@ export default function ProductsPage() {
                 <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
                   Cost Price (Rs)
                 </label>
-                <input type="number" value={fCost} onChange={(e) => setFCost(e.target.value)}
+                <input type="number" value={converting ? effectiveCost : fCost} disabled={converting} onChange={(e) => setFCost(e.target.value)}
                   placeholder="0" min="0"
                   className="border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none font-mono" style={inputStyle} />
               </div>
@@ -388,8 +418,8 @@ export default function ProductsPage() {
                 <div className="col-span-2 flex items-center gap-2 px-3 py-2 rounded-[9px]"
                   style={{ background: "var(--green-light)", border: "1.5px solid rgba(14,173,106,.2)" }}>
                   <span className="text-[11px] font-semibold" style={{ color: "var(--green)" }}>
-                    Margin: {Math.round(((parseFloat(fSale) - parseFloat(fCost)) / parseFloat(fSale)) * 100)}% —
-                    Rs {Math.round(parseFloat(fSale) - parseFloat(fCost))} profit per unit
+                    Margin: {Math.round(((parseFloat(fSale) - effectiveCost) / parseFloat(fSale)) * 100)}% —
+                    Rs {Math.round(parseFloat(fSale) - effectiveCost)} profit per unit
                   </span>
                 </div>
               )}

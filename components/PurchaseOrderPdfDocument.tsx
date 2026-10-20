@@ -17,7 +17,7 @@ export interface PurchaseOrderPdfPayload {
     payment_method: string;
     notes: string;
   };
-  items: Array<{ description: string; expiry_date: string | null; qty: number; rate: number; amount: number }>;
+  items: Array<{ description: string; expiry_date: string | null; unit?: string; qty: number; rate: number; amount: number }>;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -170,7 +170,7 @@ export function PurchaseOrderPdfDocument({ data }: { data: PurchaseOrderPdfPaylo
                     {it.expiry_date ? formatDate(it.expiry_date) : "Non-expiry"}
                   </td>
                   <td style={{ padding: "6px 8px", textAlign: "center", fontFamily: "monospace", fontWeight: 700, borderLeft: "1px solid #e5e7eb" }}>
-                    {it.qty}
+                    {it.qty} {it.unit}
                   </td>
                   <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontWeight: 600, borderLeft: "1px solid #e5e7eb" }}>
                     {formatCurrency(it.rate)}

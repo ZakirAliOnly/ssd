@@ -10,6 +10,7 @@ export function validQuantity(value: number): boolean {
 export interface StockLine {
   product_id: string | null;
   qty: number;
+  unit_factor?: number;
   stock_deducted_qty: number;
 }
 
@@ -19,7 +20,7 @@ export function planStockChange(previous: StockLine[], next: Omit<StockLine, "st
   const deducted = new Map<string, number>();
   for (const line of previous) {
     if (!line.product_id) continue;
-    baseline.set(line.product_id, roundQuantity((baseline.get(line.product_id) ?? 0) + line.qty - line.stock_deducted_qty));
+    baseline.set(line.product_id, roundQuantity((baseline.get(line.product_id) ?? 0) + roundQuantity(line.qty * (line.unit_factor ?? 1)) - line.stock_deducted_qty));
     deducted.set(line.product_id, roundQuantity((deducted.get(line.product_id) ?? 0) + line.stock_deducted_qty));
   }
   const quantities = new Map<string, number>();
@@ -28,9 +29,11 @@ export function planStockChange(previous: StockLine[], next: Omit<StockLine, "st
       throw new InventoryError("Each invoice item must have a positive quantity with up to two decimal places.");
     }
     if (!line.product_id) return { ...line, stock_deducted_qty: 0 };
-    const exempt = Math.min(line.qty, baseline.get(line.product_id) ?? 0);
+    const baseQty = roundQuantity(line.qty * (line.unit_factor ?? 1));
+    if (!validQuantity(baseQty)) throw new InventoryError("Converted stock quantity is too large.");
+    const exempt = Math.min(baseQty, baseline.get(line.product_id) ?? 0);
     baseline.set(line.product_id, (baseline.get(line.product_id) ?? 0) - exempt);
-    const amount = roundQuantity(line.qty - exempt);
+    const amount = roundQuantity(baseQty - exempt);
     quantities.set(line.product_id, roundQuantity((quantities.get(line.product_id) ?? 0) + amount));
     return { ...line, stock_deducted_qty: amount };
   });
@@ -52,16 +55,16 @@ export async function syncProductStock(tx: Prisma.TransactionClient, productId: 
 }
 
 export async function createOpeningBatch(tx: Prisma.TransactionClient, product: {
-  id: string; quantity: number | Prisma.Decimal; expiry_date: Date | null; created_at: Date;
+  id: string; quantity: number | Prisma.Decimal; expiry_date: Date | null; created_at: Date; cost_price?: number | Prisma.Decimal;
 }) {
   if (Number(product.quantity) <= 0) return;
   await tx.stockBatch.create({ data: { product_id: product.id, received_qty: product.quantity,
-    remaining_qty: product.quantity, expiry_date: product.expiry_date, received_date: product.created_at } });
+    remaining_qty: product.quantity, unit_cost: product.cost_price ?? null, expiry_date: product.expiry_date, received_date: product.created_at } });
 }
 
 /** Caller holds the product row lock; adjustments preserve existing sale allocations. */
 export async function adjustProductStock(tx: Prisma.TransactionClient, product: {
-  id: string; quantity: number | Prisma.Decimal; expiry_date: Date | null;
+  id: string; quantity: number | Prisma.Decimal; expiry_date: Date | null; cost_price?: number | Prisma.Decimal;
 }, quantity: number) {
   const batches = await tx.stockBatch.findMany({ where: { product_id: product.id, remaining_qty: { gt: 0 } },
     orderBy: [{ received_date: "asc" }, { created_at: "asc" }, { id: "asc" }] });
@@ -71,7 +74,7 @@ export async function adjustProductStock(tx: Prisma.TransactionClient, product: 
   const delta = roundQuantity(quantity - Number(product.quantity));
   if (delta > 0) {
     await tx.stockBatch.create({ data: { product_id: product.id, received_qty: delta, remaining_qty: delta,
-      expiry_date: product.expiry_date, received_date: new Date() } });
+      unit_cost: product.cost_price ?? null, expiry_date: product.expiry_date, received_date: new Date() } });
   } else {
     let needed = -delta;
     for (const batch of batches) {
@@ -167,6 +170,8 @@ export function invoiceStockLines(items: unknown) {
       if (!Number.isFinite(value) || value < 0) throw new InventoryError(`Invalid invoice item ${key}.`);
       return [key, value];
     }));
-    return { product_id, qty, discount_pct, category: String(item.category ?? ""), description: String(item.description ?? ""), ...numbers };
+    return { product_id, qty, unit: typeof item.unit === "string" ? item.unit : undefined,
+      unit_factor: item.unit_factor == null ? undefined : Number(item.unit_factor),
+      source_item_id: typeof item.source_item_id === "string" ? item.source_item_id : undefined, discount_pct, category: String(item.category ?? ""), description: String(item.description ?? ""), ...numbers };
   });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { COOKIE_NAME, verifyToken } from "@/lib/auth";
 import { canAccessPath } from "@/lib/moduleAccess";
+import { roundQuantity } from "@/lib/inventory";
 import { buildStockReport } from "@/lib/stockReport";
 import { invoiceUnitRate } from "@/lib/invoicePricing";
 import { invoiceLineRevenues } from "@/lib/invoiceReturns";
@@ -29,29 +30,30 @@ export async function GET(request: NextRequest) {
       include: { category: true,
         stock_batches: { include: { purchase_item: true, supplier_returns: { include: { supplier_return: { select: { return_date: true } } } }, allocations: { include: { invoice: { select: { invoice_date: true } }, returns: { include: { return_item: { include: { invoice_return: { select: { return_date: true } } } } } } } } } },
         invoice_items: { include: { invoice: { include: { items: true } } } },
-        return_items: { include: { invoice_return: { select: { return_date: true } } } },
+        return_items: { include: { invoice_item: true, invoice_return: { select: { return_date: true } } } },
       },
     }), { isolationLevel: "RepeatableRead" });
     const rows = buildStockReport(products.map(p => ({
       id: p.id, code: p.code, name: p.name, description: p.description, category: p.category?.name ?? "Uncategorized",
+      baseUnit: p.packaging_enabled ? p.base_unit : "Unit", packaging: { packaging_enabled: p.packaging_enabled, base_unit: p.base_unit, pieces_per_packet: p.pieces_per_packet, packets_per_box: p.packets_per_box },
       created_at: p.created_at.toISOString(), cost_price: Number(p.cost_price),
       batches: p.stock_batches.map(b => ({ received_date: b.received_date.toISOString().slice(0, 10),
         received_qty: Number(b.received_qty), remaining_qty: Number(b.remaining_qty),
         supplier_returns: b.supplier_returns.map(r => ({ qty: Number(r.stock_removed_qty), date: r.supplier_return.return_date.toISOString().slice(0, 10) })),
         allocations: b.allocations.map(a => ({ qty: Number(a.qty), date: a.invoice.invoice_date.toISOString().slice(0, 10),
-          cost: b.purchase_item && Number(b.purchase_item.qty) > 0 ? Number(b.purchase_item.amount) / Number(b.purchase_item.qty) : null,
+          cost: b.unit_cost != null ? Number(b.unit_cost) : b.purchase_item && Number(b.purchase_item.qty) > 0 ? Number(b.purchase_item.amount) / (Number(b.purchase_item.qty) * Number(b.purchase_item.unit_factor)) : null,
           returns: a.returns.map(r => ({ qty: Number(r.qty), date: r.return_item.invoice_return.return_date.toISOString().slice(0, 10) })) })),
       })),
       sales: p.invoice_items.flatMap(line => {
         if (!line.invoice) return [];
         const revenue = invoiceLineRevenues(line.invoice.items, line.invoice.discount_amount).get(line.id) ?? 0;
-        return [{ date: line.invoice.invoice_date.toISOString().slice(0, 10), qty: Number(line.qty),
+        return [{ date: line.invoice.invoice_date.toISOString().slice(0, 10), qty: roundQuantity(Number(line.qty) * Number(line.unit_factor)), displayQty: Number(line.qty), unit: line.unit,
           deducted: Number(line.stock_deducted_qty), revenue,
           lineId: line.id, invoiceId: line.invoice.id, invoiceNumber: line.invoice.invoice_number,
           customer: line.invoice.client_name, unitPrice: invoiceUnitRate(line), amount: Number(line.amount) }];
       }),
       returns: p.return_items.map(line => ({ date: line.invoice_return.return_date.toISOString().slice(0, 10),
-        qty: Number(line.qty), restored: Number(line.stock_restored_qty), revenue: Number(line.revenue) })),
+        qty: roundQuantity(Number(line.qty) * Number(line.invoice_item.unit_factor)), restored: Number(line.stock_restored_qty), revenue: Number(line.revenue) })),
     })), from, to);
     return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

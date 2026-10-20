@@ -1,9 +1,10 @@
 import type { Prisma } from "@prisma/client";
+import { lockInventoryUnits } from "./inventoryUnits";
 import { InventoryError, roundQuantity, validQuantity, syncProductStock } from "./inventory";
 
 type Value = number | string | { toString(): string };
 export type ReturnLineSource = { id: string; product_id: string | null; category: string; description: string;
-  qty: Value; stock_deducted_qty: Value; amount: Value };
+  unit?: string; qty: Value; unit_factor?: Value; stock_deducted_qty: Value; amount: Value };
 export type ReturnedLine = { invoice_item_id: string; qty: Value; stock_restored_qty: Value; amount: Value; revenue: Value };
 export type ReturnInvoiceSource = { id: string; grand_total: Value; discount_amount: Value; items: ReturnLineSource[] };
 export type ReturnSelection = { invoice_item_id: string; qty: number };
@@ -65,11 +66,12 @@ export function planInvoiceReturn(invoice: ReturnInvoiceSource, previous: Return
     const fraction = cumulative / quantity;
     const amount = money((Math.round(lineCredits[index] * fraction) - earlier.reduce((sum, line) => sum + cents(Number(line.amount)), 0)) / 100);
     const revenue = money((Math.round(lineRevenues[index] * fraction) - earlier.reduce((sum, line) => sum + cents(Number(line.revenue)), 0)) / 100);
-    const stock_restored_qty = item.product_id ? roundQuantity(roundQuantity(quantity * fraction)
+    const baseQuantity = quantity * Number(item.unit_factor ?? 1);
+    const stock_restored_qty = item.product_id ? roundQuantity(roundQuantity(baseQuantity * fraction)
       - earlier.reduce((sum, line) => sum + Number(line.stock_restored_qty), 0)) : 0;
-    if (amount < 0 || revenue < 0 || stock_restored_qty < 0 || stock_restored_qty > qty) throw new InventoryError("Return history does not match this invoice. Review it before continuing.");
+    if (amount < 0 || revenue < 0 || stock_restored_qty < 0 || stock_restored_qty > roundQuantity(qty * Number(item.unit_factor ?? 1))) throw new InventoryError("Return history does not match this invoice. Review it before continuing.");
     return { invoice_item_id: item.id, product_id: item.product_id, product_name: item.category || "Invoice item",
-      description: item.description, qty, stock_restored_qty, amount, revenue };
+      description: item.description, ...(item.unit ? { unit: item.unit } : {}), qty, stock_restored_qty, amount, revenue };
   });
   return { lines, amount: money(lines.reduce((sum, line) => sum + line.amount, 0)) };
 }
@@ -77,6 +79,7 @@ export function planInvoiceReturn(invoice: ReturnInvoiceSource, previous: Return
 export async function saveInvoiceReturn(tx: Prisma.TransactionClient, input: {
   invoiceId: string; requestId: string; date: string; reason: string; selections: ReturnSelection[];
 }, user: { email: string; name: string }) {
+  await lockInventoryUnits(tx);
   // All invoice saves, deletes and returns use this same lock.
   await tx.$queryRawUnsafe('SELECT id FROM invoices WHERE id = $1::uuid FOR UPDATE', input.invoiceId);
   const existing = await tx.invoiceReturn.findUnique({ where: { request_id: input.requestId } });
@@ -118,7 +121,7 @@ export async function saveInvoiceReturn(tx: Prisma.TransactionClient, input: {
       // Legacy sales have no batch allocation. Receive the physical return as a new batch.
       const source = await tx.product.findUniqueOrThrow({ where: { id: line.product_id } });
       await tx.stockBatch.create({ data: { product_id: line.product_id,
-        received_qty: needed, remaining_qty: needed, expiry_date: source.expiry_date,
+        received_qty: needed, remaining_qty: needed, unit_cost: source.cost_price, expiry_date: source.expiry_date,
         received_date: new Date(input.date) } });
     }
   }

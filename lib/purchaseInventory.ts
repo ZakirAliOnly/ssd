@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { resolveLineUnit } from "./inventoryUnits";
 import { InventoryError, syncProductStock, roundQuantity, validQuantity } from "./inventory";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,7 +24,8 @@ export function purchaseLines(value: unknown) {
     if (!Number.isFinite(rate) || rate < 0 || rate > 9999999999.99) throw new InventoryError("Enter a valid purchase price.");
     const amount = Math.round(qty * rate * 100) / 100;
     if (amount > 9999999999.99) throw new InventoryError("Purchase line amount is too large.");
-    return { id, product_id, description: String(row.description ?? ""), expiry_date: purchaseDate(row.expiry_date ?? null, true), qty, rate, amount };
+    return { id, product_id, unit: typeof row.unit === "string" ? row.unit : undefined,
+      unit_factor: row.unit_factor == null ? undefined : Number(row.unit_factor), description: String(row.description ?? ""), expiry_date: purchaseDate(row.expiry_date ?? null, true), qty, rate, amount };
   });
 }
 
@@ -49,27 +51,33 @@ export async function receivePurchaseItems(tx: Prisma.TransactionClient, purchas
     if (!line.product_id && !(old && !old.product_id)) throw new InventoryError("Select a product for every new purchase item.");
     const product = line.product_id ? await tx.product.findUnique({ where: { id: line.product_id } }) : null;
     if (line.product_id && !product) throw new InventoryError("A selected product no longer exists.");
+    const units = await resolveLineUnit(tx, line.product_id, line.unit, line.unit_factor, old);
+    const baseQty = roundQuantity(line.qty * units.unit_factor);
+    if (!validQuantity(baseQty)) throw new InventoryError("Converted purchase quantity is too large.");
     const batch = old?.stock_batch;
     // Linking an unidentified historical line keeps its untracked baseline.
     const productChanged = old?.product_id != null && old.product_id !== line.product_id;
-    const baseline = old ? roundQuantity(Number(old.qty) - Number(old.stock_received_qty)) : 0;
+    // When first identifying an untracked historical line, the explicitly
+    // selected unit also describes its old quantity. Never receive its old stock twice.
+    const baselineFactor = old?.product_id == null ? units.unit_factor : Number(old.unit_factor ?? 1);
+    const baseline = old ? roundQuantity(Number(old.qty) * baselineFactor - Number(old.stock_received_qty)) : 0;
     if (productChanged && baseline > 0) throw new InventoryError("An older purchase with untracked stock cannot change product. Create a new purchase instead.");
-    const receivedQty = line.product_id ? roundQuantity(Math.max(0, line.qty - (productChanged ? 0 : baseline))) : 0;
+    const receivedQty = line.product_id ? roundQuantity(Math.max(0, baseQty - (productChanged ? 0 : baseline))) : 0;
     const sold = batch ? roundQuantity(Number(batch.received_qty) - Number(batch.remaining_qty)) : 0;
     if (receivedQty < sold || (productChanged && sold > 0)) throw new InventoryError("Purchase quantity cannot be reduced below the units already sold, or moved to another product after sale.");
     if (batch && productChanged) await tx.stockBatch.delete({ where: { id: batch.id } });
     const data = { product_id: line.product_id, description: product?.name ?? line.description,
-      expiry_date: line.expiry_date, unit: "qty", qty: line.qty, rate: line.rate, amount: line.amount,
+      expiry_date: line.expiry_date, ...units, qty: line.qty, rate: line.rate, amount: line.amount,
       stock_received_qty: receivedQty };
     const saved = old ? await tx.purchaseOrderItem.update({ where: { id: old.id }, data })
       : await tx.purchaseOrderItem.create({ data: { ...data, purchase_order_id: purchaseId } });
     savedItems.push(saved);
     if (batch && !productChanged) {
       await tx.stockBatch.update({ where: { id: batch.id }, data: { received_qty: receivedQty,
-        remaining_qty: roundQuantity(receivedQty - sold), expiry_date: line.expiry_date, received_date: receivedDate } });
+        remaining_qty: roundQuantity(receivedQty - sold), unit_cost: line.rate / units.unit_factor, expiry_date: line.expiry_date, received_date: receivedDate } });
     } else if (receivedQty > 0 && line.product_id) {
       await tx.stockBatch.create({ data: { product_id: line.product_id, purchase_item_id: saved.id,
-        received_qty: receivedQty, remaining_qty: receivedQty, expiry_date: line.expiry_date, received_date: receivedDate } });
+        received_qty: receivedQty, remaining_qty: receivedQty, unit_cost: line.rate / units.unit_factor, expiry_date: line.expiry_date, received_date: receivedDate } });
     }
   }
   for (const id of products) await syncProductStock(tx, id);

@@ -48,7 +48,7 @@ function itemsToPrintRows(items: InvoiceItem[]): PrintRow[] {
     return {
       id: it.id || `row-${i}`,
       detail,
-      qty: String(qty),
+      qty: `${qty}${it.unit && it.unit !== "unit" ? ` ${it.unit}` : ""}`,
     };
   });
 }

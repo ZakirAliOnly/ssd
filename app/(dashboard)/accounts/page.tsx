@@ -1,6 +1,8 @@
 "use client";
 
 import { hasWhatsAppAutomation } from "@/lib/whatsappAutomation";
+import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
+import { productUnits, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
 import { InvoiceDiscountSummary } from "@/components/InvoiceDiscountSummary";
 import { InvoiceLineDiscount } from "@/components/InvoiceLineDiscount";
@@ -50,6 +52,9 @@ interface InvItem {
   lineType: "product" | "labor";
   product: string;
   productId?: string | null;
+  sourceItemId?: string;
+  unit?: string;
+  unitFactor?: number;
   discountPct?: number;
   laborType: string;
   description: string;
@@ -121,7 +126,7 @@ export default function AccountsPage() {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceAccount, setInvoiceAccount] = useState<Account | null>(null);
   const [invItems, setInvItems] = useState<InvItem[]>([blankInvItem()]);
-  const [invProducts, setInvProducts] = useState<{ id: string; code: string | null; name: string; sale_price: number; description: string | null; pricing_type?: string | null; expiry_date?: string | null; quantity?: number; product_categories?: { name: string } | null }[]>([]);
+  const [invProducts, setInvProducts] = useState<(Packaging & { id: string; code: string | null; name: string; sale_price: number; description: string | null; pricing_type?: string | null; expiry_date?: string | null; quantity?: number; product_categories?: { name: string } | null })[]>([]);
   const [invNextNum, setInvNextNum] = useState("");
   const [invSaving, setInvSaving] = useState(false);
   const [invAmountPaid, setInvAmountPaid] = useState("");
@@ -239,7 +244,7 @@ export default function AccountsPage() {
   }, [accounts.length, partyInvoices.length, partyCashbook.length]);
 
   const fetchInvProducts = useCallback(async () => {
-    const { data } = await db.from("products").select("id, code, name, sale_price, description, pricing_type, expiry_date, quantity, product_categories(name)");
+    const { data } = await db.from("products").select("id, code, name, sale_price, description, pricing_type, expiry_date, quantity, packaging_enabled, base_unit, pieces_per_packet, packets_per_box, packet_sale_price, box_sale_price, product_categories(name)");
     if (!data) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const arr = data as any[];
@@ -523,7 +528,7 @@ export default function AccountsPage() {
       const pricingType = "standalone" as const;
       return calcInvItem({
         lineType: "product",
-        product: productName,
+        product: productName, sourceItemId: String(it.id), unit: String(it.unit || "unit"), unitFactor: Number(it.unit_factor || 1),
         productId: it.product_id ? String(it.product_id) : dbProd?.id ?? null,
         laborType: "",
         description: String(it.description ?? ""),
@@ -806,7 +811,7 @@ export default function AccountsPage() {
   }
   // ─────────────────────────────────────────────────────────────────────────
 
-  const handleProductCreated = useCallback(async (newProduct: { id: string; name: string; sale_price: number; description?: string | null; pricing_type?: string | null; expiry_date?: string | null; quantity?: number }) => {
+  const handleProductCreated = useCallback(async (newProduct: Packaging & { id: string; name: string; sale_price: number; description?: string | null; pricing_type?: string | null; expiry_date?: string | null; quantity?: number }) => {
     pendingProductIdsRef.current.push(newProduct.id);
     await fetchInvProducts();
     const idx = productCreate?.idx;
@@ -820,7 +825,7 @@ export default function AccountsPage() {
       let item: InvItem = {
         ...cur,
         product: newProduct.name,
-        productId: newProduct.id,
+        productId: newProduct.id, unit: productUnits(newProduct)[0].value, unitFactor: 1, sourceItemId: undefined,
         rate: Number(newProduct.sale_price) || 0,
         pricingType: "standalone",
       };
@@ -839,7 +844,7 @@ export default function AccountsPage() {
       let item = { ...items[idx], [field]: value };
       if (field === "productId") {
         const dbProd = invProducts.find((p) => p.id === value);
-        item = { ...item, productId: dbProd?.id ?? null, product: dbProd?.name ?? "", description: dbProd?.description?.trim() ?? "", rate: dbProd ? Number(dbProd.sale_price) || 0 : 0 };
+        item = { ...item, unit: productUnits(dbProd)[0].value, unitFactor: 1, sourceItemId: undefined, productId: dbProd?.id ?? null, product: dbProd?.name ?? "", description: dbProd?.description?.trim() ?? "", rate: dbProd ? Number(dbProd.sale_price) || 0 : 0 };
         if (dbProd) {
           const isStandalone = dbProd.pricing_type === "standalone";
           item = { ...item, productId: dbProd.id, rate: dbProd.sale_price, pricingType: "standalone" };
@@ -848,6 +853,10 @@ export default function AccountsPage() {
             item = { ...item, description: dbProd.description.trim() };
           }
         }
+      }
+      if (field === "unit") {
+        const product = invProducts.find(p => p.id === item.productId);
+        if (product) item = { ...item, sourceItemId: undefined, unitFactor: productUnits(product).find(u => u.value === value)?.factor ?? 1, rate: unitSalePrice(product, String(value)) };
       }
       if (field === "lineType" && value === "labor") {
         item = { ...item, product: "", width: 0, height: 0, sqft: 1, pricingType: "standalone" };
@@ -909,7 +918,7 @@ export default function AccountsPage() {
         product_id: it.lineType === "product" ? (it.productId ?? invProducts.find(p => p.name === it.product)?.id ?? null) : null,
         category: it.lineType === "labor" ? "Labor" : it.product,
         description: it.lineType === "labor" ? it.laborType : it.description.trim(),
-        width: it.width, height: it.height, sqft: it.sqft, rate: it.rate, qty: it.qty, amount: it.total, discount_pct: it.discountPct ?? 0,
+        source_item_id: it.sourceItemId, unit: it.unit, unit_factor: it.unitFactor, width: it.width, height: it.height, sqft: it.sqft, rate: it.rate, qty: it.qty, amount: it.total, discount_pct: it.discountPct ?? 0,
       }));
 
       setInvSaving(true);
@@ -1114,7 +1123,7 @@ export default function AccountsPage() {
             height: it.height,
             sqft: it.sqft,
             rate: it.rate,
-            qty: it.qty,
+            unit: it.unit, qty: it.qty,
             amount: it.total,
         discount_pct: it.discountPct ?? 0,
           }))
@@ -1191,7 +1200,7 @@ export default function AccountsPage() {
       if (matchedInv) {
         const { data: itemRows } = await db
           .from("invoice_items")
-          .select("category, description, width, height, sqft, rate, qty, amount")
+          .select("unit, category, description, width, height, sqft, rate, qty, amount")
           .eq("invoice_id", matchedInv.id)
           .order("id", { ascending: true });
         invoiceExtra = {
@@ -1206,7 +1215,7 @@ export default function AccountsPage() {
             height: 0,
             sqft: 0,
             rate: Number(r.rate),
-            qty: Number(r.qty),
+            unit: String(r.unit || "unit"), qty: Number(r.qty),
             amount: Number(r.amount),
           })),
         };
@@ -1238,7 +1247,7 @@ export default function AccountsPage() {
         sqft: 0,
         rate: invoiceUnitRate(it),
         discountPct: Number(it.discount_pct ?? 0),
-        qty: Number(it.qty) || 1,
+        unit: it.unit, qty: Number(it.qty) || 1,
         amount: Number(it.amount) || 0,
       })),
     });
@@ -1980,6 +1989,7 @@ export default function AccountsPage() {
                             onCreate={(q) => setProductCreate({ idx, initialName: q })}
                             createLabel="+ Add new product"
                           />
+                    <InvoiceUnitSelect product={invProducts.find(p => p.id === item.productId)} unit={item.unit} factor={item.unitFactor} onChange={u => updateInvItem(idx, "unit", u)} />
                         </td>
                         <td className="px-2 py-2 border-b border-[var(--gray-100)]" style={{ minWidth: 200 }}>
                           <textarea
@@ -2654,7 +2664,7 @@ export default function AccountsPage() {
                                 <div className="text-[11px] whitespace-pre-wrap" style={{ color: "var(--gray-500)" }}>{item.description}</div>
                               ) : null}
                             </td>
-                            <td className={`${DT.tdDense} font-mono text-right text-[12.5px]`} style={{ color: "var(--gray-700)" }}>{item.qty}</td>
+                            <td className={`${DT.tdDense} font-mono text-right text-[12.5px]`} style={{ color: "var(--gray-700)" }}>{item.qty} {item.unit && unitLabel(item.unit)}</td>
 
                             <td className={`${DT.tdDense} font-mono text-right text-[12.5px]`} style={{ color: "var(--gray-700)" }}>{formatCurrency(invoiceUnitRate(item))}</td>
                             <td className={`${DT.tdDense} font-mono text-right font-bold text-[13px]`} style={{ color: "var(--gray-900)" }}>{formatCurrency(item.amount)}</td>
@@ -2952,7 +2962,7 @@ export default function AccountsPage() {
                         ) : null}
                         <InvoiceLineDiscount line={it} />
                       </div>
-                      <div style={{ padding: cellPad, textAlign: "center", fontFamily: "monospace", fontWeight: 700, borderLeft: "1px solid #000" }}>{it.qty}</div>
+                      <div style={{ padding: cellPad, textAlign: "center", fontFamily: "monospace", fontWeight: 700, borderLeft: "1px solid #000" }}>{it.qty} {it.unit && unitLabel(it.unit)}</div>
 
                       <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", borderLeft: "1px solid #000" }}>{formatCurrency(invoiceUnitRate(it))}</div>
                       <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", fontWeight: 800, color: "#111", borderLeft: "1px solid #000", borderRight: "1px solid #000" }}>{formatCurrency(it.amount)}</div>
