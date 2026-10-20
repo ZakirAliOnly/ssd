@@ -98,7 +98,6 @@ export default function AccountsPage() {
   const [viewingInvoiceItemsLoading, setViewingInvoiceItemsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingOriginalName, setEditingOriginalName] = useState("");
   const [editingOriginalBal, setEditingOriginalBal] = useState(0);
   const [editingOriginalBalType, setEditingOriginalBalType] = useState<"debit" | "credit">("debit");
 
@@ -312,27 +311,6 @@ export default function AccountsPage() {
       try {
         const newAmt = parseFloat(fBal) || 0;
         const newName = fName.trim();
-        const renamed = editingOriginalName && editingOriginalName !== newName;
-
-        // Keep the original opening-balance row's name/description in sync if the
-        // account was renamed, so the ledger groups under the current name.
-        if (renamed) {
-          const oldDesc = `Opening balance — ${editingOriginalName}`;
-          const { data: existingCbRows } = await db
-            .from("cashbook")
-            .select("id")
-            .eq("description", oldDesc)
-            .eq("account_name", editingOriginalName)
-            .limit(1);
-          const existingCb = Array.isArray(existingCbRows) ? existingCbRows[0] : null;
-          if (existingCb) {
-            await db.from("cashbook").update({
-              account_name: newName,
-              description: `Opening balance — ${newName}`,
-            }).eq("id", existingCb.id);
-          }
-        }
-
         // Compute signed delta (credit = +, debit = -). If non-zero, log a
         // ledger-only "Balance adjustment" entry — excluded from Cash in Hand.
         const oldSigned = (editingOriginalBalType === "credit" ? 1 : -1) * editingOriginalBal;
@@ -391,7 +369,6 @@ export default function AccountsPage() {
 
   function openEdit(a: Account) {
     setEditingId(a.id);
-    setEditingOriginalName(a.name);
     setEditingOriginalBal(Number(a.balance ?? 0) || 0);
     setEditingOriginalBalType(a.bal_type as "debit" | "credit");
     setFHead((a as Account & { head_id?: string }).head_id || "");
@@ -1156,7 +1133,6 @@ export default function AccountsPage() {
 
   function resetForm() {
     setEditingId(null);
-    setEditingOriginalName("");
     setEditingOriginalBal(0);
     setEditingOriginalBalType("debit");
     setFHead(""); setFName(""); setFWa("");

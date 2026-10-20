@@ -648,6 +648,33 @@ export async function POST(req: NextRequest) {
     if (operation === "update") {
       const where = buildWhere(filters, table);
       const updateData = await prepareData((data ?? {}) as Record<string, unknown>, false);
+      if (table === "accounts" && typeof updateData.name === "string") {
+        const newName = updateData.name.trim();
+        if (!newName) throw new InventoryError("Party name is required.");
+        await partySettlementTransaction(prisma, async tx => {
+          const accounts = await tx.account.findMany({ where, orderBy: { id: "asc" } });
+          if (accounts.length !== 1) throw new InventoryError("Select exactly one party to edit.");
+          const account = accounts[0];
+          await tx.$queryRawUnsafe('SELECT id FROM accounts WHERE id = $1::uuid FOR UPDATE', account.id);
+          const fresh = await tx.account.findUniqueOrThrow({ where: { id: account.id } });
+          if (fresh.name !== newName) {
+            const duplicate = await tx.account.findFirst({ where: { id: { not: account.id }, name: { equals: newName, mode: "insensitive" } } });
+            if (duplicate) throw new InventoryError("Another party already uses this name. Choose a different name to keep their histories separate.");
+            const oldName = fresh.name;
+            const sharedOldName = await tx.account.findFirst({ where: { id: { not: account.id }, name: { equals: oldName, mode: "insensitive" } } });
+            if (sharedOldName) throw new InventoryError("Multiple parties share the current name. Their history must be separated before renaming.");
+            const partyInvoices = await tx.invoice.findMany({ where: { client_name: oldName, is_walk_in: false }, select: { invoice_number: true } });
+            await tx.invoice.updateMany({ where: { client_name: oldName, is_walk_in: false }, data: { client_name: newName } });
+            await tx.quickInvoice.updateMany({ where: { client_name: oldName, invoice_number: { in: partyInvoices.map(invoice => invoice.invoice_number) } }, data: { client_name: newName } });
+            await tx.quotation.updateMany({ where: { party_name: oldName }, data: { party_name: newName } });
+            await tx.cashbook.updateMany({ where: { account_name: oldName, description: `Opening balance — ${oldName}` }, data: { description: `Opening balance — ${newName}` } });
+            await tx.cashbook.updateMany({ where: { account_name: oldName }, data: { account_name: newName } });
+          }
+          await tx.account.update({ where: { id: account.id }, data: coerceDates({ ...updateData, name: newName }, table) });
+          await settlePartyInvoices(tx, newName);
+        });
+        return NextResponse.json({ data: null, error: null });
+      }
       if (table === "purchase_orders") {
         await prisma.$transaction(async tx => {
           const purchases = await tx.purchaseOrder.findMany({ where, orderBy: { id: "asc" } });
