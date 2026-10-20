@@ -67,22 +67,27 @@ export function ProductCreateModal({
     setFName(name);
   }
 
+  const packetEntry = packaging.packaging_enabled;
+  const entryFactor = packetEntry ? packaging.pieces_per_packet : 1;
+
   async function handleSave() {
     if (!fNonExpiry && !fExpiryDate) { showToast("Enter the expiry date", "err"); return; }
-    const quantity = Number(fQuantity);
-    if (!fQuantity.trim() || !Number.isFinite(quantity) || Math.abs(quantity - Math.round(quantity * 100) / 100) > 0.00000001 || quantity < 0 || quantity > 2147483647) {
+    const quantity = Math.round(Number(fQuantity) * entryFactor * 100) / 100;
+    if (!fQuantity.trim() || !Number.isFinite(quantity) || Math.abs(Number(fQuantity) - Math.round(Number(fQuantity) * 100) / 100) > 0.00000001 || quantity < 0 || quantity > 2147483647) {
       showToast("Enter stock quantity of zero or more with up to two decimal places", "err"); return;
     }
     if (!fCategoryId) { showToast("Select a category", "err"); return; }
     const trimmed = fName.trim();
     if (!trimmed) { showToast("Enter product name", "err"); return; }
+    if (packetEntry && (!Number.isInteger(entryFactor) || entryFactor < 1 || entryFactor > 1000000)) { showToast("Enter whole pieces per packet between 1 and 1,000,000", "err"); return; }
     const payload = {
       code: fCode || nextProductCode(existingProducts),
       name: trimmed,
       description: fDescription.trim(),
-      cost_price: parseFloat(fCost) || 0,
-      sale_price: parseFloat(fSale) || 0,
+      cost_price: (parseFloat(fCost) || 0) / entryFactor,
+      sale_price: Math.round((parseFloat(fSale) || 0) / entryFactor * 100) / 100,
       ...packaging,
+      ...(packetEntry ? { packets_per_box: 1, box_sale_price: 0, packet_sale_price: parseFloat(fSale) || 0 } : {}),
       pricing_type: "standalone",
       category_id: fCategoryId,
       quantity,
@@ -92,7 +97,7 @@ export function ProductCreateModal({
       const { data, error } = await db.from("products").insert(payload).select("id").single();
       if (error || !data?.id) { showToast(error?.message || "Could not save product", "err"); return; }
       showToast("Product saved", "ok");
-      onCreated({ ...packaging, id: String(data.id), name: payload.name, sale_price: payload.sale_price, description: payload.description, pricing_type: payload.pricing_type, category_id: payload.category_id, quantity: payload.quantity, expiry_date: payload.expiry_date });
+      onCreated({ ...packaging, packet_sale_price: payload.packet_sale_price, packets_per_box: payload.packets_per_box, box_sale_price: payload.box_sale_price, id: String(data.id), name: payload.name, sale_price: payload.sale_price, description: payload.description, pricing_type: payload.pricing_type, category_id: payload.category_id, quantity: payload.quantity, expiry_date: payload.expiry_date });
     } catch {
       showToast("Could not save product. Please try again.", "err");
     }
@@ -142,10 +147,10 @@ export function ProductCreateModal({
           </div>
 
           <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
-          <ProductPackagingFields value={packaging} onChange={setPackaging} disabled={saving} />
-              <ProductStockField value={fQuantity} onChange={setFQuantity} disabled={saving} />
+          <ProductPackagingFields packetEntry={true} packetPrice={Number(fSale) || 0} value={packaging} onChange={setPackaging} disabled={saving} />
+              <ProductStockField packets={packetEntry} value={fQuantity} onChange={setFQuantity} disabled={saving} />
           <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving} />
-              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
+              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? "Stock, cost and selling price are per packet" : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Item Code</label>
@@ -157,7 +162,7 @@ export function ProductCreateModal({
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
-              Cost Price (Rs)
+              {packetEntry ? "Packet cost price (Rs)" : "Cost Price (Rs)"}
             </label>
             <input type="number" value={fCost} onChange={(e) => setFCost(e.target.value)}
               placeholder="0" min="0"
@@ -166,7 +171,7 @@ export function ProductCreateModal({
 
           <div className="flex flex-col gap-1 col-span-2">
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
-              Sale Price (Rs)
+              {packetEntry ? "Packet selling price (Rs)" : "Sale Price (Rs)"}
             </label>
             <input type="number" value={fSale} onChange={(e) => setFSale(e.target.value)}
               placeholder="0" min="0"
@@ -178,7 +183,7 @@ export function ProductCreateModal({
               style={{ background: "var(--green-light)", border: "1.5px solid rgba(14,173,106,.2)" }}>
               <span className="text-[11px] font-semibold" style={{ color: "var(--green)" }}>
                 Margin: {Math.round(((parseFloat(fSale) - parseFloat(fCost)) / parseFloat(fSale)) * 100)}% —
-                Rs {Math.round(parseFloat(fSale) - parseFloat(fCost))} profit per unit
+                Rs {Math.round(parseFloat(fSale) - parseFloat(fCost))} profit per {packetEntry ? "packet" : "unit"}
               </span>
             </div>
           )}

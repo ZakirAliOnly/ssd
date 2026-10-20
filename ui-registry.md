@@ -246,3 +246,10 @@ Only admins see the red trash action beside Edit in the purchase invoice list. R
 ### Party invoice deletion and audit
 
 Admins see a red Delete action beside View in party invoices, and Delete Invoice beside Edit Invoice in the detail footer. Reuse confirmation and busy states; refresh party balances and return to the invoice list after deletion. All record deletions are audited by the server transaction, with record reference, amount and authenticated user. Client logActivity skips deletion to avoid duplicates.
+
+### Packet product entry (Update 010)
+
+Files: components/ProductPackagingFields.tsx, components/ProductStockField.tsx, components/ProductCreateModal.tsx, app/(dashboard)/products/page.tsx
+Last updated: 2026-10-20
+
+Preserve the existing sky-50 packaging fieldset, sky-200 border, rounded-xl corners and p-3 spacing. Packaging inputs use rounded-lg, gray-300 borders, p-2 and text-sm. Stock inputs retain gray-50/gray-200 tokens, 9px corners and 13px monospace numerals. Label packet stock, cost and selling price explicitly; show the automatic piece price as a read-only labelled input.
