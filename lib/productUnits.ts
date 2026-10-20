@@ -8,7 +8,7 @@ export function productUnits(product?: Pick<Packaging, "packaging_enabled" | "ba
   if (!product?.packaging_enabled) return [{ value: "unit", label: "Unit", factor: 1 }];
   const pieces = Number(product.pieces_per_packet ?? 1), packets = Number(product.packets_per_box ?? 1);
   return [{ value: "piece", label: product.base_unit || "Piece", factor: 1 },
-    ...(pieces > 1 ? [{ value: "packet", label: `Packet (${pieces} ${product.base_unit || "pieces"})`, factor: pieces }] : []),
+    { value: "packet", label: `Packet (${pieces} ${product.base_unit || "pieces"})`, factor: pieces },
     ...(packets > 1 ? [{ value: "box", label: `Box (${pieces * packets} ${product.base_unit || "pieces"})`, factor: pieces * packets }] : [])];
 }
 export function unitSalePrice(product: Packaging, unit: string): number {

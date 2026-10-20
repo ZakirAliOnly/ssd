@@ -1776,7 +1776,7 @@ function WalkInInvoiceModal({
                       onCreate={(q) => onRequestCreateProduct(idx, q)}
                       createLabel="+ Add new product"
                     />
-                    <InvoiceUnitSelect product={products.find(p => p.id === item.productId)} unit={item.unit} factor={item.unitFactor} onChange={u => updateItem(idx, "unit", u)} />
+                    <InvoiceUnitSelect selling product={products.find(p => p.id === item.productId)} unit={item.unit} factor={item.unitFactor} onChange={u => updateItem(idx, "unit", u)} />
                   </td>
                   <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ minWidth: 200 }}>
                     <textarea
@@ -1811,7 +1811,9 @@ function WalkInInvoiceModal({
                       onWheel={(e) => e.currentTarget.blur()}
                       className={`${lg} text-right`}
                       placeholder="0"
+                      aria-label={`Rate per ${unitLabel(item.unit)} for product ${idx + 1}`}
                     />
+                    <p className="mt-1 text-xs" style={{ color: "var(--gray-800)" }}>per {unitLabel(item.unit)}</p>
                   </td>
                   <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ width: 100 }}>
                     <input type="number" min="0" max="100" step="0.01" value={item.discountPct ?? 0}

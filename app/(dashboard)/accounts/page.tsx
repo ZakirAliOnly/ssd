@@ -1965,7 +1965,7 @@ export default function AccountsPage() {
                             onCreate={(q) => setProductCreate({ idx, initialName: q })}
                             createLabel="+ Add new product"
                           />
-                    <InvoiceUnitSelect product={invProducts.find(p => p.id === item.productId)} unit={item.unit} factor={item.unitFactor} onChange={u => updateInvItem(idx, "unit", u)} />
+                    <InvoiceUnitSelect selling product={invProducts.find(p => p.id === item.productId)} unit={item.unit} factor={item.unitFactor} onChange={u => updateInvItem(idx, "unit", u)} />
                         </td>
                         <td className="px-2 py-2 border-b border-[var(--gray-100)]" style={{ minWidth: 200 }}>
                           <textarea
@@ -1994,7 +1994,8 @@ export default function AccountsPage() {
                       value={item.rate || ""}
                             onChange={(e) => updateInvItem(idx, "rate", parseFloat(e.target.value) || 0)}
                             className="border-2 border-[var(--gray-200)] rounded-[7px] px-2 py-2 text-[16px] font-bold outline-none bg-white focus:border-[var(--blue)] w-full text-right"
-                            placeholder="0" />
+                            placeholder="0" aria-label={`Rate per ${unitLabel(item.unit)} for product ${idx + 1}`} />
+                          <p className="mt-1 text-xs" style={{ color: "var(--gray-800)" }}>per {unitLabel(item.unit)}</p>
                         </td>
                         {/* Total */}
                         <td className="px-2 py-2 border-b border-[var(--gray-100)]" style={{ width: 100 }}>

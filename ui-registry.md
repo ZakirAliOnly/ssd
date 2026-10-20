@@ -253,3 +253,10 @@ Files: components/ProductPackagingFields.tsx, components/ProductStockField.tsx, 
 Last updated: 2026-10-20
 
 Preserve the existing sky-50 packaging fieldset, sky-200 border, rounded-xl corners and p-3 spacing. Packaging inputs use rounded-lg, gray-300 borders, p-2 and text-sm. Stock inputs retain gray-50/gray-200 tokens, 9px corners and 13px monospace numerals. Label packet stock, cost and selling price explicitly; show the automatic piece price as a read-only labelled input.
+
+### Invoice selling units (Update 011)
+
+Files: components/InvoiceUnitSelect.tsx, app/(dashboard)/accounts/page.tsx, app/(dashboard)/quick-invoice/page.tsx
+Last updated: 2026-10-20
+
+Use the existing block mt-1 text-xs selector label, white rounded inputs, gray-300 borders and p-2 spacing. Sales label the selector Sell in. Beneath Rate, show per Piece or per Packet in text-xs with gray-800 text and mt-1 spacing. Preserve invoice row alignment and discount/total typography.
