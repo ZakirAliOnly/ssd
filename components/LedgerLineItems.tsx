@@ -1,3 +1,4 @@
+import { unitLabel } from "@/lib/productUnits";
 import { formatCurrency } from "@/lib/helpers";
 
 type Item = {
@@ -18,7 +19,7 @@ export function LedgerLineItems({ items }: { items: Item[] }) {
         <strong>{item.category?.trim() || item.description?.trim() || "Item"}</strong>
         {item.category?.trim() && item.description?.trim() && item.category.trim() !== item.description.trim() && <div>{item.description}</div>}
       </td>
-      <td style={{ padding: "5px", textAlign: "right" }}>{Number(item.qty)}{item.unit ? ` ${item.unit}` : ""}</td>
+      <td style={{ padding: "5px", textAlign: "right" }}>{Number(item.qty)}{item.unit ? ` ${unitLabel(item.unit)}` : ""}</td>
       <td style={{ padding: "5px", textAlign: "right", overflowWrap: "anywhere" }}>{formatCurrency(Number(item.rate))}</td>
       {discount && <td style={{ padding: "5px", textAlign: "right" }}>{Number(item.discount_pct) || 0}%</td>}
       <td style={{ padding: "5px", textAlign: "right", overflowWrap: "anywhere" }}>{formatCurrency(Number(item.amount))}</td>

@@ -1,4 +1,4 @@
-import { stockDisplay } from "@/lib/productUnits";
+import { stockDisplay, unitLabel, baseUnitLabel } from "@/lib/productUnits";
 import type { StockReportRow } from "@/lib/stockReport";
 import { formatCurrency, formatDate } from "@/lib/helpers";
 import { DT } from "@/lib/dataTableStyles";
@@ -13,7 +13,7 @@ export function StockReport({ rows }: { rows: StockReportRow[] }) {
       <table className={`${DT.table} min-w-[1100px] print:min-w-0 print:text-[9px]`}>
         <thead><tr>{["Code", "Product", "Description", "Category", "Opening qty", "Stock in qty", "Sold qty", "Available qty", "Current cost / unit", "Sales revenue", "Cost of sold stock", "Est. gross profit"].map((h, i) => <th key={h} scope="col" className={`${DT.thDense} ${i < 4 ? "text-left" : i < 8 ? "text-center" : "text-right"}`} style={DT.thStyle}>{h}</th>)}</tr></thead>
         <tbody>{rows.map(r => <tr key={r.id} className={DT.row}>
-          <td className={DT.tdDense}>{r.code}</td><td className={DT.tdDense}>{r.name}<small className="block">Quantities in {r.baseUnit || "Unit"}{r.available != null && r.packaging?.packaging_enabled ? ` · ${stockDisplay(r.available, r.packaging)}` : ""}</small>{r.warning && <span className="block text-[10px]" style={{ color: "var(--red)" }}>{r.warning}</span>}</td><td className={`${DT.tdDense} min-w-[180px] max-w-[320px] whitespace-pre-wrap break-words print:min-w-0`}>{r.description || "—"}</td><td className={DT.tdDense}>{r.category}</td>
+          <td className={DT.tdDense}>{r.code}</td><td className={DT.tdDense}>{r.name}<small className="block">Quantities in {r.baseUnit ? baseUnitLabel(r.baseUnit) : "Unit"}{r.available != null && r.packaging?.packaging_enabled ? ` · ${stockDisplay(r.available, r.packaging)}` : ""}</small>{r.warning && <span className="block text-[10px]" style={{ color: "var(--red)" }}>{r.warning}</span>}</td><td className={`${DT.tdDense} min-w-[180px] max-w-[320px] whitespace-pre-wrap break-words print:min-w-0`}>{r.description || "—"}</td><td className={DT.tdDense}>{r.category}</td>
           {[r.opening ?? "—", r.received, r.sold, r.available ?? "—", formatCurrency(r.costPrice), formatCurrency(r.revenue), formatCurrency(r.cost), formatCurrency(r.profit)].map((v, i) => <td key={i} className={`${DT.tdDense} ${DT.cellMono} ${i < 4 ? "text-center" : "text-right"}`}>{v}</td>)}
         </tr>)}</tbody>
         <tfoot><tr className="font-bold bg-[var(--gray-50)]"><td colSpan={5} className={DT.tdDense}>Total</td><td className={`${DT.tdDense} ${DT.cellMono} text-center`}>{totals.received}</td><td className={`${DT.tdDense} ${DT.cellMono} text-center`}>{totals.sold}</td><td colSpan={2} />{[totals.revenue, totals.cost, totals.profit].map((v, i) => <td key={i} className={`${DT.tdDense} ${DT.cellMono} text-right`}>{formatCurrency(v)}</td>)}</tr></tfoot>
@@ -29,7 +29,7 @@ export function StockReport({ rows }: { rows: StockReportRow[] }) {
             <td className={DT.tdDense}>{sale.invoiceNumber || "—"}</td>
             <td className={DT.tdDense}>{formatDate(sale.date)}</td>
             <td className={DT.tdDense}>{sale.customer || "—"}</td>
-            <td className={`${DT.tdDense} ${DT.cellMono} text-center`}>{sale.displayQty ?? sale.qty} {sale.unit}</td>
+            <td className={`${DT.tdDense} ${DT.cellMono} text-center`}>{sale.displayQty ?? sale.qty} {unitLabel(sale.unit)}</td>
             <td className={`${DT.tdDense} ${DT.cellMono} text-right`}>{sale.unitPrice == null ? "—" : formatCurrency(sale.unitPrice)}</td>
             <td className={`${DT.tdDense} ${DT.cellMono} text-right`}>{sale.amount == null ? "—" : formatCurrency(sale.amount)}</td>
           </tr>)}</tbody>

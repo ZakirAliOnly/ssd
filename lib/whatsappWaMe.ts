@@ -1,3 +1,4 @@
+import { unitLabel } from "@/lib/productUnits";
 import { invoiceUnitRate } from "@/lib/invoicePricing";
 import { formatCurrency, formatDate } from "@/lib/helpers";
 
@@ -125,7 +126,7 @@ export function buildInvoiceShareWhatsAppMessage(input: {
       const extra = (it.description || "").trim();
       const label = extra ? `${name} (${extra})` : name;
       lines.push(
-        `${i + 1}. *${label}* — qty *${it.qty}${it.unit && it.unit !== "unit" ? ` ${it.unit}` : ""}*, rate ${formatCurrency(invoiceUnitRate(it))}, amount *${formatCurrency(it.amount)}*`
+        `${i + 1}. *${label}* — qty *${it.qty}${it.unit && it.unit !== "unit" ? ` ${unitLabel(it.unit)}` : ""}*, rate ${formatCurrency(invoiceUnitRate(it))}, amount *${formatCurrency(it.amount)}*`
       );
     });
   }
@@ -178,7 +179,7 @@ export function buildLastTransactionWhatsAppMessage(
         const extra = (it.description || "").trim();
         const label = extra ? `${name} (${extra})` : name;
         lines.push(
-          `${i + 1}. *${label}* — qty *${it.qty}${it.unit && it.unit !== "unit" ? ` ${it.unit}` : ""}*, rate ${formatCurrency(invoiceUnitRate(it))}, amount *${formatCurrency(it.amount)}*`
+          `${i + 1}. *${label}* — qty *${it.qty}${it.unit && it.unit !== "unit" ? ` ${unitLabel(it.unit)}` : ""}*, rate ${formatCurrency(invoiceUnitRate(it))}, amount *${formatCurrency(it.amount)}*`
         );
       });
     }

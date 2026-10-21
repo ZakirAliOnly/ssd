@@ -1,4 +1,6 @@
 "use client";
+import { unitLabel } from "@/lib/productUnits";
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
@@ -48,7 +50,7 @@ function itemsToPrintRows(items: InvoiceItem[]): PrintRow[] {
     return {
       id: it.id || `row-${i}`,
       detail,
-      qty: `${qty}${it.unit && it.unit !== "unit" ? ` ${it.unit}` : ""}`,
+      qty: `${qty}${it.unit && it.unit !== "unit" ? ` ${unitLabel(it.unit)}` : ""}`,
     };
   });
 }

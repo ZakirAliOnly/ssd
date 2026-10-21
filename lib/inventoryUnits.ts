@@ -18,7 +18,7 @@ export async function resolveLineUnit(tx: Prisma.TransactionClient, productId: s
   if (!productId) return { unit: "unit", unit_factor: 1 };
   const product = await tx.product.findUnique({ where: { id: productId } });
   if (!product) throw new InventoryError("A selected product no longer exists.");
-  if (product.packaging_enabled && unit == null) throw new InventoryError("Reload the app and choose Piece, Packet or Box before saving this product line.");
+  if (product.packaging_enabled && unit == null) throw new InventoryError("Reload the app and choose Vial, Kit or Box before saving this product line.");
   const selected = productUnits(product).find(row => row.value === (unit ?? (product.packaging_enabled ? "piece" : "unit")));
   if (!selected || expected != null && selected.factor !== expected) throw new InventoryError("Product packaging changed. Reload products and select the unit again.");
   return { unit: selected.value, unit_factor: selected.factor };
