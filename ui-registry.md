@@ -289,3 +289,10 @@ Last updated: 2026-10-21
 
 Pagination uses white buttons, gray-200 borders, 9px corners, px-3/py-1.5 spacing and text-xs semibold blue-deeper labels. Hover uses blue-pale; keyboard focus uses a visible blue outline. Disabled controls use 50% opacity. The footer uses a gray-100 top border and px-5/py-3 padding, with gray-800 text-xs row/page counts. Preserve existing list cards, tables and product-picker dropdown styling. Loading and no-match messages are distinct; errors offer a retry, and loading search results must never expose the create-product action.
 
+### Vial and Kit terminology (Update 016)
+
+Files: components/ProductPackagingFields.tsx, components/ProductStockField.tsx, components/InvoiceUnitSelect.tsx, lib/productUnits.ts
+Last updated: 2026-10-21
+
+Preserve existing field, price-grid and unit-button styling. Use Vial for the smallest Piece/Pcs unit and Kit for Packet in labels, helpers and customer documents. Describe the factor as Vials per kit and stock/cost entry as per kit. Use shared unit display helpers so legacy stored codes do not leak into visible labels. Box and custom base-unit labels remain supported.
+

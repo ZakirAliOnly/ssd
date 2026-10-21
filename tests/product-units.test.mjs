@@ -12,5 +12,5 @@ test('pack prices use explicit overrides and fall back to the base price',()=>{
  assert.equal(unitSalePrice(pack,'packet'),140);assert.equal(unitSalePrice(pack,'box'),1300);assert.equal(unitSalePrice({...pack,packet_sale_price:0},'packet'),150);
 });
 test('stock breakdown describes equivalents without claiming sealed packages',()=>{
- assert.equal(stockDisplay(187,pack),'187 Piece (1 box + 8 packet + 7 Piece equivalent)');assert.equal(stockDisplay(0,pack),'0 Piece (0 Piece equivalent)');assert.equal(stockDisplay(5,{}),'5 units');
+ assert.equal(stockDisplay(187,pack),'187 Vial (1 box + 8 kit + 7 Vial equivalent)');assert.equal(stockDisplay(0,pack),'0 Vial (0 Vial equivalent)');assert.equal(stockDisplay(5,{}),'5 units');
 });

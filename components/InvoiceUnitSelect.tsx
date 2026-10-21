@@ -1,5 +1,5 @@
 "use client";
-import { productUnits, unitLabel, type Packaging } from "@/lib/productUnits";
+import { productUnits, unitLabel, baseUnitLabel, type Packaging } from "@/lib/productUnits";
 export function InvoiceUnitSelect({ product, unit, factor, onChange, className, selling = false }: {
   product?: Packaging; unit?: string; factor?: number; onChange: (unit: string) => void; className?: string; selling?: boolean;
 }) {
@@ -28,7 +28,7 @@ export function InvoiceUnitSelect({ product, unit, factor, onChange, className, 
         })}
       </div>
       {selected === "packet" && <p className="mt-1 text-xs" style={{ color: "var(--gray-800)" }}>
-        1 packet = {factor ?? options.find(row => row.value === selected)?.factor ?? 1} {product?.base_unit || "pieces"}
+        1 kit = {factor ?? options.find(row => row.value === selected)?.factor ?? 1} {baseUnitLabel(product?.base_unit)}
       </p>}
     </fieldset>;
   }

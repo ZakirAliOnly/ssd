@@ -1,4 +1,6 @@
 "use client";
+import { unitLabel } from "@/lib/productUnits";
+
 
 import { formatCurrency, formatDate } from "@/lib/helpers";
 import { PrintFooter } from "@/components/PrintFooter";
@@ -170,7 +172,7 @@ export function PurchaseOrderPdfDocument({ data }: { data: PurchaseOrderPdfPaylo
                     {it.expiry_date ? formatDate(it.expiry_date) : "Non-expiry"}
                   </td>
                   <td style={{ padding: "6px 8px", textAlign: "center", fontFamily: "monospace", fontWeight: 700, borderLeft: "1px solid #e5e7eb" }}>
-                    {it.qty} {it.unit}
+                    {it.qty} {unitLabel(it.unit)}
                   </td>
                   <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontWeight: 600, borderLeft: "1px solid #e5e7eb" }}>
                     {formatCurrency(it.rate)}

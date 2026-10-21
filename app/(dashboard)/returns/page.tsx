@@ -1,4 +1,6 @@
 "use client";
+import { unitLabel } from "@/lib/productUnits";
+
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, RotateCcw, ChevronLeft, ChevronRight, X, Printer } from "lucide-react";
@@ -224,7 +226,7 @@ export default function ReturnsPage() {
           <td className={`${DT.tdDense} align-top`}><span className="font-semibold">{item.product?.name || item.category || "Invoice item"}</span><span className="block text-sm whitespace-pre-wrap break-words text-[var(--gray-800)]">{item.description}</span>
             {supplier && item.available_qty != null && <span className="block text-xs text-[var(--gray-800)]">Base units available from this purchase: {Number(item.available_qty)}</span>}
             {supplier && Number(item.stock_deducted_qty) === 0 && <span className="block text-xs text-[var(--gray-800)]">{supplier ? "No tracked receipt; return credits value only." : "No tracked stock deduction; return credits value only."}</span>}</td>
-          <td className={`${DT.tdDense} text-center tabular-nums`}>{Number(item.qty)} {item.unit}</td>
+          <td className={`${DT.tdDense} text-center tabular-nums`}>{Number(item.qty)} {unitLabel(item.unit)}</td>
           <td className={`${DT.tdDense} text-center tabular-nums`}>{Math.round((Number(item.qty) - remaining(item)) * 100) / 100}</td>
           <td className={`${DT.tdDense} text-center tabular-nums`}>{remaining(item)}</td>
           <td className={`${DT.tdDense} text-center`}><input type="number" min="0" max={remaining(item)} step="0.01" disabled={locked || remaining(item) <= 0} value={quantities[item.id] ?? ""} placeholder="0"
@@ -251,7 +253,7 @@ export default function ReturnsPage() {
           <p className="text-xs text-[var(--gray-800)] break-all">Return ID: {record.id} · {record.created_by_name}</p>
           <button type="button" className={`${buttonClass} my-2`} disabled={locked} onClick={() => printReceipt(record, invoice)}><Printer size={15} className="inline mr-2" />Print receipt</button>
           {record.reason && <p className="mt-1 whitespace-pre-wrap">{record.reason}</p>}
-          <ul className="mt-2 list-disc pl-5">{record.items.map(item => <li key={item.id}>{item.product_name}: {Number(item.qty)} {item.unit} returned · {Number(item.stock_restored_qty)} {supplier ? "removed from stock" : "restored to stock"} · {formatCurrency(Number(item.amount))}</li>)}</ul>
+          <ul className="mt-2 list-disc pl-5">{record.items.map(item => <li key={item.id}>{item.product_name}: {Number(item.qty)} {unitLabel(item.unit)} returned · {Number(item.stock_restored_qty)} {supplier ? "removed from stock" : "restored to stock"} · {formatCurrency(Number(item.amount))}</li>)}</ul>
         </div>)}</div>}
       </div>
     </section>}
@@ -272,7 +274,7 @@ export default function ReturnsPage() {
       <div style={{ margin: "8px 0", borderTop: "1px dashed #000", borderBottom: "1px dashed #000" }}>
         {receipt.record.items.map(item => <div key={item.id} style={{ padding: "6px 0", breakInside: "avoid", overflowWrap: "anywhere" }}>
           <strong>{item.product_name}</strong>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>Qty returned: {Number(item.qty)} {item.unit}</span><strong>{formatCurrency(Number(item.amount))}</strong></div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>Qty returned: {Number(item.qty)} {unitLabel(item.unit)}</span><strong>{formatCurrency(Number(item.amount))}</strong></div>
         </div>)}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 800, fontSize: 13 }}><span>Total credit</span><span>{formatCurrency(Number(receipt.record.amount))}</span></div>
