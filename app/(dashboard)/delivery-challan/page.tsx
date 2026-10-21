@@ -167,12 +167,12 @@ export default function DeliveryChallanPage() {
       if (partyName) {
         const { data: parties, error: partyErr } = await db
           .from("accounts")
-          .select("phone, whatsapp")
+          .select("phone")
           .eq("name", partyName)
           .limit(1);
         if (partyErr) showToast(partyErr.message, "err");
         const party = parties?.[0];
-        partyCell = String(party?.whatsapp ?? "").trim() || String(party?.phone ?? "").trim();
+        partyCell = String(party?.phone ?? "").trim();
       }
       const items = (rows ?? []) as InvoiceItem[];
       const response = await fetch("/api/delivery-challans", {

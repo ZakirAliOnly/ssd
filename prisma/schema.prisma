@@ -2,7 +2,8 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// One business connection per installation, shared by the business's sub-users.
+// Retired messaging data retained for backup/history only. No app routes or worker use these models.
+// Do not drop these tables as part of application deployment.
 model WhatsAppSettings {
   id                  Int      @id @default(1)
   waba_id             String   @default("")

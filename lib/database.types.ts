@@ -18,7 +18,6 @@ export interface Account {
   /** Client vs Supplier — required by DB; may be missing on legacy rows until updated. */
   type?: AccountPartyType;
   phone: string;
-  whatsapp: string;
   address: string;
   balance: number;
   bal_type: "debit" | "credit";

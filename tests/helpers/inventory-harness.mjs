@@ -141,7 +141,6 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
   const module = { exports: {} };
   const dependencies = {
     "@/lib/partyInvoiceSettlement": partyInvoiceSettlement,
-    "@/lib/whatsappOutbox": { enqueueInvoice: async () => {}, enqueuePayment: async () => {} },
     "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
     "@/lib/prisma": { prisma }, "@/lib/auth": { COOKIE_NAME: "auth", verifyToken: async () => ({ sub: randomUUID(), email: "test@example.com", full_name: "Test" }) },
     "@/lib/inventoryUnits": inventoryUnits, "@/lib/inventory": inventory, "@/lib/productValidation": productValidation, "@/lib/moduleAccess": moduleAccess,

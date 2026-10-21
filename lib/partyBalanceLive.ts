@@ -14,13 +14,10 @@ export type FreshPartyBalance = {
 
 /**
  * Single source of truth for a party's balance. Re-queries the DB and computes
- * from the ledger every time it is called. Use this right before composing any
- * user-visible balance (the WhatsApp "Remaining balance" line, the receipt PDF,
- * etc.) so the message can never disagree with the Credit column shown in the
- * accounts table.
+ * from the ledger every time it is called, so receipts agree with the Credit
+ * column shown in the accounts table.
  *
  * Also returns the cached `accounts.balance` so callers can detect drift —
- * when those disagree the WhatsApp would have lied. Callers should warn and
  * use the ledger-derived value, not the cached one.
  */
 export async function fetchPartySignedBalance(accountName: string): Promise<FreshPartyBalance> {
@@ -70,7 +67,6 @@ export async function syncCachedAccountBalance(
  * for the cached column — every successful invoice/cashbook mutation should
  * call this for the affected party so the cache can never drift from ground
  * truth. Returns the freshly computed signed balance for callers that need it
- * (e.g. WhatsApp message composition).
  */
 export async function recomputeCachedBalance(accountName: string): Promise<number> {
   const fresh = await fetchPartySignedBalance(accountName);

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Monitor, FileText, LogOut,
-  Package, BarChart2, Users, FileSignature, Truck, ClipboardList, History, UserCog, Receipt, RotateCcw, Menu, X, MessageCircle,
+  Package, BarChart2, Users, FileSignature, Truck, ClipboardList, History, UserCog, Receipt, RotateCcw, Menu, X,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { getInitials } from "@/lib/helpers";
@@ -21,7 +21,6 @@ const menuBarLinks: { name: string; href: string; adminOnly?: true }[] = [
   { name: "Quote",         href: "/quote" },
   { name: "Sub Users",     href: "/users", adminOnly: true },
   { name: "Payment Methods", href: "/payment-methods", adminOnly: true },
-  { name: "WhatsApp Setup", href: "/whatsapp-setup", adminOnly: true },
   { name: "Change Password", href: "/change-password", adminOnly: true },
 ];
 
@@ -127,7 +126,7 @@ export default function TopNav() {
           <div className="text-xs text-gray-500 px-2 pb-3">{isSubUser ? "Your modules" : "Navigation"}</div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {mobileLinks.map(link => {
-              const Icon = "icon" in link ? link.icon : link.href === "/whatsapp-setup" ? MessageCircle : FileText;
+              const Icon = "icon" in link ? link.icon : FileText;
               return <Link key={link.href} href={link.href} onClick={() => setMenuOpen(false)} aria-current={pathname === link.href ? "page" : undefined}
                 className={`flex items-center gap-2 min-h-12 p-3 rounded-lg text-sm font-medium no-underline ${pathname === link.href ? "bg-sky-100 text-sky-900" : "text-gray-800 hover:bg-gray-100"}`}>
                 <Icon size={18} className="shrink-0" /><span>{link.name}</span>
