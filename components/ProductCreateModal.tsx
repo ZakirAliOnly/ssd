@@ -35,17 +35,21 @@ export function nextProductCode(existing: { code: string | null }[]): string {
 export function ProductCreateModal({
   initialName,
   existingProducts,
+  serverCode = false,
   onClose,
   onCreated,
 }: {
   initialName: string;
   existingProducts: { id: string; code: string | null; name: string; sale_price: number; description?: string | null; pricing_type?: string | null }[];
+  serverCode?: boolean;
   onClose: () => void;
   onCreated: (p: CreatedProduct) => void;
 }) {
   const [packaging, setPackaging] = useState({ ...emptyPackaging });
   const [fName, setFName] = useState(initialName);
-  const [fCode, setFCode] = useState(() => nextProductCode(existingProducts));
+  const [fCode, setFCode] = useState(() => serverCode ? "" : nextProductCode(existingProducts));
+  const [codeLoading, setCodeLoading] = useState(serverCode);
+  const [codeError, setCodeError] = useState("");
   const [fCategoryId, setFCategoryId] = useState("");
   const [fDescription, setFDescription] = useState("");
   const [fCost, setFCost] = useState("");
@@ -55,6 +59,19 @@ export function ProductCreateModal({
   const [fNonExpiry, setFNonExpiry] = useState(true);
   const [fExpiryDate, setFExpiryDate] = useState("");
   const { saving, run } = useSaving();
+
+  useEffect(() => {
+    if (!serverCode) return;
+    const controller = new AbortController();
+    void fetch("/api/products?mode=next-code", { signal: controller.signal }).then(async response => {
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error);
+      if (!controller.signal.aborted) setFCode(current => current || body.code);
+    }).catch(() => {
+      if (!controller.signal.aborted) setCodeError("Could not generate a code. Close and reopen this form to retry.");
+    }).finally(() => { if (!controller.signal.aborted) setCodeLoading(false); });
+    return () => controller.abort();
+  }, [serverCode]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -74,6 +91,7 @@ export function ProductCreateModal({
   const effectivePacketPrice = packetPrice === null ? calculatedPacketPrice : Number(packetPrice);
 
   async function handleSave() {
+    if (codeLoading || codeError) { showToast(codeError || "Wait for the product code", "err"); return; }
     if (!fNonExpiry && !fExpiryDate) { showToast("Enter the expiry date", "err"); return; }
     const quantity = Math.round(Number(fQuantity) * entryFactor * 100) / 100;
     if (!fQuantity.trim() || !Number.isFinite(quantity) || Math.abs(Number(fQuantity) - Math.round(Number(fQuantity) * 100) / 100) > 0.00000001 || quantity < 0 || quantity > 2147483647) {
@@ -84,8 +102,17 @@ export function ProductCreateModal({
     if (!trimmed) { showToast("Enter product name", "err"); return; }
     if (packetEntry && (!Number.isInteger(entryFactor) || entryFactor < 1 || entryFactor > 1000000)) { showToast("Enter whole pieces per packet between 1 and 1,000,000", "err"); return; }
     if (packetEntry && packetPrice !== null && (!packetPrice.trim() || !Number.isFinite(Number(packetPrice)) || Number(packetPrice) < 0)) { showToast("Enter a packet selling price of zero or more", "err"); return; }
+    let code = fCode.trim() || (serverCode ? "" : nextProductCode(existingProducts));
+    if (!code) {
+      try {
+        const response = await fetch("/api/products?mode=next-code");
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error);
+        code = body.code;
+      } catch { showToast("Could not generate a product code. Try again.", "err"); return; }
+    }
     const payload = {
-      code: fCode || nextProductCode(existingProducts),
+      code,
       name: trimmed,
       description: fDescription.trim(),
       cost_price: (parseFloat(fCost) || 0) / entryFactor,
@@ -158,10 +185,12 @@ export function ProductCreateModal({
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Item Code</label>
-            <input value={fCode} onChange={(e) => setFCode(e.target.value)}
+            <input value={fCode} disabled={codeLoading} onChange={(e) => setFCode(e.target.value)}
               placeholder="Auto-generated"
               className="border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none font-mono font-bold"
               style={{ ...inputStyle, background: "var(--blue-pale)", color: "var(--blue-deeper)" }} />
+            {codeLoading && <span role="status" className="text-xs text-[var(--gray-800)]">Preparing code…</span>}
+            {codeError && <span role="alert" className="text-xs text-[var(--red)]">{codeError}</span>}
           </div>
 
           <div className="flex flex-col gap-1">
@@ -198,7 +227,7 @@ export function ProductCreateModal({
             style={{ borderColor: "var(--gray-200)", color: "var(--blue-deeper)" }}>
             Cancel
           </button>
-          <button onClick={() => void run(handleSave)} disabled={saving || !fCategoryId}
+          <button onClick={() => void run(handleSave)} disabled={saving || !fCategoryId || codeLoading || !!codeError}
             className="px-4 py-2 rounded-[9px] text-[12.5px] font-semibold border-none cursor-pointer text-white disabled:opacity-60 inline-flex items-center gap-1.5"
             style={{ background: "linear-gradient(135deg, var(--blue-deeper), var(--blue))" }}>
             {saving ? <Loader2 size={13} className="animate-spin" /> : null}

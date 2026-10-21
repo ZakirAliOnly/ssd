@@ -27,6 +27,12 @@ interface SearchableSelectProps {
   onCreate?: (query: string) => void;
   /** Label prefix for the create row (default: "+ Add"). */
   createLabel?: string;
+  /** Optional server search; existing local pickers retain their behavior. */
+  onSearchChange?: (query: string) => void;
+  onOpenChange?: (open: boolean) => void;
+  remote?: boolean;
+  loading?: boolean;
+  loadError?: string;
 }
 
 export function SearchableSelect({
@@ -40,6 +46,11 @@ export function SearchableSelect({
   inputStyle,
   onCreate,
   createLabel = "+ Add",
+  onSearchChange,
+  onOpenChange,
+  remote = false,
+  loading = false,
+  loadError = "",
 }: SearchableSelectProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -53,7 +64,7 @@ export function SearchableSelect({
 
   const trimmedQuery = query.trim();
   const normalizedQuery = trimmedQuery.toLowerCase();
-  const matches = trimmedQuery
+  const matches = remote ? options : trimmedQuery
     ? options
         .filter((o) => `${o.searchText ?? o.value} ${o.label}`.toLowerCase().includes(normalizedQuery))
         .sort((a, b) => {
@@ -64,11 +75,14 @@ export function SearchableSelect({
           return rank(a) - rank(b);
         })
     : options;
-  const filtered = maxResults === undefined ? matches : matches.slice(0, maxResults);
+  const filtered = loading || loadError ? [] : maxResults === undefined ? matches : matches.slice(0, maxResults);
   const hasExactMatch = trimmedQuery
     ? options.some((o) => o.label.toLowerCase() === trimmedQuery.toLowerCase() || (o.searchText ?? o.value).toLowerCase() === trimmedQuery.toLowerCase())
     : false;
-  const showCreateRow = !!onCreate && trimmedQuery.length > 0 && !hasExactMatch;
+  const showCreateRow = !!onCreate && !loading && !loadError && trimmedQuery.length > 0 && !hasExactMatch;
+
+  const updateOpen = useCallback((value: boolean) => { setOpen(value); onOpenChange?.(value); }, [onOpenChange]);
+  const updateQuery = useCallback((value: string) => { setQuery(value); onSearchChange?.(value); }, [onSearchChange]);
 
   const positionDropdown = useCallback(() => {
     if (!inputRef.current) return;
@@ -103,10 +117,11 @@ export function SearchableSelect({
 
   useEffect(() => {
     if (!open) return;
-    positionDropdown();
+    const frame = window.requestAnimationFrame(positionDropdown);
     window.addEventListener("scroll", positionDropdown, true);
     window.addEventListener("resize", positionDropdown);
     return () => {
+      window.cancelAnimationFrame(frame);
       window.removeEventListener("scroll", positionDropdown, true);
       window.removeEventListener("resize", positionDropdown);
     };
@@ -119,45 +134,45 @@ export function SearchableSelect({
         inputRef.current?.contains(e.target as Node) ||
         dropdownRef.current?.contains(e.target as Node)
       ) return;
-      setOpen(false);
-      setQuery("");
+      updateOpen(false);
+      updateQuery("");
     }
     document.addEventListener("mousedown", onOutside);
     return () => document.removeEventListener("mousedown", onOutside);
-  }, [open]);
+  }, [open, updateOpen, updateQuery]);
 
   function handleFocus() {
-    setOpen(true);
-    setQuery("");
+    updateOpen(true);
+    updateQuery("");
     setHighlight(0);
   }
 
   function handleInput(e: React.FormEvent<HTMLInputElement>) {
-    setQuery(e.currentTarget.value);
+    updateQuery(e.currentTarget.value);
     if (dropdownRef.current) dropdownRef.current.scrollTop = 0;
-    setOpen(true);
+    updateOpen(true);
     setHighlight(0);
   }
 
   function select(opt: Option | null) {
     onChange(opt ? opt.value : emptyValue);
-    setOpen(false);
-    setQuery("");
+    updateOpen(false);
+    updateQuery("");
     inputRef.current?.blur();
   }
 
   function handleCreate() {
     if (!onCreate || !trimmedQuery) return;
     onCreate(trimmedQuery);
-    setOpen(false);
-    setQuery("");
+    updateOpen(false);
+    updateQuery("");
     inputRef.current?.blur();
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!open) {
       if (e.key === "ArrowDown" || e.key === "Enter") {
-        setOpen(true);
+        updateOpen(true);
         setHighlight(0);
         e.preventDefault();
       }
@@ -181,8 +196,8 @@ export function SearchableSelect({
       const idx = Math.min(highlight, filtered.length - 1);
       select(filtered[idx]);
     } else if (e.key === "Escape") {
-      setOpen(false);
-      setQuery("");
+      updateOpen(false);
+      updateQuery("");
       inputRef.current?.blur();
     }
   }
@@ -211,7 +226,7 @@ export function SearchableSelect({
       {filtered.length === 0 ? (
         <>
           <div className="px-3 py-2 text-[11px]" style={{ color: "var(--gray-400)" }}>
-            No results
+            {loading ? "Loading products…" : loadError || "No results"}
           </div>
           {showCreateRow && (
             <div

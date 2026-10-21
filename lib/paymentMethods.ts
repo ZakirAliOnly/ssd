@@ -72,7 +72,7 @@ export async function fetchPaymentMethods(): Promise<PaymentMethodRow[]> {
 
 /** Hook — returns the active methods only (archived excluded), with a `loading` flag.
  *  All consumer pages call this so changes in /payment-methods propagate everywhere. */
-export function usePaymentMethods(): { methods: PaymentMethodRow[]; loading: boolean; reload: () => Promise<void> } {
+export function usePaymentMethods(enabled = true): { methods: PaymentMethodRow[]; loading: boolean; reload: () => Promise<void> } {
   const [methods, setMethods] = useState<PaymentMethodRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -83,7 +83,11 @@ export function usePaymentMethods(): { methods: PaymentMethodRow[]; loading: boo
     setLoading(false);
   }
 
-  useEffect(() => { void reload(); }, []);
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = window.setTimeout(() => { void reload(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [enabled]);
 
   return { methods, loading, reload };
 }

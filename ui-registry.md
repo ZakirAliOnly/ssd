@@ -281,3 +281,11 @@ Files: components/ProductPackagingFields.tsx, components/ProductCreateModal.tsx,
 Last updated: 2026-10-21
 
 Reuse the packaging two-column grid with gap-3. Unit uses a labelled native select styled like the existing rounded-lg, border-gray-300, p-2, text-sm, white inputs. Put piece and packet selling prices in the same grid row; keep the calculated-price reset beneath the packet input.
+
+### Paginated lists and remote product search (Update 015)
+
+Files: components/ListPagination.tsx, components/InvoiceProductSearch.tsx, components/SearchableSelect.tsx
+Last updated: 2026-10-21
+
+Pagination uses white buttons, gray-200 borders, 9px corners, px-3/py-1.5 spacing and text-xs semibold blue-deeper labels. Hover uses blue-pale; keyboard focus uses a visible blue outline. Disabled controls use 50% opacity. The footer uses a gray-100 top border and px-5/py-3 padding, with gray-800 text-xs row/page counts. Preserve existing list cards, tables and product-picker dropdown styling. Loading and no-match messages are distinct; errors offer a retry, and loading search results must never expose the create-product action.
+

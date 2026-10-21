@@ -2,12 +2,13 @@
 
 import { ProductPackagingFields, emptyPackaging } from "@/components/ProductPackagingFields";
 import { stockDisplay, unitSalePrice, type Packaging } from "@/lib/productUnits";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ProductCategoryModal } from "@/components/ProductCategoryModal";
 import { ProductCategorySelect } from "@/components/ProductCategorySelect";
 import { ProductStockField } from "@/components/ProductStockField";
 import { ProductBatchList } from "@/components/ProductBatchList";
 import { ProductExpiryField } from "@/components/ProductExpiryField";
+import { ListPagination } from "@/components/ListPagination";
 import { db } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { formatCurrency } from "@/lib/helpers";
@@ -31,21 +32,17 @@ interface Product extends Packaging {
   created_at: string;
 }
 
-/** CR-16 — sequential numeric product codes ("1", "2", …) so they're easy to type into invoice/PO line pickers. */
-function generateCode(_name: string, existing: Product[]): string {
-  let max = 0;
-  for (const p of existing) {
-    const m = String(p.code ?? "").match(/(\d+)/);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return String(max + 1);
-}
-
 export default function ProductsPage() {
   const userProfile = useUser();
   const { saving, run } = useSaving();
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
+  const [query, setQuery] = useState({ q: "", page: 1 });
+  const [count, setCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const requestRef = useRef<AbortController | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [opening, setOpening] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -62,72 +59,94 @@ export default function ProductsPage() {
   const [fQuantity, setFQuantity] = useState("0");
   const [conversionUnit, setConversionUnit] = useState("piece");
   const [conversionConfirmed, setConversionConfirmed] = useState(false);
-  const converting = !!editingId && packaging.packaging_enabled && !products.find(p => p.id === editingId)?.packaging_enabled;
+  const converting = !!editingId && packaging.packaging_enabled && !editingProduct?.packaging_enabled;
   const conversionFactor = conversionUnit === "piece" ? 1 : packaging.pieces_per_packet * (conversionUnit === "box" ? packaging.packets_per_box : 1);
-  const effectiveCost = converting ? Number(products.find(p => p.id === editingId)?.cost_price || 0) / Math.max(1, conversionFactor) : Number(fCost) || 0;
+  const effectiveCost = converting ? Number(editingProduct?.cost_price || 0) / Math.max(1, conversionFactor) : Number(fCost) || 0;
   const [originalQuantity, setOriginalQuantity] = useState(0);
   const [fNonExpiry, setFNonExpiry] = useState(true);
   const [fExpiryDate, setFExpiryDate] = useState("");
 
   const fetchProducts = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setLoading(true);
+    setLoadError("");
     try {
-      const { data, error } = await db.from("products").select("*, product_categories(*)").order("name");
-      setLoadError(error?.message ?? "");
-      if (data) setProducts(data);
-    } catch {
-      setLoadError("Could not load products. Please try again.");
+      const response = await fetch("/api/products?" + new URLSearchParams({ q: query.q, page: String(query.page) }), { signal: controller.signal });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error);
+      if (controller.signal.aborted) return;
+      setProducts(body.products);
+      setCount(body.count);
+      if (body.page !== query.page) setQuery(current => ({ ...current, page: body.page }));
+    } catch (error) {
+      if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : "Could not load products. Please try again.");
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, []);
+  }, [query]);
 
   useEffect(() => {
-    let active = true;
-    void db.from("products").select("*, product_categories(*)").order("name").then(({ data, error }) => {
-      if (!active) return;
-      setLoadError(error?.message ?? "");
-      if (data) setProducts(data);
-    }).catch(() => {
-      if (active) setLoadError("Could not load products. Please try again.");
-    });
-    return () => { active = false; };
-  }, []);
+    const timer = window.setTimeout(() => { void fetchProducts(); }, 0);
+    return () => { window.clearTimeout(timer); requestRef.current?.abort(); };
+  }, [fetchProducts]);
 
-  function openAdd() {
-    setPacketPrice(null);
-    setPackaging({ ...emptyPackaging });
-    setConversionUnit("piece");
-    setConversionConfirmed(false);
-    setFNonExpiry(true);
-    setFExpiryDate("");
-    setFQuantity("0");
-    setEditingId(null);
-    setFCategoryId("");
-    setFName(""); setFCode(""); setFDescription(""); setFCost(""); setFSale("");
-    setShowModal(true);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setQuery(current => current.q === search.trim() ? current : { q: search.trim(), page: 1 }), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  async function openAdd() {
+    setOpening(true);
+    try {
+      const response = await fetch("/api/products?mode=next-code");
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error);
+      setFCode(body.code);
+      setPacketPrice(null);
+      setPackaging({ ...emptyPackaging });
+      setConversionUnit("piece");
+      setConversionConfirmed(false);
+      setFNonExpiry(true);
+      setFExpiryDate("");
+      setFQuantity("0");
+      setEditingId(null);
+      setFCategoryId("");
+      setFName(""); setFDescription(""); setFCost(""); setFSale("");
+      setShowModal(true);
+      setEditingProduct(null);
+    } catch { showToast("Could not prepare product code. Try again.", "err"); }
+    finally { setOpening(false); }
   }
 
-  function openEdit(p: Product) {
-    setPacketPrice(null);
-    setPackaging({ ...emptyPackaging, packaging_enabled: !!p.packaging_enabled, base_unit: p.base_unit || "Piece", pieces_per_packet: p.pieces_per_packet || 1, packets_per_box: p.packets_per_box || 1, packet_sale_price: Number(p.packet_sale_price || 0), box_sale_price: Number(p.box_sale_price || 0) });
-    setConversionUnit("piece"); setConversionConfirmed(false);
-    setOriginalQuantity(p.quantity ?? 0);
-    setFQuantity(String(p.quantity ?? 0));
-    setFNonExpiry(!p.expiry_date);
-    setFExpiryDate(p.expiry_date?.slice(0, 10) ?? "");
-    setEditingId(p.id);
-    setFCategoryId(p.category_id ?? "");
-    setFName(p.name);
-    setFCode(p.code);
-    setFDescription(p.description?.trim() ? p.description : "");
-    setFCost(String(p.cost_price));
-    setFSale(String(p.sale_price));
-    setShowModal(true);
+  async function openEdit(row: Product) {
+    setOpening(true);
+    try {
+      const { data: p, error } = await db.from("products").select("*, product_categories(name)").eq("id", row.id).single();
+      if (error || !p) throw new Error(error?.message || "Product not found");
+      setEditingProduct(p);
+      setPacketPrice(null);
+      setPackaging({ ...emptyPackaging, packaging_enabled: !!p.packaging_enabled, base_unit: p.base_unit || "Piece", pieces_per_packet: p.pieces_per_packet || 1, packets_per_box: p.packets_per_box || 1, packet_sale_price: Number(p.packet_sale_price || 0), box_sale_price: Number(p.box_sale_price || 0) });
+      setConversionUnit("piece"); setConversionConfirmed(false);
+      setOriginalQuantity(p.quantity ?? 0);
+      setFQuantity(String(p.quantity ?? 0));
+      setFNonExpiry(!p.expiry_date);
+      setFExpiryDate(p.expiry_date?.slice(0, 10) ?? "");
+      setEditingId(p.id);
+      setFCategoryId(p.category_id ?? "");
+      setFName(p.name);
+      setFCode(p.code);
+      setFDescription(p.description?.trim() ? p.description : "");
+      setFCost(String(p.cost_price));
+      setFSale(String(p.sale_price));
+      setShowModal(true);
+    } catch { showToast("Could not load product details. Try again.", "err"); }
+    finally { setOpening(false); }
   }
 
   function handleNameChange(name: string) {
     setFName(name);
-    if (!editingId) {
-      setFCode(generateCode(name, products));
-    }
   }
 
   const packetEntry = !editingId && packaging.packaging_enabled;
@@ -147,8 +166,17 @@ export default function ProductsPage() {
 
     if (packetEntry && (!Number.isInteger(entryFactor) || entryFactor < 1 || entryFactor > 1000000)) { showToast("Enter whole pieces per packet between 1 and 1,000,000", "err"); return; }
     if (packetEntry && packetPrice !== null && (!packetPrice.trim() || !Number.isFinite(Number(packetPrice)) || Number(packetPrice) < 0)) { showToast("Enter a packet selling price of zero or more", "err"); return; }
+    let code = fCode.trim();
+    if (!code) {
+      try {
+        const response = await fetch("/api/products?mode=next-code");
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error);
+        code = body.code;
+      } catch { showToast("Could not generate a product code. Try again.", "err"); return; }
+    }
     const payload = {
-      code: fCode || generateCode(fName, products),
+      code,
       name: fName.trim(),
       description: fDescription.trim(),
       cost_price: (parseFloat(fCost) || 0) / entryFactor,
@@ -183,12 +211,6 @@ export default function ProductsPage() {
   }
 
   const inputStyle = { borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" };
-  const searchQuery = search.trim().toLowerCase();
-  const filteredProducts = products.filter((product) =>
-    [product.name, product.code, product.description, product.product_categories?.name ?? "Uncategorized"]
-      .some((value) => value?.toLowerCase().includes(searchQuery))
-  );
-
   return (
     <div className="animate-fade-in">
       {/* Page Header */}
@@ -203,7 +225,7 @@ export default function ProductsPage() {
           style={{ borderColor: "var(--gray-200)", color: "var(--blue-deeper)" }}>
           <Plus size={14} /> Category
         </button>
-        <button onClick={openAdd}
+        <button onClick={() => void openAdd()} disabled={opening}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[9px] border-none text-[12.5px] font-semibold cursor-pointer text-white"
           style={{ background: "linear-gradient(135deg, var(--blue-deeper), var(--blue))", boxShadow: "0 2px 10px rgba(2,132,199,.28)" }}>
           <Plus size={14} /> Add Product
@@ -216,7 +238,7 @@ export default function ProductsPage() {
         <div className="px-5 py-4 border-b border-[var(--gray-100)] flex items-center justify-between">
           <span className="text-lg sm:text-xl font-extrabold tracking-tight" style={{ color: "var(--gray-900)" }}>Product List</span>
           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--blue-pale)", color: "var(--blue-deeper)" }}>
-            {searchQuery ? `${filteredProducts.length} of ${products.length}` : products.length} items
+            {loading ? "Loading…" : `${count} items`}
           </span>
         </div>
 
@@ -225,6 +247,7 @@ export default function ProductsPage() {
             <Search size={16} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--gray-800)" }} />
             <input
               type="search"
+              maxLength={100}
               aria-label="Search products"
               placeholder="Search by name, code, description or category…"
               value={search}
@@ -243,16 +266,18 @@ export default function ProductsPage() {
           </div>
         </div>
 
-        {loadError ? (
+        {loading ? (
+          <p role="status" className="p-5 text-sm" style={{ color: "var(--gray-800)" }}>Loading products…</p>
+        ) : loadError ? (
           <p role="alert" className="p-5 text-sm" style={{ color: "var(--red)" }}>
             {loadError} <button type="button" className="underline cursor-pointer" onClick={() => void fetchProducts()}>Retry</button>
           </p>
-        ) : products.length === 0 ? (
+        ) : count === 0 && !query.q ? (
           <div className="py-14 text-center">
             <Package size={32} className="mx-auto mb-2" style={{ color: "var(--gray-200)" }} />
             <p className="text-[13px] font-medium" style={{ color: "var(--gray-800)" }}>No products yet. Add your first product.</p>
           </div>
-        ) : filteredProducts.length === 0 ? (
+        ) : products.length === 0 ? (
           <div className="py-14 px-5 text-center" role="status">
             <Search size={32} aria-hidden="true" className="mx-auto mb-2" style={{ color: "var(--gray-400)" }} />
             <p className="text-[13px] font-medium" style={{ color: "var(--gray-800)" }}>No products match your search.</p>
@@ -271,7 +296,7 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map((p) => {
+                {products.map((p) => {
                   const margin = p.sale_price > 0
                     ? Math.round(((p.sale_price - p.cost_price) / p.sale_price) * 100)
                     : 0;
@@ -309,7 +334,7 @@ export default function ProductsPage() {
                       </td>
                       <td className={DT.td}>
                         <div className="flex items-center gap-1.5">
-                          <button onClick={() => openEdit(p)}
+                          <button disabled={opening} onClick={() => void openEdit(p)}
                             className="w-7 h-7 rounded-[6px] border-[1.5px] flex items-center justify-center cursor-pointer bg-white hover:bg-[var(--blue-pale)] transition-all"
                             style={{ borderColor: "var(--gray-200)", color: "var(--blue-deeper)" }} title="Edit">
                             <Pencil size={12} />
@@ -332,6 +357,7 @@ export default function ProductsPage() {
         )}
       </div>
 
+      <ListPagination page={query.page} count={count} loading={loading || !!loadError} onChange={page => setQuery(current => ({ ...current, page }))} />
       {showCategoryModal && <ProductCategoryModal onClose={() => setShowCategoryModal(false)} onCreated={() => { void fetchProducts(); }} />}
 
       {/* Modal */}
@@ -377,18 +403,18 @@ export default function ProductsPage() {
               {/* Pricing Type */}
               <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
               <ProductPackagingFields packetPrice={packetPrice ?? calculatedPacketPrice} onPacketPriceChange={setPacketPrice} packetPriceOverridden={packetPrice !== null} onResetPacketPrice={() => setPacketPrice(null)} piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={!editingId} value={packaging} onChange={p => { setPackaging(p); setConversionConfirmed(false);
-                const old = products.find(row => row.id === editingId);
+                const old = editingProduct;
                 if (old && !old.packaging_enabled) { const factor = conversionUnit === "piece" ? 1 : p.pieces_per_packet * (conversionUnit === "box" ? p.packets_per_box : 1); if (factor > 0 && factor !== conversionFactor) setFSale(String(Math.round(Number(old.sale_price) / factor * 100) / 100)); }
-              }} disabled={saving} locked={!!editingId && !!products.find(p => p.id === editingId)?.packaging_enabled} />
+              }} disabled={saving} locked={!!editingId && !!editingProduct?.packaging_enabled} />
               <ProductStockField packets={packetEntry} value={fQuantity} onChange={setFQuantity} disabled={saving || converting} />
               {converting && <div className="col-span-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm space-y-2">
                 <label>What does the existing stock quantity represent?<select aria-label="Existing stock unit" className="block w-full border rounded p-2 mt-1" value={conversionUnit} onChange={e => { setConversionUnit(e.target.value); setConversionConfirmed(false);
                     const factor = e.target.value === "piece" ? 1 : packaging.pieces_per_packet * (e.target.value === "box" ? packaging.packets_per_box : 1);
-                    setFSale(String(Math.round(Number(products.find(p => p.id === editingId)?.sale_price || 0) / factor * 100) / 100)); }}>
-                  <option value="piece">Pieces / base units</option><option value="packet">Packets</option><option value="box">Boxes</option>
+                    setFSale(String(Math.round(Number(editingProduct?.sale_price || 0) / factor * 100) / 100)); }}>
+                  <option value="piece">Vials / base units</option><option value="packet">Kits</option><option value="box">Boxes</option>
                 </select></label>
                 <p>{originalQuantity} existing units × {conversionFactor} = <strong>{originalQuantity * conversionFactor} {packaging.base_unit}</strong>.</p>
-                <p>Cost per {packaging.base_unit}: Rs {(Number(products.find(p => p.id === editingId)?.cost_price || 0) / conversionFactor).toFixed(8)}. Total stock cost stays the same. Invoice quantities and amounts are preserved.</p>
+                <p>Cost per {packaging.base_unit}: Rs {(Number(editingProduct?.cost_price || 0) / conversionFactor).toFixed(8)}. Total stock cost stays the same. Invoice quantities and amounts are preserved.</p>
                 <label className="flex gap-2"><input type="checkbox" checked={conversionConfirmed} onChange={e => setConversionConfirmed(e.target.checked)} /> I confirm this one-time conversion.</label>
               </div>}
               <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving || !!editingId} />

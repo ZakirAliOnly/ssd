@@ -1,12 +1,14 @@
 "use client";
 
+import { openWhatsAppMessageOnlyNewTab, openWhatsAppNewTab, buildInvoiceShareWhatsAppMessage } from "@/lib/whatsappWaMe";
+
 import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
 import { productUnits, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
 import { InvoiceDiscountSummary } from "@/components/InvoiceDiscountSummary";
 import { InvoiceLineDiscount } from "@/components/InvoiceLineDiscount";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { db, saveInvoice } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
@@ -15,15 +17,13 @@ import { PrintHeader } from "@/components/PrintHeader";
 import { PrintFooter } from "@/components/PrintFooter";
 import { DT } from "@/lib/dataTableStyles";
 import type { Invoice } from "@/lib/database.types";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
-import { openWhatsAppMessageOnlyNewTab, openWhatsAppNewTab, buildInvoiceShareWhatsAppMessage } from "@/lib/whatsappWaMe";
+
 import { normalizePaymentMethod, usePaymentMethods, type PaymentMethod } from "@/lib/paymentMethods";
 import { createExpense } from "@/lib/expenses";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/UserContext";
-import { SearchableSelect } from "@/components/SearchableSelect";
-import { invoiceProductOption } from "@/lib/productOptions";
+import { InvoiceProductSearch } from "@/components/InvoiceProductSearch";
+import { ListPagination } from "@/components/ListPagination";
 import { confirmDialog } from "@/components/ConfirmModal";
 import { logActivity } from "@/lib/activityLog";
 import { ProductCreateModal } from "@/components/ProductCreateModal";
@@ -67,7 +67,6 @@ interface Item {
 interface WalkInDraft {
   invoiceNumber: string;
   clientName: string;
-  /** Optional — PDF + WhatsApp sends here when valid */
   clientPhone: string;
   /** Optional — stored as invoices.job_notes */
   description: string;
@@ -192,10 +191,16 @@ const EMPTY_WALK_IN_DASH: WalkInDashStats = {
 export default function InvoicePage() {
   const userProfile = useUser();
   const router = useRouter();
-  const { methods: paymentMethods } = usePaymentMethods();
   const [products, setProducts] = useState<InvoiceProduct[]>([]);
   const [savedInvoices, setSavedInvoices] = useState<SavedInvoice[]>([]);
-  const [allAccounts, setAllAccounts] = useState<{ id: string; name: string; category: string }[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyCount, setHistoryCount] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
+  const [statsError, setStatsError] = useState("");
+  const historyRequest = useRef<AbortController | null>(null);
+  const statsRequest = useRef<AbortController | null>(null);
+  const productCache = useRef<InvoiceProduct[]>([]);
   const [draft, setDraft] = useState<WalkInDraft | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -204,6 +209,7 @@ export default function InvoicePage() {
   const [payMethod, setPayMethod] = useState<PaymentMethod>("Cash");
   const [payDate, setPayDate] = useState("");
   const [paySaving, setPaySaving] = useState(false);
+  const { methods: paymentMethods, loading: methodsLoading } = usePaymentMethods(!!draft || !!payInvoice);
 
   const invoicePdfRef = useRef<HTMLDivElement>(null);
   const [invoicePdfData, setInvoicePdfData] = useState<InvoicePdfPayload | null>(null);
@@ -215,66 +221,36 @@ export default function InvoicePage() {
   const [walkInDashLoading, setWalkInDashLoading] = useState(true);
 
   const refreshWalkInStats = useCallback(async () => {
-    setWalkInDashLoading(true);
-    const { data: invRows, error: invErr } = await db
-      .from("invoices")
-      .select("grand_total, amount_received, balance_due, invoice_date, client_name")
-      .eq("is_walk_in", true);
-    if (invErr) {
-      showToast(invErr.message, "err");
-      setWalkInDash(EMPTY_WALK_IN_DASH);
-      setWalkInDashLoading(false);
-      return;
-    }
-    const walk = (invRows ?? []) as { invoice_date: string; grand_total: number | string; amount_received: number | string; balance_due: number | string }[];
-    const t = todayISO();
-    const walkToday = walk.filter((i) => i.invoice_date === t);
-    const n = (x: unknown) => Number(x) || 0;
-    setWalkInDash({
-      todayInvoices: walkToday.length,
-      todaySales: Math.round(walkToday.reduce((s, i) => s + n(i.grand_total), 0) * 100) / 100,
-      todayReceived: Math.round(walkToday.reduce((s, i) => s + n(i.amount_received), 0) * 100) / 100,
-      todayPending: Math.round(walkToday.reduce((s, i) => s + n(i.balance_due), 0) * 100) / 100,
-      totalInvoices: walk.length,
-      totalSales: Math.round(walk.reduce((s, i) => s + n(i.grand_total), 0) * 100) / 100,
-      totalReceived: Math.round(walk.reduce((s, i) => s + n(i.amount_received), 0) * 100) / 100,
-      totalPending: Math.round(walk.reduce((s, i) => s + n(i.balance_due), 0) * 100) / 100,
-    });
-    setWalkInDashLoading(false);
-  }, []);
+    if (!userProfile?.isAdmin) return;
+    statsRequest.current?.abort();
+    const controller = new AbortController(); statsRequest.current = controller;
+    setWalkInDashLoading(true); setStatsError("");
+    try {
+      const response = await fetch("/api/walk-in?" + new URLSearchParams({ mode: "summary", today: todayISO() }), { signal: controller.signal });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error);
+      if (!controller.signal.aborted) setWalkInDash(body.summary);
+    } catch (error) {
+      if (!controller.signal.aborted) setStatsError(error instanceof Error ? error.message : "Could not load totals");
+    } finally { if (!controller.signal.aborted) setWalkInDashLoading(false); }
+  }, [userProfile?.isAdmin]);
 
   const fetchSaved = useCallback(async () => {
-    const [{ data: invData }, { data: acctData }] = await Promise.all([
-      db
-        .from("invoices")
-        .select("id, invoice_number, client_name, invoice_date, grand_total, amount_received, previous_balance, balance_due, payment_status, payment_method, created_by_name, created_by_email, subtotal, discount_amount, discount_type, discount_value")
-        .eq("is_walk_in", true)
-        .order("created_at", { ascending: false })
-        .limit(50),
-      db.from("accounts").select("id, name, head_accounts(name)").order("name"),
-    ]);
-    if (invData) setSavedInvoices(invData as SavedInvoice[]);
-    if (acctData) {
-      setAllAccounts(
-        (acctData as Array<{ id: string; name: string; head_accounts?: { name?: string } | null }>).map((a) => {
-          const headName = String(a.head_accounts?.name ?? "").trim().toLowerCase();
-          const category =
-            headName.includes("government") ? "Government" :
-            headName.includes("press") ? "Press" :
-            headName.includes("shop") ? "Shop" :
-            "Others";
-          return { id: a.id, name: a.name, category };
-        })
-      );
-    }
-  }, []);
+    historyRequest.current?.abort();
+    const controller = new AbortController(); historyRequest.current = controller;
+    setHistoryLoading(true); setHistoryError("");
+    try {
+      const response = await fetch("/api/walk-in?" + new URLSearchParams({ page: String(historyPage) }), { signal: controller.signal });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error);
+      if (controller.signal.aborted) return;
+      setSavedInvoices(body.invoices); setHistoryCount(body.count);
+      if (body.page !== historyPage) setHistoryPage(body.page);
+    } catch (error) {
+      if (!controller.signal.aborted) setHistoryError(error instanceof Error ? error.message : "Could not load invoice history");
+    } finally { if (!controller.signal.aborted) setHistoryLoading(false); }
+  }, [historyPage]);
 
-  const accountNameSet = useMemo(() => new Set(allAccounts.map((a) => a.name)), [allAccounts]);
-  const accountCategoryByName = useMemo(() => {
-    const m = new Map<string, string>();
-    allAccounts.forEach((a) => m.set(a.name, a.category));
-    return m;
-  }, [allAccounts]);
   const walkInSavedInvoices = savedInvoices; // already filtered to is_walk_in=true at fetch time
   const filteredInvoices = walkInSavedInvoices;
 
@@ -345,28 +321,37 @@ export default function InvoicePage() {
     void refreshWalkInStats();
   }
 
-  const fetchProducts = useCallback(async () => {
-    const { data } = await db.from("products").select("id, code, name, sale_price, description, pricing_type, expiry_date, quantity, packaging_enabled, base_unit, pieces_per_packet, packets_per_box, packet_sale_price, box_sale_price, product_categories(name)");
-    if (data) {
-      const sorted = [...data].sort((a, b) => {
-        const an = parseInt(String(a.code ?? ""), 10);
-        const bn = parseInt(String(b.code ?? ""), 10);
-        if (Number.isNaN(an) && Number.isNaN(bn)) return String(a.code ?? "").localeCompare(String(b.code ?? ""));
-        if (Number.isNaN(an)) return 1;
-        if (Number.isNaN(bn)) return -1;
-        return an - bn;
-      });
-      setProducts(sorted);
-      return sorted;
-    }
-    return [];
+  const mergeProducts = useCallback((rows: InvoiceProduct[]) => {
+    const cache = new Map(productCache.current.map(product => [product.id, product]));
+    rows.forEach(product => cache.set(product.id, product));
+    productCache.current = [...cache.values()];
+    setProducts(productCache.current);
   }, []);
 
+  // Reopen/print hydrate only products referenced by this invoice. Refreshes never read the full catalogue.
+  const fetchProducts = useCallback(async (lines: Record<string, unknown>[]) => {
+    const ids = [...new Set(lines.flatMap(line => line.product_id ? [String(line.product_id)] : []))];
+    const names = [...new Set(lines.flatMap(line => !line.product_id && line.category ? [String(line.category)] : []))];
+    const fields = "id, code, name, sale_price, description, pricing_type, expiry_date, quantity, packaging_enabled, base_unit, pieces_per_packet, packets_per_box, packet_sale_price, box_sale_price, product_categories(name)";
+    const responses = await Promise.all([
+      ...(ids.length ? [db.from("products").select(fields).in("id", ids)] : []),
+      ...(names.length ? [db.from("products").select(fields).in("name", names)] : []),
+    ]);
+    const failure = responses.find(response => response.error);
+    if (failure?.error) { showToast(failure.error.message, "err"); return []; }
+    const rows = responses.flatMap(response => response.data ?? []) as InvoiceProduct[];
+    mergeProducts(rows);
+    return rows;
+  }, [mergeProducts]);
+
   useEffect(() => {
-    fetchSaved();
-    void refreshWalkInStats();
-    void fetchProducts();
-  }, [fetchSaved, refreshWalkInStats, fetchProducts]);
+    const timer = window.setTimeout(() => { void fetchSaved(); }, 0);
+    return () => { window.clearTimeout(timer); historyRequest.current?.abort(); };
+  }, [fetchSaved]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void refreshWalkInStats(); }, 0);
+    return () => { window.clearTimeout(timer); statsRequest.current?.abort(); };
+  }, [refreshWalkInStats]);
 
   // ── Inline product-create modal state (triggered from product picker rows) ──
   const [productCreate, setProductCreate] = useState<{ idx: number; initialName: string } | null>(null);
@@ -377,7 +362,7 @@ export default function InvoicePage() {
 
   const handleProductCreated = useCallback(async (newProduct: Packaging & { id: string; name: string; sale_price: number; description?: string | null; pricing_type?: string | null; expiry_date?: string | null; quantity?: number }) => {
     pendingProductIdsRef.current.push(newProduct.id);
-    await fetchProducts();
+    await fetchProducts([{ product_id: newProduct.id }]);
     const idx = productCreate?.idx;
     setProductCreate(null);
     if (typeof idx !== "number") return;
@@ -427,7 +412,8 @@ export default function InvoicePage() {
   }
 
   function openModal() {
-    void fetchProducts();
+    productCache.current = [];
+    setProducts([]);
     setDraft({
       invoiceNumber: "",
       clientName: "",
@@ -447,7 +433,6 @@ export default function InvoicePage() {
     if (pending.length > 0) {
       pendingProductIdsRef.current = [];
       await db.from("products").delete().in("id", pending);
-      void fetchProducts();
     }
     setDraft(null);
   }
@@ -471,9 +456,10 @@ export default function InvoicePage() {
       showToast(itemErr.message, "err");
       return;
     }
+    const invoiceProducts = await fetchProducts(rows ?? []);
     const mapped = ((rows ?? []) as Record<string, unknown>[]).map((r) => {
       const productName = String(r.category ?? "");
-      const dbProd = products.find((p) => r.product_id ? p.id === String(r.product_id) : p.name === productName);
+      const dbProd = invoiceProducts.find((p) => r.product_id ? p.id === String(r.product_id) : p.name === productName);
       const pricingType = "standalone" as const;
       return {
         lineType: "product" as const,
@@ -708,7 +694,6 @@ export default function InvoicePage() {
       pendingProductIdsRef.current = [];
       setDraft(null);
       setSaving(false);
-      void fetchProducts();
       fetchSaved();
       void refreshWalkInStats();
       if (goToExpense) router.push("/expense");
@@ -742,7 +727,7 @@ export default function InvoicePage() {
       showToast(itemErr.message, "err");
       return null;
     }
-    const invoiceProducts = await fetchProducts();
+    const invoiceProducts = await fetchProducts(rows ?? []);
     return {
       invoice: {
         invoice_number: full.invoice_number as string,
@@ -827,6 +812,7 @@ export default function InvoicePage() {
   async function generateInvoicePdfBlob(): Promise<Blob> {
     const node = invoicePdfRef.current;
     if (!node) throw new Error("Invoice PDF template not found");
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
 
     const prevDisplay = node.style.display;
     const prevPosition = node.style.position;
@@ -1002,13 +988,13 @@ export default function InvoicePage() {
         amount: Number(inv.grand_total ?? 0) || null,
       });
       showToast("Invoice deleted", "ok");
-      void fetchProducts();
       void fetchSaved();
       void refreshWalkInStats();
     } finally {
       setDeletingId(null);
     }
   }
+
 
   async function sendSavedInvoiceWhatsApp(inv: SavedInvoice) {
     const { data: full, error } = await db
@@ -1149,11 +1135,13 @@ export default function InvoicePage() {
         <div className="px-4 py-3 border-b border-[var(--gray-100)] bg-white">
           <h2 className="text-[13px] font-extrabold m-0" style={{ color: "var(--gray-900)" }}>Walk-in customers (dashboard)</h2>
           <p className="text-[10px] m-0 mt-0.5 leading-snug" style={{ color: "var(--gray-600)" }}>
-            Only invoices whose client name is <strong>not</strong> an account in Accounts — same split as the tables below. Totals use all walk-in invoices in the database.
+            Totals include invoices saved as walk-in sales. Party invoices are managed in Accounts.
           </p>
         </div>
         {walkInDashLoading ? (
           <div className="px-4 py-8 text-center text-[12px]" style={{ color: "var(--gray-600)" }}>Loading walk-in totals…</div>
+        ) : statsError ? (
+          <p role="alert" className="p-4 text-sm text-[var(--red)]">{statsError} <button type="button" className="underline" onClick={() => void refreshWalkInStats()}>Retry</button></p>
         ) : (
           <div className="p-4 space-y-4">
             <div>
@@ -1189,10 +1177,14 @@ export default function InvoicePage() {
           Previous Invoices
         </span>
         <div className="flex-1 h-px" style={{ background: "var(--gray-200)" }} />
-        <span className="text-[11px] font-semibold" style={{ color: "var(--gray-700)" }}>{savedInvoices.length} records</span>
+        <span className="text-[11px] font-semibold" style={{ color: "var(--gray-700)" }}>{historyCount} records</span>
       </div>
 
-      {savedInvoices.length === 0 ? (
+      {historyLoading ? (
+        <p role="status" className="p-5 text-sm text-[var(--gray-800)]">Loading invoice history…</p>
+      ) : historyError ? (
+        <p role="alert" className="p-5 text-sm text-[var(--red)]">{historyError} <button type="button" className="underline" onClick={() => void fetchSaved()}>Retry</button></p>
+      ) : savedInvoices.length === 0 ? (
         <div className="bg-white rounded-[14px] border border-[var(--gray-100)] overflow-hidden py-14 text-center" style={{ boxShadow: "var(--shadow-sm)" }}>
           <p className="text-[13px] m-0 px-4" style={{ color: "var(--gray-700)" }}>
             No invoices yet — use <strong>New Invoice</strong> to add one
@@ -1290,6 +1282,7 @@ export default function InvoicePage() {
                                     <Wallet size={12} /> Pay
                                   </button>
                                 ) : null}
+
                                 <button
                                   type="button"
                                   onClick={() => void sendSavedInvoiceWhatsApp(inv)}
@@ -1300,7 +1293,7 @@ export default function InvoicePage() {
                                 >
                                   <WhatsAppGlyph size={15} />
                                 </button>
-                                <button
+<button
                                   type="button"
                                   onClick={() => void reopenInvoice(inv)}
                                   disabled={busy}
@@ -1354,6 +1347,8 @@ export default function InvoicePage() {
           </div>
         </div>
       )}
+
+      <ListPagination page={historyPage} count={historyCount} loading={historyLoading || !!historyError} onChange={setHistoryPage} />
 
       {payInvoice ? (
         <div className="fixed inset-0 z-[850] flex items-center justify-center p-4" style={{ background: "rgba(10,30,50,.45)" }}>
@@ -1449,7 +1444,7 @@ export default function InvoicePage() {
               </button>
               <button
                 type="button"
-                disabled={paySaving}
+                disabled={paySaving || methodsLoading}
                 onClick={() => void confirmPayBalance()}
                 className="px-3 py-2 rounded-[8px] text-[12px] font-semibold border-none text-white cursor-pointer disabled:opacity-50"
                 style={{ background: "linear-gradient(135deg, var(--blue-deeper), var(--blue))" }}
@@ -1540,10 +1535,11 @@ export default function InvoicePage() {
           draft={draft}
           setDraft={setDraft}
           products={products}
+          onProducts={mergeProducts}
           paymentMethods={paymentMethods}
           onClose={closeModal}
           onSave={handleSave}
-          saving={saving}
+          saving={saving || methodsLoading}
           draftPdfBusy={draftPdfBusy}
           onPrintDraft={() => requestPrint(() => printDraftInvoice())}
           onDownloadDraft={() => void downloadDraftInvoice()}
@@ -1555,6 +1551,7 @@ export default function InvoicePage() {
         <ProductCreateModal
           initialName={productCreate.initialName}
           existingProducts={products}
+          serverCode
           onClose={() => setProductCreate(null)}
           onCreated={handleProductCreated}
         />
@@ -1568,6 +1565,7 @@ function WalkInInvoiceModal({
   draft,
   setDraft,
   products,
+  onProducts,
   paymentMethods,
   onClose,
   onSave,
@@ -1580,6 +1578,7 @@ function WalkInInvoiceModal({
   draft: WalkInDraft;
   setDraft: React.Dispatch<React.SetStateAction<WalkInDraft | null>>;
   products: InvoiceProduct[];
+  onProducts: (products: InvoiceProduct[]) => void;
   paymentMethods: { id: string; name: string }[];
   onClose: () => void;
   onSave: () => void | Promise<void>;
@@ -1765,16 +1764,13 @@ function WalkInInvoiceModal({
               {draft.items.map((item, idx) => (
                 <tr key={idx} className="transition-colors hover:bg-[var(--blue-pale)] [&>td]:align-top">
                   <td className="px-2 py-3 border-b border-[var(--gray-100)]" style={{ minWidth: 150 }}>
-                    <SearchableSelect
+                    <InvoiceProductSearch
                       value={item.productId ?? products.find((p) => p.name === item.product)?.id ?? ""}
                       onChange={(v) => updateItem(idx, "productId", v)}
-                      options={products.map(invoiceProductOption)}
-                      maxResults={10}
-                      placeholder="— Product —"
+                      products={products}
+                      onProducts={onProducts}
                       inputClassName={sm}
-                      inputStyle={{ color: "#0C2433" }}
                       onCreate={(q) => onRequestCreateProduct(idx, q)}
-                      createLabel="+ Add new product"
                     />
                     <InvoiceUnitSelect selling product={products.find(p => p.id === item.productId)} unit={item.unit} factor={item.unitFactor} onChange={u => updateItem(idx, "unit", u)} />
                   </td>
@@ -2034,13 +2030,6 @@ function WalkInInvoiceModal({
   );
 }
 
-function WhatsAppGlyph({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
-    </svg>
-  );
-}
 
 function ModalActionBtn({ children, onClick, bg, color, border }: { children: React.ReactNode; onClick: () => void; bg: string; color: string; border: string }) {
   return (
@@ -2052,5 +2041,13 @@ function ModalActionBtn({ children, onClick, bg, color, border }: { children: Re
     >
       {children}
     </button>
+  );
+}
+
+function WhatsAppGlyph({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+    </svg>
   );
 }
