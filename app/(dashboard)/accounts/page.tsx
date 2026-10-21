@@ -1,6 +1,6 @@
 "use client";
 
-import { hasWhatsAppAutomation } from "@/lib/whatsappAutomation";
+
 import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
 import { productUnits, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
@@ -24,13 +24,7 @@ import { fetchPartySignedBalance, syncCachedAccountBalance, recomputeCachedBalan
 import { DT } from "@/lib/dataTableStyles";
 import { PrintFooter } from "@/components/PrintFooter";
 import { PrintHeader } from "@/components/PrintHeader";
-import {
-  openWhatsAppNewTab,
-  openWhatsAppMessageOnlyNewTab,
-  buildPaymentReceivedWhatsAppMessage,
-  buildLastTransactionWhatsAppMessage,
-  buildInvoiceShareWhatsAppMessage,
-} from "@/lib/whatsappWaMe";
+
 import { useUser } from "@/lib/UserContext";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { invoiceProductOption } from "@/lib/productOptions";
@@ -40,13 +34,6 @@ import { ProductCreateModal } from "@/components/ProductCreateModal";
 import { createExpense } from "@/lib/expenses";
 import { useSaving } from "@/lib/useSaving";
 
-function WhatsAppIcon({ size = 18, className }: { size?: number; className?: string }) {
-  return (
-    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
-    </svg>
-  );
-}
 
 interface InvItem {
   lineType: "product" | "labor";
@@ -101,7 +88,6 @@ export default function AccountsPage() {
   const [editingOriginalBal, setEditingOriginalBal] = useState(0);
   const [editingOriginalBalType, setEditingOriginalBalType] = useState<"debit" | "credit">("debit");
 
-  // Form state — ordered: Head Account, Name*, WhatsApp*, Address, Balance, Bal Type
   const [fHead, setFHead] = useState("");
   const [fName, setFName] = useState("");
   const [fWa, setFWa] = useState("");
@@ -139,7 +125,6 @@ export default function AccountsPage() {
   const [invBraPct, setInvBraPct] = useState("");      // BRA (new)
   const [showHeadsDropdown, setShowHeadsDropdown] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
-  const [editingInvoiceOldBalanceDue, setEditingInvoiceOldBalanceDue] = useState(0);
   const [editingInvoiceOldAmountReceived, setEditingInvoiceOldAmountReceived] = useState(0);
 
   // Inline product-create modal state (triggered from product picker rows)
@@ -274,7 +259,6 @@ export default function AccountsPage() {
   const partyPageStart = (currentPartyPage - 1) * partyPageSize;
   const visibleParties = filtered.slice(partyPageStart, partyPageStart + partyPageSize);
 
-  // WhatsApp number: only numbers, exactly 11 digits
   function validatePhone(val: string): string {
     const digits = val.replace(/\D/g, "");
     return digits.slice(0, 11);
@@ -283,7 +267,7 @@ export default function AccountsPage() {
   function validate(): boolean {
     const errs: Record<string, string> = {};
     if (!fName.trim()) errs.name = "Account name is required";
-    if (!fWa || fWa.length !== 11) errs.wa = "WhatsApp must be 11 digits";
+    if (!fWa || fWa.length !== 11) errs.wa = "Mobile number must be 11 digits";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -296,7 +280,6 @@ export default function AccountsPage() {
       type: "Client",
       head_id: fHead || null,
       phone: fWa,
-      whatsapp: fWa,
       address: fAddr,
       balance: parseFloat(fBal) || 0,
       bal_type: fBalType,
@@ -373,7 +356,7 @@ export default function AccountsPage() {
     setEditingOriginalBalType(a.bal_type as "debit" | "credit");
     setFHead((a as Account & { head_id?: string }).head_id || "");
     setFName(a.name);
-    setFWa(a.whatsapp || a.phone || "");
+    setFWa(a.phone || "");
     setFAddr((a as Account & { address?: string }).address || "");
     setFBal(String(a.balance ?? 0));
     setFBalType(a.bal_type as "debit" | "credit");
@@ -482,7 +465,6 @@ export default function AccountsPage() {
     setInvBraPct("");
     setEditingInvoiceId(null);
     setInvNextNum("");
-    setEditingInvoiceOldBalanceDue(0);
     setEditingInvoiceOldAmountReceived(0);
     setShowInvoiceModal(true);
   }
@@ -536,7 +518,6 @@ export default function AccountsPage() {
     setInvBraPct(inv.bra_pct > 0 ? String(inv.bra_pct) : "");
     setInvNextNum(inv.invoice_number);
     setEditingInvoiceId(inv.id);
-    setEditingInvoiceOldBalanceDue(inv.balance_due);
     setEditingInvoiceOldAmountReceived(inv.amount_received);
     setShowInvoiceModal(true);
   }
@@ -862,7 +843,6 @@ export default function AccountsPage() {
     setInvSalesTaxPct("");
     setInvBraPct("");
     setEditingInvoiceId(null);
-    setEditingInvoiceOldBalanceDue(0);
     setEditingInvoiceOldAmountReceived(0);
   }
 
@@ -1148,93 +1128,6 @@ export default function AccountsPage() {
     setShowReceiveModal(true);
   }
 
-  async function openPartyLastTransactionWhatsApp(account: Account) {
-    // Re-query the ledger so the WhatsApp message reflects the DB right now,
-    // not whatever stale `partyInvoices`/`partyCashbook` happen to be in memory.
-    // Auto-repair the cached `accounts.balance` if it has drifted from the ledger
-    // (otherwise the Credit column on this page would still show the stale value).
-    const fresh = await fetchPartySignedBalance(account.name);
-    if (fresh.drift > 0.5) {
-      console.warn(
-        `[accounts] cached balance drift for ${account.name}: ledger=${fresh.signed} cached=${fresh.cachedSigned} — repairing`
-      );
-      await syncCachedAccountBalance(account.name, fresh.signed);
-    }
-
-    const rows = buildLedgerRows(account.name, fresh.invoices, fresh.cashbook);
-    if (rows.length === 0) {
-      showToast("No transactions for this party yet", "err");
-      return;
-    }
-    const last = rows[rows.length - 1];
-    const remainingSigned = fresh.signed;
-
-    // If last transaction is an invoice, enrich the message with full invoice details + line items
-    let invoiceExtra: import("@/lib/whatsappWaMe").InvoiceExtraForWhatsApp | undefined;
-    if (last.debit > 0) {
-      const matchedInv = partyInvoices.find((inv) => inv.invoice_number === last.doc && inv.client_name === account.name);
-      if (matchedInv) {
-        const { data: itemRows } = await db
-          .from("invoice_items")
-          .select("unit, category, description, width, height, sqft, rate, qty, amount")
-          .eq("invoice_id", matchedInv.id)
-          .order("id", { ascending: true });
-        invoiceExtra = {
-          grandTotal: Number(matchedInv.grand_total),
-          amountReceived: Number(matchedInv.amount_received),
-          paymentStatus: matchedInv.payment_status,
-          description: [matchedInv.job_notes, matchedInv.job_name].map((s) => String(s || "").trim()).find(Boolean),
-          items: ((itemRows ?? []) as Record<string, unknown>[]).map((r) => ({
-            category: String(r.category ?? ""),
-            description: String(r.description ?? ""),
-            width: 0,
-            height: 0,
-            sqft: 0,
-            rate: Number(r.rate),
-            unit: String(r.unit || "unit"), qty: Number(r.qty),
-            amount: Number(r.amount),
-          })),
-        };
-      }
-    }
-
-    const msg = buildLastTransactionWhatsAppMessage(account.name, last, remainingSigned, invoiceExtra);
-    if (!openWhatsAppNewTab(account.whatsapp || account.phone || "", msg)) {
-      showToast("Add a valid WhatsApp number for this party", "err");
-    }
-  }
-
-  function sendViewingInvoiceWhatsApp() {
-    if (!viewingInvoice || !partyInvoicesAccount) return;
-    const msg = buildInvoiceShareWhatsAppMessage({
-      invoiceNumber: viewingInvoice.invoice_number,
-      clientName: viewingInvoice.client_name,
-      invoiceDate: viewingInvoice.invoice_date,
-      grandTotal: viewingInvoice.grand_total,
-      amountReceived: viewingInvoice.amount_received,
-      balanceDue: viewingInvoice.balance_due,
-      paymentStatus: viewingInvoice.payment_status,
-      invoiceDescription: viewingInvoice.job_notes || undefined,
-      items: viewingInvoiceItems.map((it) => ({
-        category: it.category || "",
-        description: it.description || undefined,
-        width: 0,
-        height: 0,
-        sqft: 0,
-        rate: invoiceUnitRate(it),
-        discountPct: Number(it.discount_pct ?? 0),
-        unit: it.unit, qty: Number(it.qty) || 1,
-        amount: Number(it.amount) || 0,
-      })),
-    });
-    const phone = partyInvoicesAccount.whatsapp || partyInvoicesAccount.phone || "";
-    if (openWhatsAppNewTab(phone, msg)) {
-      showToast("WhatsApp opened", "ok");
-    } else {
-      openWhatsAppMessageOnlyNewTab(msg);
-      showToast("WhatsApp opened — pick a contact to send", "ok");
-    }
-  }
 
   async function handleReceivePayment() {
     const amtRaw = parseFloat(rAmount);
@@ -1243,16 +1136,12 @@ export default function AccountsPage() {
     if (!rMethod || !rMethod.trim()) { showToast("Please select a payment method", "err"); return; }
     if (!paymentMethods.some((m) => m.name === rMethod)) { showToast("Select a valid payment method", "err"); return; }
 
-    // Preserve cents at write time so the cashbook row,
-    // the recomputed balance, and the WhatsApp message all use the identical
-    // integer — no off-by-rupee drift between the Credit column and the ledger.
+    // Preserve cents so cashbook, balances and ledger use the same amount.
     const amt = Math.round(amtRaw * 100) / 100;
 
     setReceivingSaving(true);
 
-    // Re-query the ledger BEFORE we insert the payment. This pinning of the
-    // pre-payment balance is what the WhatsApp message will say, and we want
-    // it to match the Credit column the user just looked at. Auto-repair the
+    // Re-query the ledger before inserting the payment. Auto-repair the
     // cached `accounts.balance` if it has drifted from the ledger.
     const preFresh = await fetchPartySignedBalance(receiveAccount.name);
     if (preFresh.drift > 0.5) {
@@ -1282,25 +1171,10 @@ export default function AccountsPage() {
 
     // Re-derive the post-payment balance from the ledger (now that the cashbook
     // row has landed) and write the cached column from the freshly computed value.
-    const postSigned = await recomputeCachedBalance(receiveAccount.name);
+    await recomputeCachedBalance(receiveAccount.name);
 
-    const party = receiveAccount;
-    const descTrim = rDesc.trim();
-    const msg = buildPaymentReceivedWhatsAppMessage({
-      partyName: party.name,
-      amount: amt,
-      dateISO: rDate,
-      method: rMethod,
-      description: descTrim || undefined,
-      remainingBalanceSigned: postSigned,
-    });
-    if (await hasWhatsAppAutomation("payment_received")) {
-      showToast("Payment saved. Automatic WhatsApp receipt added to the queue for delivery checks.", "ok");
-    } else if (!openWhatsAppNewTab(party.whatsapp || party.phone || "", msg)) {
-      showToast("Payment saved. Add a valid WhatsApp number on the party to open chat.", "err");
-    } else {
-      showToast("Payment received — WhatsApp opened", "ok");
-    }
+
+    showToast("Payment saved", "ok");
     setShowReceiveModal(false);
     setReceiveAccount(null);
     setReceivingSaving(false);
@@ -1564,25 +1438,17 @@ export default function AccountsPage() {
           <table className={`${DT.table} min-w-[1020px]`}>
             <thead>
               <tr>
-                {["#", "Name", "WhatsApp", "Credit", "Ledger", "Receive", "Invoice", "View Invoices", "Status", ""].map((h, i) => (
+                {["#", "Name", "Mobile", "Credit", "Ledger", "Receive", "Invoice", "View Invoices", "Status", ""].map((h, i) => (
                   <th key={`${h}-${i}`} className={`${DT.th} ${i === 0 ? "text-center w-12" : "text-left"}`} style={DT.thStyle}>
                     {h}
                   </th>
                 ))}
-                <th
-                  className={`${DT.th} text-center w-12 px-2`}
-                  style={DT.thStyle}
-                  title="WhatsApp — send message about last transaction"
-                >
-                  <span className="inline-flex justify-center w-full" style={{ color: "white" }}>
-                    <WhatsAppIcon size={15} />
-                  </span>
-                </th>
+
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={userProfile?.isAdmin ? 12 : 11} className={DT.empty} style={DT.emptyStyle}>No accounts found</td></tr>
+                <tr><td colSpan={userProfile?.isAdmin ? 11 : 10} className={DT.empty} style={DT.emptyStyle}>No accounts found</td></tr>
               ) : (
                 visibleParties.map((a, idx) => {
                   const signed = effectivePartySigned.get(a.id) ?? 0;
@@ -1592,7 +1458,7 @@ export default function AccountsPage() {
                         {partyPageStart + idx + 1}
                       </td>
                       <td className={`${DT.td} ${DT.cellPrimary}`} style={{ color: "var(--gray-900)" }}>{a.name}</td>
-                      <td className={`${DT.td} ${DT.cellMono}`} style={{ color: "var(--gray-900)" }}>{a.whatsapp || a.phone || "—"}</td>
+                      <td className={`${DT.td} ${DT.cellMono}`} style={{ color: "var(--gray-900)" }}>{a.phone || "—"}</td>
                       <td
                         className={`${DT.td} font-mono font-bold text-[15px]`}
                         style={{
@@ -1665,18 +1531,7 @@ export default function AccountsPage() {
                           )}
                         </div>
                       </td>
-                      <td className={`${DT.td} text-center`}>
-                        <button
-                          type="button"
-                          onClick={() => void openPartyLastTransactionWhatsApp(a)}
-                          className="inline-flex items-center justify-center w-9 h-9 rounded-[9px] border-[1.5px] bg-white cursor-pointer transition-colors hover:opacity-90"
-                          style={{ borderColor: "#25D366", color: "#25D366" }}
-                          title="WhatsApp: last transaction"
-                          aria-label="WhatsApp last transaction"
-                        >
-                          <WhatsAppIcon size={18} />
-                        </button>
-                      </td>
+
                     </tr>
                   );
                 })
@@ -2443,10 +2298,10 @@ export default function AccountsPage() {
               </button>
               <button onClick={() => void handleReceivePayment()} disabled={receivingSaving}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[9px] text-[12.5px] font-semibold border-none cursor-pointer text-white disabled:opacity-60"
-                style={{ background: "#25D366", boxShadow: "0 2px 10px rgba(37, 211, 102, 0.35)" }}
-                title="Save payment and send its WhatsApp receipt"
+                style={{ background: "var(--green)" }}
+                title="Save payment"
               >
-                <WhatsAppIcon size={15} /> {receivingSaving ? "Saving…" : "Receive"}
+                 {receivingSaving ? "Saving…" : "Receive"}
               </button>
             </div>
           </div>
@@ -2738,18 +2593,7 @@ export default function AccountsPage() {
                     {invPrinting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
                     Download PDF
                   </button>
-                  <button
-                    type="button"
-                    disabled={viewingInvoiceItemsLoading}
-                    onClick={sendViewingInvoiceWhatsApp}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[9px] text-[12.5px] font-semibold border-[1.5px] bg-white cursor-pointer transition-all disabled:opacity-50"
-                    style={{ borderColor: "#0277b5", color: "#0277b5" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#F0F9FF")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
-                    title="Send invoice details to customer on WhatsApp"
-                  >
-                    <WhatsAppIcon size={13} /> WhatsApp
-                  </button>
+
                 </div>
               ) : (
                 <span />
@@ -2803,10 +2647,10 @@ export default function AccountsPage() {
                   {errors.name && <span className="text-[10px] font-medium" style={{ color: "var(--red)" }}>{errors.name}</span>}
                 </div>
 
-                {/* WhatsApp No * — only numbers, 11 digits */}
+                {/* Mobile No * — only numbers, 11 digits */}
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
-                    WhatsApp No <span style={{ color: "var(--red)" }}>*</span>
+                    Mobile No <span style={{ color: "var(--red)" }}>*</span>
                   </label>
                   <input value={fWa} onChange={(e) => setFWa(validatePhone(e.target.value))}
                     placeholder="03001234567" maxLength={11} inputMode="numeric"

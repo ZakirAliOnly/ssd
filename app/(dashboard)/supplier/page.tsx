@@ -1,6 +1,6 @@
 "use client";
 
-import { hasWhatsAppAutomation } from "@/lib/whatsappAutomation";
+
 import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { db, savePurchase } from "@/lib/db";
 import { showToast } from "@/components/Toast";
@@ -30,7 +30,7 @@ import { type LedgerRow, ledgerRowsForDateRange, openingBalanceBeforeDate } from
 import { useUser } from "@/lib/UserContext";
 import { confirmDialog } from "@/components/ConfirmModal";
 import { logActivity } from "@/lib/activityLog";
-import { buildSupplierPaymentWhatsAppMessage, openWhatsAppNewTab } from "@/lib/whatsappWaMe";
+
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
 import { productUnits, type Packaging } from "@/lib/productUnits";
@@ -809,20 +809,8 @@ export default function SupplierPage() {
       }
 
       showToast(`Paid ${formatCurrency(amt)} to ${name}`, "ok");
-      const remainingPayable = Math.max(0, Math.round((outstanding - amt) * 100) / 100);
-      const waMsg = buildSupplierPaymentWhatsAppMessage({
-        supplierName: name,
-        amount: amt,
-        dateISO: spDate,
-        method: spMethod,
-        description: spDesc.trim() || undefined,
-        remainingPayable,
-      });
-      if (await hasWhatsAppAutomation("supplier_payment")) {
-        showToast("Payment saved. Automatic WhatsApp receipt added to the queue for delivery checks.", "ok");
-      } else if (!openWhatsAppNewTab(paySupplierTarget.phone || "", waMsg)) {
-        showToast("Payment saved. Add supplier phone to open WhatsApp notification.", "info");
-      }
+
+      showToast("Payment saved", "ok");
       closePaySupplierModal();
       void fetchSuppliers();
       void fetchPOs();
@@ -977,7 +965,7 @@ export default function SupplierPage() {
         showToast("Add at least one line with an amount", "err");
         return;
       }
-      const { amountPaid, balanceDue } = computePoPayment(grandTotal, poDraft.amountPaid);
+      const { amountPaid } = computePoPayment(grandTotal, poDraft.amountPaid);
 
       if (amountPaid > 0) {
         if (!poDraft.payMethod || !poDraft.payMethod.trim()) {
@@ -1033,19 +1021,8 @@ export default function SupplierPage() {
             showToast(`PO saved but cashbook error: ${cbErr.message}`, "err");
           } else if (cb) {
             await db.from("purchase_orders").update({ cashbook_entry_id: cb.id }).eq("id", poRow.id);
-            const waMsg = buildSupplierPaymentWhatsAppMessage({
-              supplierName: sup.name,
-              amount: amountPaid,
-              dateISO: poDraft.orderDate,
-              method: poDraft.payMethod,
-              description: `Advance/paid amount for PO ${assignedPoNumber}`,
-              remainingPayable: Math.max(0, balanceDue),
-            });
-            if (await hasWhatsAppAutomation("supplier_payment")) {
-              showToast("Payment saved. Automatic WhatsApp receipt added to the queue for delivery checks.", "ok");
-            } else if (!openWhatsAppNewTab(sup.phone || "", waMsg)) {
-              showToast("PO saved. Add supplier phone to send WhatsApp payment notice.", "info");
-            }
+
+            showToast("Payment saved", "ok");
           }
         }
 
@@ -1450,30 +1427,7 @@ export default function SupplierPage() {
                                 style={{ borderColor: "var(--gray-200)", color: "var(--red)" }}>
                                 {deletingPoId === po.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                               </button>}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const msg = buildSupplierPaymentWhatsAppMessage({
-                                    supplierName: po.supplier_name,
-                                    amount: Number(po.amount_paid) || 0,
-                                    dateISO: po.order_date,
-                                    method: "N/A",
-                                    description: `PO ${po.po_number} status update`,
-                                    remainingPayable: Number(po.balance_due) || 0,
-                                  });
-                                  if (!openWhatsAppNewTab(po.supplier_phone || "", msg)) {
-                                    showToast("No valid supplier phone on this PO", "err");
-                                  }
-                                }}
-                                disabled={generatingPdfFor !== null || printingPdfFor !== null || draftPdfBusy}
-                                title="Send WhatsApp update"
-                                className="inline-flex items-center justify-center w-8 h-8 rounded-[8px] border-[1.5px] cursor-pointer hover:bg-[var(--gray-50)] disabled:opacity-45"
-                                style={{ borderColor: "var(--gray-200)", color: "#0277b5" }}
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884" />
-                                </svg>
-                              </button>
+
                               <button
                                 type="button"
                                 onClick={() => void printPoPdf(po)}

@@ -296,3 +296,9 @@ Last updated: 2026-10-21
 
 Preserve existing field, price-grid and unit-button styling. Use Vial for the smallest Piece/Pcs unit and Kit for Packet in labels, helpers and customer documents. Describe the factor as Vials per kit and stock/cost entry as per kit. Use shared unit display helpers so legacy stored codes do not leak into visible labels. Box and custom base-unit labels remain supported.
 
+### Messaging removal (Update 017)
+
+Files: components/TopNav.tsx, app/(dashboard)/accounts/page.tsx, app/(dashboard)/quick-invoice/page.tsx, app/(dashboard)/supplier/page.tsx, app/(dashboard)/cashbook/page.tsx, app/(dashboard)/workers/page.tsx, app/(dashboard)/quote/page.tsx
+Last updated: 2026-10-21
+
+Remove WhatsApp navigation, columns and sending controls without replacing them with empty placeholders. Retain existing transaction, print/PDF and payment controls and their styles. Party contact labels use Mobile No; invoice contact labels use Mobile (optional). Payment confirmations describe the saved transaction only.

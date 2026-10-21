@@ -1,18 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
-import { Plus, Download, CreditCard, TrendingUp, X, Trash2, Pencil, Send, Wallet } from "lucide-react";
+import { Plus, Download, CreditCard, TrendingUp, X, Trash2, Pencil, Wallet } from "lucide-react";
 import type { CashbookEntry } from "@/lib/database.types";
 import { normalizePaymentMethod, isLedgerOnlyEntry, computeMethodBalances, usePaymentMethods, type PaymentMethod } from "@/lib/paymentMethods";
 import { recomputeCachedBalance } from "@/lib/partyBalanceLive";
 import { DT } from "@/lib/dataTableStyles";
-import { PdfPrintBanner } from "@/components/PdfPrintBanner";
-import { PrintFooter } from "@/components/PrintFooter";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import { useUser } from "@/lib/UserContext";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { confirmDialog } from "@/components/ConfirmModal";
@@ -25,21 +21,10 @@ export default function CashbookPage() {
   const { saving, run } = useSaving();
   const [dataLoading, setDataLoading] = useState(true);
   const [entries, setEntries] = useState<CashbookEntry[]>([]);
-  const [accounts, setAccounts] = useState<{ id: string; name: string; whatsapp: string; balance: number; bal_type: string }[]>([]);
+  const [accounts, setAccounts] = useState<{ id: string; name: string; balance: number; bal_type: string }[]>([]);
   const [supplierBalances, setSupplierBalances] = useState<Map<string, number>>(new Map());
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-
-  // ─── Print-only receipt (used for WhatsApp PDF attachment) ─────────────────
-  const printRef = useRef<HTMLDivElement | null>(null);
-  const [printReceipt, setPrintReceipt] = useState<{
-    entry: CashbookEntry;
-    accountName: string;
-    prevBal: number;
-    paymentAmt: number;
-    newBal: number;
-  } | null>(null);
-  const [sendingWhatsAppReceipt, setSendingWhatsAppReceipt] = useState(false);
 
 
   // Form state: Date, Account, Description, Type (Credit/Debit), Amount
@@ -64,14 +49,14 @@ export default function CashbookPage() {
       { data: poData },
     ] = await Promise.all([
       db.from("cashbook").select("*").order("date", { ascending: true }).order("created_at", { ascending: true }),
-      db.from("accounts").select("id, name, whatsapp, balance, bal_type").order("name"),
+      db.from("accounts").select("id, name, balance, bal_type").order("name"),
       db.from("invoices").select("grand_total").eq("invoice_date", today).eq("is_walk_in", true),
       db.from("invoices").select("grand_total").eq("invoice_date", today).eq("is_walk_in", false),
       db.from("suppliers").select("id, name, opening_balance"),
       db.from("purchase_orders").select("supplier_id, balance_due"),
     ]);
     if (entryData) setEntries(entryData as CashbookEntry[]);
-    if (acctData) setAccounts(acctData as { id: string; name: string; whatsapp: string; balance: number; bal_type: string }[]);
+    if (acctData) setAccounts(acctData as { id: string; name: string; balance: number; bal_type: string }[]);
     if (walkInData) setTodayWalkInTotal((walkInData as { grand_total: number | string }[]).reduce((s, i) => s + Number(i.grand_total), 0));
     if (partiesData) setTodayPartiesTotal((partiesData as { grand_total: number | string }[]).reduce((s, i) => s + Number(i.grand_total), 0));
 
@@ -96,7 +81,10 @@ export default function CashbookPage() {
     setDataLoading(false);
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void fetchData(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchData]);
 
   const cashEntries = entries.filter((e) => !isLedgerOnlyEntry(e));
 
@@ -247,116 +235,6 @@ function isWalkInAccount(accountName: string): boolean {
     return d.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
   }
 
-  async function generateCashbookReceiptPdfBlob() {
-    const node = printRef.current;
-    if (!node) throw new Error("Cashbook receipt preview not found");
-
-    // The receipt preview is rendered under `.print-only` which is `display:none` by default.
-    // Temporarily force it visible so `html2canvas` can capture it.
-    const prevDisplay = node.style.display;
-    const prevPosition = node.style.position;
-    const prevLeft = node.style.left;
-    const prevTop = node.style.top;
-    const prevWidth = node.style.width;
-
-    node.style.display = "block";
-    node.style.position = "absolute";
-    node.style.left = "-99999px";
-    node.style.top = "0";
-    node.style.width = "210mm";
-
-    try {
-      // Small delay to allow layout/fonts to settle.
-      await new Promise((r) => setTimeout(r, 80));
-
-      const canvas = await html2canvas(node, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      const imgProps = pdf.getImageProperties(imgData);
-      const imgWidth = pageWidth;
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-
-      const totalPages = Math.max(1, Math.ceil(imgHeight / pageHeight));
-      for (let i = 0; i < totalPages; i++) {
-        if (i > 0) pdf.addPage();
-        // Shift the image upward for subsequent pages to "crop" it.
-        const y = -pageHeight * i;
-        pdf.addImage(imgData, "PNG", 0, y, imgWidth, imgHeight);
-      }
-
-      return pdf.output("blob");
-    } finally {
-      node.style.display = prevDisplay;
-      node.style.position = prevPosition;
-      node.style.left = prevLeft;
-      node.style.top = prevTop;
-      node.style.width = prevWidth;
-    }
-  }
-
-  async function sendWhatsAppLedger(e: CashbookEntry) {
-    if (sendingWhatsAppReceipt) return;
-    setSendingWhatsAppReceipt(true);
-    try {
-    const entryWithAccount = e as CashbookEntry & { account_name?: string };
-    const accountName = entryWithAccount.account_name || "";
-    const acct = accounts.find((a) => a.name.toLowerCase() === accountName.toLowerCase());
-    const waNum = acct?.whatsapp?.replace(/\D/g, "") || "";
-
-    // Per-account running balance: only entries for this account, chronological order
-    const accountEntries = entries.filter(
-      (x) => ((x as CashbookEntry & { account_name?: string }).account_name || "").toLowerCase() === accountName.toLowerCase()
-    );
-    const eIdx = accountEntries.findIndex((x) => x.id === e.id);
-    const getAccBal = (upTo: number) =>
-      accountEntries.slice(0, upTo + 1).reduce((s, x) => s + (x.type === "in" ? Number(x.amount) : -Number(x.amount)), 0);
-
-    const prevBal = eIdx > 0 ? getAccBal(eIdx - 1) : 0;
-    const newBal = eIdx >= 0 ? getAccBal(eIdx) : 0;
-    const paymentAmt = Number(e.amount);
-
-    const methodLabel = normalizePaymentMethod((e as CashbookEntry).method);
-    const msg =
-      `*S.S. Diagnostics*%0A` +
-      `%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%0A` +
-      `*Name:* ${accountName || "Customer"}%0A` +
-      `*Date:* ${formatDate(e.date)}%0A` +
-      `*Time:* ${formatTime(e.created_at)}%0A` +
-      `*Method:* ${methodLabel}%0A` +
-      `%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%0A` +
-      `*Previous Balance:* Rs ${prevBal.toLocaleString("en-PK")}%0A` +
-      `*${e.type === "in" ? "Work Done" : "Payment Received"}:* Rs ${paymentAmt.toLocaleString("en-PK")}%0A` +
-      `*Balance:* Rs ${newBal.toLocaleString("en-PK")}%0A` +
-      `%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%E2%80%94%0A` +
-      `_Thank you!!_ %F0%9F%99%8F%0A%0A_Auto-generated receipt · S.S. Diagnostics_`;
-
-    // Decode the URL-encoded message for use in share text / WhatsApp text fallback.
-    let msgText = msg;
-    try {
-      msgText = decodeURIComponent(msg);
-    } catch {
-      // Keep `msg` as-is; it may appear URL-encoded in the share text.
-    }
-
-    const to = waNum ? `92${waNum.replace(/^0/, "")}` : "";
-    const url = to
-      ? `https://wa.me/${to}?text=${encodeURIComponent(msgText)}`
-      : `https://wa.me/?text=${encodeURIComponent(msgText)}`;
-    window.open(url, "_blank");
-    } finally {
-      setSendingWhatsAppReceipt(false);
-    }
-  }
 
   const inputStyle = { borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" };
 
@@ -547,12 +425,7 @@ function isWalkInAccount(accountName: string): boolean {
                               <Trash2 size={13} />
                             </button>
                           )}
-                          <button onClick={() => void sendWhatsAppLedger(e)} disabled={sendingWhatsAppReceipt}
-                            className="w-7 h-7 rounded-[6px] border-[1.5px] flex items-center justify-center cursor-pointer bg-white transition-all hover:bg-[var(--blue-light)]"
-                            style={{ borderColor: "var(--gray-200)", color: "var(--blue)" }}
-                            title="Send WhatsApp Receipt">
-                            <Send size={13} />
-                          </button>
+
                         </div>
                       </td>
                     </tr>
@@ -564,98 +437,6 @@ function isWalkInAccount(accountName: string): boolean {
         )}
       </div>
 
-      {/* Print-only cashbook receipt (captured for WhatsApp PDF attachment) */}
-      <div ref={printRef} className="print-only" style={{ background: "#fff" }}>
-        <PdfPrintBanner subtitle="Cash book receipt" />
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "4px 10px 6px",
-            borderBottom: "2px solid #dc2626",
-            marginBottom: 8,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 9, color: "#999", textTransform: "uppercase", letterSpacing: 1 }}>Name</div>
-            <div style={{ fontWeight: 900, color: "#075985", fontSize: 15, fontFamily: "monospace" }}>
-              {printReceipt?.accountName || "Customer"}
-            </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 9, color: "#999", textTransform: "uppercase", letterSpacing: 1 }}>Date</div>
-            <div style={{ fontWeight: 700, color: "#333", fontSize: 12 }}>
-              {printReceipt ? formatDate(printReceipt.entry.date) : "—"}
-            </div>
-            <div style={{ fontSize: 9, color: "#999", textTransform: "uppercase", letterSpacing: 1, marginTop: 2 }}>Time</div>
-            <div style={{ fontWeight: 700, color: "#333", fontSize: 12 }}>
-              {printReceipt ? formatTime(printReceipt.entry.created_at) : "—"}
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: 10,
-            padding: "8px 10px",
-            margin: "0 6px 8px",
-            background: "#fff",
-          }}
-        >
-          <div style={{ borderTop: "1px dashed #e5e7eb", margin: "8px 0" }} />
-
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <div style={{ fontSize: 10, color: "#777", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.8 }}>
-              Previous Balance
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 900, fontFamily: "monospace", color: "#E84040" }}>
-              Rs {(printReceipt ? printReceipt.prevBal : 0).toLocaleString("en-PK")}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <div style={{ fontSize: 10, color: "#777", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.8 }}>
-              Payment Received
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 900, fontFamily: "monospace", color: "#0EAD6A" }}>
-              Rs {(printReceipt ? printReceipt.paymentAmt : 0).toLocaleString("en-PK")}
-            </div>
-          </div>
-
-          <div style={{ borderTop: "1px dashed #e5e7eb", margin: "8px 0" }} />
-
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 10, color: "#777", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.8 }}>
-              Balance
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 900,
-                fontFamily: "monospace",
-                color: (printReceipt ? printReceipt.newBal : 0) >= 0 ? "#075985" : "#E84040",
-              }}
-            >
-              Rs {(printReceipt ? printReceipt.newBal : 0).toLocaleString("en-PK")}
-            </div>
-          </div>
-
-          <div style={{ textAlign: "center", marginTop: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 900, color: "#075985" }}>
-              Thank you!! {"\u{1F44F}"}
-            </div>
-            <div style={{ fontSize: 10, color: "#777", marginTop: 6, fontWeight: 600 }}>
-              _This is an Auto Generated Receipt_
-            </div>
-          </div>
-        </div>
-
-        {/* Footer image */}
-        <PrintFooter />
-      </div>
 
       {/* Add/Edit Entry Modal */}
       {showModal && (

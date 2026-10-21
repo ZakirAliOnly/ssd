@@ -2,9 +2,9 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-### WhatsApp Business automation
+### Deployment updates
 
-See [WhatsApp setup and deployment](docs/whatsapp-setup.md) for QR linking with Baileys, consent, the persistent queue worker, and database migrations. Settings are available from **WhatsApp Setup** in the top navigation.
+See [Update 017 deployment](docs/updates/017-remove-whatsapp.md) for retiring the removed messaging worker. Invoice, payment, print and PDF workflows remain available.
 
 ### Returns module deployment
 

@@ -8,7 +8,6 @@ import { purchaseLines, purchaseDate, receivePurchaseItems } from "@/lib/purchas
 import type { Prisma } from "@prisma/client";
 import { applyStockChange, invoiceStockLines, InventoryError, createOpeningBatch, adjustProductStock } from "@/lib/inventory";
 import { canAccessTable } from "@/lib/moduleAccess";
-import { enqueueInvoice, enqueuePayment } from "@/lib/whatsappOutbox";
 
 // Map Supabase snake_case table names → Prisma camelCase model accessors
 const TABLE_MAP: Record<string, string> = {
@@ -520,7 +519,6 @@ export async function POST(req: NextRequest) {
             await tx.invoiceItem.deleteMany({ where: { invoice_id: invoice.id } });
             await tx.invoiceItem.createMany({ data: normalizedItems.map((line, index) => ({ ...line, invoice_id: invoice.id, stock_deducted_qty: stockLines[index].stock_deducted_qty })) as Prisma.InvoiceItemCreateManyInput[] });
             if (!invoice.is_walk_in) await settlePartyInvoices(tx, String(invoice.client_name ?? ""));
-            await enqueueInvoice(tx, invoice.id, !!body.invoiceId);
             return await tx.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
           }, { timeout: 15000 });
           return NextResponse.json({ data: serializeForTable(saved, "invoices"), error: null });
@@ -584,9 +582,8 @@ export async function POST(req: NextRequest) {
         if (table === "cashbook") {
           const rows = await Promise.all(data.map(async row => coerceDates(stampUserFields(await prepareData(row, true), table, authUser), table)));
           await partySettlementTransaction(prisma, async tx => {
-            const entries = await tx.cashbook.createManyAndReturn({ data: rows as Prisma.CashbookCreateManyInput[] });
+            await tx.cashbook.createManyAndReturn({ data: rows as Prisma.CashbookCreateManyInput[] });
             for (const name of new Set(rows.map(row => String(row.account_name ?? "")))) await settlePartyInvoices(tx, name);
-            for (const entry of entries) await enqueuePayment(tx, entry);
           });
           return NextResponse.json({ data: null, error: null });
         }
@@ -611,7 +608,6 @@ export async function POST(req: NextRequest) {
           ? await partySettlementTransaction(prisma, async tx => {
               const entry = await tx.cashbook.create({ data: stampedRow as Prisma.CashbookUncheckedCreateInput });
               await settlePartyInvoices(tx, entry.account_name);
-              await enqueuePayment(tx, entry);
               return entry;
             })
           : table === "products"
