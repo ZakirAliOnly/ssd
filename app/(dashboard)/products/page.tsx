@@ -376,7 +376,7 @@ export default function ProductsPage() {
 
               {/* Pricing Type */}
               <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
-              <ProductPackagingFields piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={!editingId} value={packaging} onChange={p => { setPackaging(p); setConversionConfirmed(false);
+              <ProductPackagingFields packetPrice={packetPrice ?? calculatedPacketPrice} onPacketPriceChange={setPacketPrice} packetPriceOverridden={packetPrice !== null} onResetPacketPrice={() => setPacketPrice(null)} piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={!editingId} value={packaging} onChange={p => { setPackaging(p); setConversionConfirmed(false);
                 const old = products.find(row => row.id === editingId);
                 if (old && !old.packaging_enabled) { const factor = conversionUnit === "piece" ? 1 : p.pieces_per_packet * (conversionUnit === "box" ? p.packets_per_box : 1); if (factor > 0 && factor !== conversionFactor) setFSale(String(Math.round(Number(old.sale_price) / factor * 100) / 100)); }
               }} disabled={saving} locked={!!editingId && !!products.find(p => p.id === editingId)?.packaging_enabled} />
@@ -415,15 +415,14 @@ export default function ProductsPage() {
               </div>
 
               {/* Sale Price */}
-              <div className="flex flex-col gap-1 col-span-2">
+              {!packetEntry && <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
-                  {packetEntry ? "Packet selling price (Rs)" : "Sale Price (Rs)"}
+                  Sale Price (Rs)
                 </label>
-                <input type="number" value={packetEntry ? packetPrice ?? calculatedPacketPrice : fSale} onChange={(e) => packetEntry ? setPacketPrice(e.target.value) : setFSale(e.target.value)}
+                <input type="number" value={fSale} onChange={(e) => setFSale(e.target.value)}
                   placeholder="0" min="0" step="0.01"
                   className="border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none font-mono" style={inputStyle} />
-              {packetEntry && packetPrice !== null && <button type="button" className="mt-1 text-xs underline text-left" onClick={() => setPacketPrice(null)}>Use calculated price</button>}
-              </div>
+              </div>}
 
               {/* Margin preview */}
               {fCost && fSale && (packetEntry ? effectivePacketPrice : parseFloat(fSale)) > 0 && (

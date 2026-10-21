@@ -274,3 +274,10 @@ Files: components/ProductPackagingFields.tsx, components/ProductCreateModal.tsx,
 Last updated: 2026-10-20
 
 Retain existing packaging input styling. Piece selling price uses a numeric input with 0.01 step. Packet selling price autofills from piece price times packet size and supports a manual override. Show an underlined text-xs Use calculated price button with mt-1 spacing when overridden. Helper text explains the calculated default and editing.
+
+### Product units and adjacent prices (Update 014)
+
+Files: components/ProductPackagingFields.tsx, components/ProductCreateModal.tsx, app/(dashboard)/products/page.tsx
+Last updated: 2026-10-21
+
+Reuse the packaging two-column grid with gap-3. Unit uses a labelled native select styled like the existing rounded-lg, border-gray-300, p-2, text-sm, white inputs. Put piece and packet selling prices in the same grid row; keep the calculated-price reset beneath the packet input.
