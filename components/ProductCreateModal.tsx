@@ -50,6 +50,7 @@ export function ProductCreateModal({
   const [fDescription, setFDescription] = useState("");
   const [fCost, setFCost] = useState("");
   const [fSale, setFSale] = useState("");
+  const [packetPrice, setPacketPrice] = useState<string | null>(null);
   const [fQuantity, setFQuantity] = useState("0");
   const [fNonExpiry, setFNonExpiry] = useState(true);
   const [fExpiryDate, setFExpiryDate] = useState("");
@@ -69,6 +70,8 @@ export function ProductCreateModal({
 
   const packetEntry = packaging.packaging_enabled;
   const entryFactor = packetEntry ? packaging.pieces_per_packet : 1;
+  const calculatedPacketPrice = Math.round((Number(fSale) || 0) * entryFactor * 100) / 100;
+  const effectivePacketPrice = packetPrice === null ? calculatedPacketPrice : Number(packetPrice);
 
   async function handleSave() {
     if (!fNonExpiry && !fExpiryDate) { showToast("Enter the expiry date", "err"); return; }
@@ -80,14 +83,15 @@ export function ProductCreateModal({
     const trimmed = fName.trim();
     if (!trimmed) { showToast("Enter product name", "err"); return; }
     if (packetEntry && (!Number.isInteger(entryFactor) || entryFactor < 1 || entryFactor > 1000000)) { showToast("Enter whole pieces per packet between 1 and 1,000,000", "err"); return; }
+    if (packetEntry && packetPrice !== null && (!packetPrice.trim() || !Number.isFinite(Number(packetPrice)) || Number(packetPrice) < 0)) { showToast("Enter a packet selling price of zero or more", "err"); return; }
     const payload = {
       code: fCode || nextProductCode(existingProducts),
       name: trimmed,
       description: fDescription.trim(),
       cost_price: (parseFloat(fCost) || 0) / entryFactor,
-      sale_price: Math.round((parseFloat(fSale) || 0) / entryFactor * 100) / 100,
+      sale_price: parseFloat(fSale) || 0,
       ...packaging,
-      ...(packetEntry ? { packets_per_box: 1, box_sale_price: 0, packet_sale_price: parseFloat(fSale) || 0 } : {}),
+      ...(packetEntry ? { packets_per_box: 1, box_sale_price: 0, packet_sale_price: effectivePacketPrice } : {}),
       pricing_type: "standalone",
       category_id: fCategoryId,
       quantity,
@@ -147,10 +151,10 @@ export function ProductCreateModal({
           </div>
 
           <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
-          <ProductPackagingFields packetEntry={true} packetPrice={Number(fSale) || 0} value={packaging} onChange={setPackaging} disabled={saving} />
+          <ProductPackagingFields piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={true} value={packaging} onChange={setPackaging} disabled={saving} />
               <ProductStockField packets={packetEntry} value={fQuantity} onChange={setFQuantity} disabled={saving} />
           <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving} />
-              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? "Stock, cost and selling price are per packet" : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
+              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? "Stock and cost are per packet; piece and packet selling prices are separate" : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Item Code</label>
@@ -165,7 +169,7 @@ export function ProductCreateModal({
               {packetEntry ? "Packet cost price (Rs)" : "Cost Price (Rs)"}
             </label>
             <input type="number" value={fCost} onChange={(e) => setFCost(e.target.value)}
-              placeholder="0" min="0"
+              placeholder="0" min="0" step="0.01"
               className="border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none font-mono" style={inputStyle} />
           </div>
 
@@ -173,17 +177,18 @@ export function ProductCreateModal({
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
               {packetEntry ? "Packet selling price (Rs)" : "Sale Price (Rs)"}
             </label>
-            <input type="number" value={fSale} onChange={(e) => setFSale(e.target.value)}
-              placeholder="0" min="0"
+            <input type="number" value={packetEntry ? packetPrice ?? calculatedPacketPrice : fSale} onChange={(e) => packetEntry ? setPacketPrice(e.target.value) : setFSale(e.target.value)}
+              placeholder="0" min="0" step="0.01"
               className="border-[1.5px] rounded-[9px] px-3 py-2 text-[13px] outline-none font-mono" style={inputStyle} />
-          </div>
+          {packetEntry && packetPrice !== null && <button type="button" className="mt-1 text-xs underline text-left" onClick={() => setPacketPrice(null)}>Use calculated price</button>}
+              </div>
 
-          {fCost && fSale && parseFloat(fSale) > 0 && (
+          {fCost && fSale && (packetEntry ? effectivePacketPrice : parseFloat(fSale)) > 0 && (
             <div className="col-span-2 flex items-center gap-2 px-3 py-2 rounded-[9px]"
               style={{ background: "var(--green-light)", border: "1.5px solid rgba(14,173,106,.2)" }}>
               <span className="text-[11px] font-semibold" style={{ color: "var(--green)" }}>
-                Margin: {Math.round(((parseFloat(fSale) - parseFloat(fCost)) / parseFloat(fSale)) * 100)}% —
-                Rs {Math.round(parseFloat(fSale) - parseFloat(fCost))} profit per {packetEntry ? "packet" : "unit"}
+                Margin: {Math.round((((packetEntry ? effectivePacketPrice : parseFloat(fSale)) - parseFloat(fCost)) / (packetEntry ? effectivePacketPrice : parseFloat(fSale))) * 100)}% —
+                Rs {Math.round((packetEntry ? effectivePacketPrice : parseFloat(fSale)) - parseFloat(fCost))} profit per {packetEntry ? "packet" : "unit"}
               </span>
             </div>
           )}

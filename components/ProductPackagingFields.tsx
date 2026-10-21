@@ -2,8 +2,8 @@
 
 import type { Packaging } from "@/lib/productUnits";
 export const emptyPackaging = { packaging_enabled: false, base_unit: "Piece", pieces_per_packet: 1, packets_per_box: 1, packet_sale_price: 0, box_sale_price: 0 };
-export function ProductPackagingFields({ value, onChange, locked = false, disabled = false, packetEntry = false, packetPrice = 0 }: {
-  value: Packaging; onChange: (value: typeof emptyPackaging) => void; locked?: boolean; disabled?: boolean; packetEntry?: boolean; packetPrice?: number;
+export function ProductPackagingFields({ value, onChange, locked = false, disabled = false, packetEntry = false, piecePrice = "", onPiecePriceChange }: {
+  value: Packaging; onChange: (value: typeof emptyPackaging) => void; locked?: boolean; disabled?: boolean; packetEntry?: boolean; piecePrice?: string; onPiecePriceChange?: (price: string) => void;
 }) {
   const config = { ...emptyPackaging, ...value };
   const field = "block w-full mt-1 rounded-lg border border-gray-300 p-2 text-sm bg-white";
@@ -20,9 +20,9 @@ export function ProductPackagingFields({ value, onChange, locked = false, disabl
         <label>Packet selling price (Rs)<input type="number" min={0} step="0.01" className={field} value={config.packet_sale_price || ""} placeholder="Base price × size" onChange={e => onChange({ ...config, packet_sale_price: Number(e.target.value) })} /></label>
         <label>Box selling price (Rs)<input type="number" min={0} step="0.01" className={field} value={config.box_sale_price || ""} placeholder="Base price × size" onChange={e => onChange({ ...config, box_sale_price: Number(e.target.value) })} /></label>
         </>}
-        {packetEntry && <label>Piece selling price (Rs, automatic)<input className={field} readOnly value={Math.round(packetPrice / Math.max(1, config.pieces_per_packet) * 100) / 100} /></label>}
+        {packetEntry && <label>Piece selling price (Rs)<input type="number" min={0} step="0.01" className={field} value={piecePrice} placeholder="0" onChange={e => onPiecePriceChange?.(e.target.value)} /></label>}
       </div>
-      <p className="text-xs">{packetEntry ? "Enter stock, cost and selling price per packet below. Piece selling price is calculated automatically." : `Stock and cost are kept in ${config.base_unit}. Prices below are per ${config.base_unit}. Saved documents keep their conversion.`}</p>
+      <p className="text-xs">{packetEntry ? "Enter the piece selling price here. Packet selling price below is calculated from pieces per packet; you can change it. Stock and cost are per packet." : `Stock and cost are kept in ${config.base_unit}. Prices below are per ${config.base_unit}. Saved documents keep their conversion.`}</p>
     </>}
   </fieldset>;
 }
