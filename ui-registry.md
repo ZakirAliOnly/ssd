@@ -85,8 +85,8 @@ Last updated: 2026-10-12
 | Background | var(--gray-50) |
 | Border | border-[1.5px] border-[var(--gray-200)] |
 | Border radius | rounded-[9px] |
-| Text — primary | text-[13px], var(--gray-900) |
-| Text — secondary | var(--gray-800) |
+| Text â€” primary | text-[13px], var(--gray-900) |
+| Text â€” secondary | var(--gray-800) |
 | Spacing | pl-9 pr-10 py-2; toolbar px-5 py-3 |
 | Hover state | hover:bg-[var(--blue-pale)] on clear button |
 | Focus state | focus-visible:ring-2 focus-visible:ring-[var(--blue)] |
@@ -105,8 +105,8 @@ Last updated: 2026-10-13
 | Background | bg-white; var(--gray-50) for totals and filter inputs |
 | Border | border border-[var(--gray-100)]; filter border-[1.5px] var(--gray-200) |
 | Border radius | rounded-[14px] report panel; rounded-[8px] product selector |
-| Text — primary | existing DT table tokens; text-lg font-extrabold heading |
-| Text — secondary | text-xs var(--gray-800) |
+| Text â€” primary | existing DT table tokens; text-lg font-extrabold heading |
+| Text â€” secondary | text-xs var(--gray-800) |
 | Spacing | p-4 panel; DT.tdDense table cells |
 | Focus state | focus-visible:outline-2 focus-visible:outline-[var(--blue)] |
 | Shadow | var(--shadow-sm) |
@@ -123,8 +123,8 @@ Last updated: 2026-10-13
 | --- | --- |
 | Background | #fff |
 | Border | 2px solid #0284c7 under letterhead |
-| Text — primary | Georgia bold business name, #111 |
-| Text — secondary | Arial semibold contact details, #0369a1 |
+| Text â€” primary | Georgia bold business name, #111 |
+| Text â€” secondary | Arial semibold contact details, #0369a1 |
 | Spacing | gap 20px; header padding 0 0 10px; document top padding 6mm |
 | Shadow | none |
 
@@ -148,12 +148,12 @@ Product selectors display the product name only. Keep code searchable without sh
 | --- | --- |
 | Background | existing white inputs and var(--blue-pale) row hover |
 | Border | existing var(--gray-200) inputs and var(--gray-100) table cells |
-| Text — primary | existing bold numeric input classes; DT table heading tokens |
+| Text â€” primary | existing bold numeric input classes; DT table heading tokens |
 | Spacing | existing px-2 py-2 or py-3 cell spacing |
 | Focus | existing blue input focus borders |
 | Print discount | 11px semibold #111, margin-top 3px |
 
-**Pattern notes:** Product and Description occupy separate columns. Top-align every row cell. Center quantity/discount headings, right-align totals. Qty and Rate allow two decimal places (step 0.01); quantities must be positive. Currency values retain up to two decimal places without rounding to whole rupees. Discount percentage accepts 0–100 with two decimal places. Print percentage and deducted amount beneath the product; show invoice-wide discounts separately.
+**Pattern notes:** Product and Description occupy separate columns. Top-align every row cell. Center quantity/discount headings, right-align totals. Qty and Rate allow two decimal places (step 0.01); quantities must be positive. Currency values retain up to two decimal places without rounding to whole rupees. Discount percentage accepts 0â€“100 with two decimal places. Print percentage and deducted amount beneath the product; show invoice-wide discounts separately.
 
 ### Delivery challan products
 
@@ -259,7 +259,14 @@ Preserve the existing sky-50 packaging fieldset, sky-200 border, rounded-xl corn
 Files: components/InvoiceUnitSelect.tsx, app/(dashboard)/accounts/page.tsx, app/(dashboard)/quick-invoice/page.tsx
 Last updated: 2026-10-20
 
-Use the existing block mt-1 text-xs selector label, white rounded inputs, gray-300 borders and p-2 spacing. Sales label the selector Sell in. Beneath Rate, show per Piece or per Packet in text-xs with gray-800 text and mt-1 spacing. Preserve invoice row alignment and discount/total typography.
+Sales use the Sell in button group described in Update 013 below. Beneath Rate, show per Piece or per Packet in text-xs with gray-800 text and mt-1 spacing. Preserve invoice row alignment and discount/total typography.
+
+### Invoice selling unit buttons (Update 013)
+
+File: components/InvoiceUnitSelect.tsx
+Last updated: 2026-10-20
+
+Use a fieldset with a text-xs semibold legend and wrapping buttons separated by gap-1.5. Buttons have 6px corners, 1px borders, px-3 py-1.5 spacing and a 36px minimum height. Selected buttons use blue-deeper background and white text; other buttons use white background, gray-200 border and blue-deeper text. Expose selection with aria-pressed and retain a visible blue keyboard focus outline. Packet size appears below in gray-800 text-xs.
 
 ### Editable piece selling price (Update 012)
 
