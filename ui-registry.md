@@ -281,3 +281,10 @@ Files: components/ProductPackagingFields.tsx, components/ProductCreateModal.tsx,
 Last updated: 2026-10-21
 
 Reuse the packaging two-column grid with gap-3. Unit uses a labelled native select styled like the existing rounded-lg, border-gray-300, p-2, text-sm, white inputs. Put piece and packet selling prices in the same grid row; keep the calculated-price reset beneath the packet input.
+
+### Party invoice print columns (Update 018)
+
+Files: app/(dashboard)/accounts/page.tsx, app/globals.css
+Last updated: 2026-10-22
+
+Keep A5 portrait (148 x 210 mm), 10 mm vertical and 4 mm side margins in both browser print and PDF capture. Bill-to, item grid and totals have no extra horizontal inset. Use seven columns: SN 5%, Product 24%, Description 21%, Qty 10%, Rate 14%, Disc. % 10%, Amount 16%. Preserve Arial 13px body, compact 10px uppercase white-on-blue headers and 1px black column rules. Description preserves line breaks in its own cell; discount always shows the stored percentage, including 0%. Line amounts already include discounts. Avoid splitting item rows across printed pages.

@@ -5,7 +5,6 @@ import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
 import { productUnits, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
 import { InvoiceDiscountSummary } from "@/components/InvoiceDiscountSummary";
-import { InvoiceLineDiscount } from "@/components/InvoiceLineDiscount";
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
@@ -681,7 +680,7 @@ export default function AccountsPage() {
     }
     const el = document.createElement("style");
     el.id = "__inv_a4_page_style";
-    el.textContent = "@page { size: A5 portrait; margin: 10mm; }";
+    el.textContent = "@page { size: A5 portrait; margin: 10mm 4mm; }";
     document.head.appendChild(el);
   }
 
@@ -737,7 +736,7 @@ export default function AccountsPage() {
       a4El.style.setProperty("display", "flex", "important");
       a4El.style.setProperty("flex-direction", "column", "important");
       a4El.style.setProperty("min-height", "210mm", "important");
-      a4El.style.padding = "10mm";
+      a4El.style.padding = "10mm 4mm";
       a4El.style.boxSizing = "border-box";
       a4El.style.position = "fixed";
       a4El.style.top = "-9999px";
@@ -2875,7 +2874,7 @@ export default function AccountsPage() {
       )}
     </div>
 
-    {/* ── Invoice A4 print template — outside no-print wrapper so it's visible during window.print() ── */}
+    {/* ── Invoice A5 print template — outside no-print wrapper so it's visible during window.print() ── */}
     <div className="inv-a4-print-only" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 13 }}>
       {viewingInvoice ? (() => {
         const inv = viewingInvoice;
@@ -2887,7 +2886,7 @@ export default function AccountsPage() {
               <span style={{ fontSize: 15, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Invoice</span>
               <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 13 }}>{inv.invoice_number}</span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "0 12px", marginBottom: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "0", marginBottom: 12 }}>
               <div>
                 <div style={{ fontSize: 10, color: "#111", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Bill To</div>
                 <div style={{ fontWeight: 900, color: "#111", fontSize: 16, lineHeight: 1.2 }}>{inv.client_name}</div>
@@ -2908,20 +2907,22 @@ export default function AccountsPage() {
             {(() => {
               // CSS-grid layout (instead of <table>) so the items area can flex-grow
               // and the filler block stretches the column lines to the totals block.
-              const gridCols = "6% 42% 10% 20% 22%";
+              const gridCols = "5% 24% 21% 10% 14% 10% 16%";
               const cellPad = "5px 3px";
               return (
-                <div style={{ padding: "0 12px", marginBottom: 12, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: 13 }}>
+                <div style={{ padding: "0", marginBottom: 12, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: 13 }}>
                   {/* Header row */}
                   <div style={{ display: "grid", gridTemplateColumns: gridCols, background: "#075985", color: "#fff" }}>
                     {[
                       { label: "SN", align: "center" as const },
+                      { label: "Product", align: "left" as const },
                       { label: "Description", align: "left" as const },
                       { label: "Qty", align: "center" as const },
                       { label: "Rate", align: "right" as const },
+                      { label: "Disc. %", align: "right" as const },
                       { label: "Amount", align: "right" as const },
                     ].map((h, i, arr) => (
-                      <div key={h.label} style={{ padding: "5px 3px", fontSize: 11, fontWeight: 700, textAlign: h.align, textTransform: "uppercase", letterSpacing: 0.2, borderLeft: "1px solid #000", ...(i === arr.length - 1 ? { borderRight: "1px solid #000" } : {}) }}>
+                      <div key={h.label} style={{ padding: "5px 3px", fontSize: 10, fontWeight: 700, textAlign: h.align, textTransform: "uppercase", letterSpacing: 0.2, borderLeft: "1px solid #000", ...(i === arr.length - 1 ? { borderRight: "1px solid #000" } : {}) }}>
                         {h.label}
                       </div>
                     ))}
@@ -2930,27 +2931,25 @@ export default function AccountsPage() {
                   {items.length === 0 ? (
                     <div style={{ padding: 16, textAlign: "center", color: "#111", border: "1px solid #000" }}>No line items</div>
                   ) : items.map((it, idx) => (
-                    <div key={idx} style={{ display: "grid", gridTemplateColumns: gridCols, background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #000" }}>
+                    <div key={idx} style={{ display: "grid", gridTemplateColumns: gridCols, background: idx % 2 === 0 ? "#fff" : "#f8fafc", breakInside: "avoid", overflowWrap: "anywhere", borderBottom: "1px solid #000" }}>
                       <div style={{ padding: cellPad, textAlign: "center", color: "#111", borderLeft: "1px solid #000" }}>{idx + 1}</div>
                       <div style={{ padding: cellPad, fontWeight: 600, color: "#111", borderLeft: "1px solid #000" }}>
-                        <div>{it.category || it.description || "—"}</div>
-                        {it.category && it.description ? (
-                          <div style={{ fontWeight: 400, fontSize: 13, color: "#444", marginTop: 2, whiteSpace: "pre-wrap" }}>{it.description}</div>
-                        ) : null}
-                        <InvoiceLineDiscount line={it} />
+                        {it.category || it.description || "—"}
                       </div>
+                      <div style={{ padding: cellPad, whiteSpace: "pre-wrap", borderLeft: "1px solid #000" }}>{it.category ? it.description || "—" : "—"}</div>
                       <div style={{ padding: cellPad, textAlign: "center", fontFamily: "monospace", fontWeight: 700, borderLeft: "1px solid #000" }}>{it.qty} {it.unit && unitLabel(it.unit)}</div>
 
                       <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", borderLeft: "1px solid #000" }}>{formatCurrency(invoiceUnitRate(it))}</div>
+                      <div style={{ padding: cellPad, textAlign: "right", fontVariantNumeric: "tabular-nums", borderLeft: "1px solid #000" }}>{Number(it.discount_pct) || 0}%</div>
                       <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", fontWeight: 800, color: "#111", borderLeft: "1px solid #000", borderRight: "1px solid #000" }}>{formatCurrency(it.amount)}</div>
                     </div>
                   ))}
                   {/* Filler — flex-grows to fill remaining space, carries column lines down to the totals. */}
-                  <div style={{ flex: 1, display: "grid", gridTemplateColumns: gridCols, borderBottom: "1px solid #000" }}>{Array.from({ length: 5 }, (_, index) => <div key={index} style={{ borderLeft: "1px solid #000", ...(index === 4 ? { borderRight: "1px solid #000" } : {}) }} />)}</div>
+                  <div style={{ flex: 1, display: "grid", gridTemplateColumns: gridCols, borderBottom: "1px solid #000" }}>{Array.from({ length: 7 }, (_, index) => <div key={index} style={{ borderLeft: "1px solid #000", ...(index === 6 ? { borderRight: "1px solid #000" } : {}) }} />)}</div>
                 </div>
               );
             })()}
-            <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 12px", marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "0", marginBottom: 16 }}>
               <div style={{ width: 230 }}>
                 <InvoiceDiscountSummary invoice={inv} items={items} />                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>Previous Balance</span>
