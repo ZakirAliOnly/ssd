@@ -2,6 +2,7 @@
 
 import { formatDate } from "@/lib/helpers";
 import { invoiceLineTotal, invoiceUnitRate } from "@/lib/invoicePricing";
+import { partyInvoiceBalances } from "@/lib/partyOverview";
 import { unitLabel } from "@/lib/productUnits";
 
 export type DocumentLine = {
@@ -12,7 +13,7 @@ export type DocumentTotal = { label: string; value: number; strong?: boolean };
 export type InvoiceDocumentData = {
   title: string; number: string; date: string; party: string; phone?: string;
   reference?: string; notes?: string; processedBy?: string; returnDocument?: boolean;
-  purchase?: boolean; paymentMethod?: string; paymentStatus?: string; lines: DocumentLine[]; totals: DocumentTotal[];
+  purchase?: boolean; balanceNote?: string; paymentMethod?: string; paymentStatus?: string; lines: DocumentLine[]; totals: DocumentTotal[];
 };
 export const documentNumber = (value: number) => Number(value || 0).toLocaleString("en-PK", { maximumFractionDigits: 2 });
 
@@ -49,6 +50,7 @@ export function InvoiceDocument({ data }: { data: InvoiceDocumentData }) {
         </tbody>
       </table>
       <div className="invoice-totals">{data.totals.map((total, i) => <div key={i} className={total.strong ? "invoice-total-strong" : ""}><span>{total.label}</span><span>{documentNumber(total.value)}</span></div>)}
+        {data.balanceNote && <p>{data.balanceNote}</p>}
         {data.returnDocument && <p>Credit recorded. No cash refund recorded.</p>}
         {data.processedBy && <p>Processed by: {data.processedBy}</p>}
       </div>
@@ -64,7 +66,7 @@ type SalesHeader = { invoice_number: string; invoice_date: string; client_name: 
   job_notes?: string; job_name?: string; description?: string };
 type SalesLine = { category: string; description?: string; qty: number; unit?: string; rate: number; amount: number; discount_pct?: number };
 
-export function SalesInvoiceDocument({ invoice, items, walkIn = false }: { invoice: SalesHeader; items: SalesLine[]; walkIn?: boolean }) {
+export function SalesInvoiceDocument({ invoice, items, walkIn = false, partyBalance }: { invoice: SalesHeader; items: SalesLine[]; walkIn?: boolean; partyBalance?: { closing: number; asOf: string } }) {
   const productDiscount = Math.round(items.reduce((sum, item) => sum + (Number(item.discount_pct) > 0
     ? Math.max(0, invoiceLineTotal(Number(item.rate), Number(item.qty)) - Number(item.amount)) : 0), 0) * 100) / 100;
   const totals: DocumentTotal[] = [];
@@ -73,15 +75,17 @@ export function SalesInvoiceDocument({ invoice, items, walkIn = false }: { invoi
     if (productDiscount) totals.push({ label: "Product discounts", value: -productDiscount });
     if (Number(invoice.discount_amount)) totals.push({ label: "Invoice discount", value: -Number(invoice.discount_amount) });
   }
-  if (Number(invoice.previous_balance)) totals.push({ label: "Previous balance", value: Number(invoice.previous_balance) });
   for (const [label, pct, amount] of [["GST", invoice.gst_pct, invoice.gst_amount], ["Sales tax", invoice.stax_pct, invoice.stax_amount], ["BRA", invoice.bra_pct, invoice.bra_amount]] as const) {
     if (Number(amount)) totals.push({ label: `${label} (${Number(pct)}%)`, value: Number(amount) });
   }
+  const balances = partyInvoiceBalances(invoice, walkIn ? undefined : partyBalance?.closing);
   totals.push({ label: "New bill (PKR)", value: Number(invoice.grand_total), strong: true },
-    { label: "Received", value: Number(invoice.amount_received) },
-    { label: "Total balance", value: Number(invoice.grand_total) + Number(invoice.previous_balance || 0) - Number(invoice.amount_received), strong: true });
+    { label: "Received amount", value: Number(invoice.amount_received) },
+    { label: partyBalance && !walkIn ? "Previous / other balance" : "Previous balance", value: balances.previous },
+    { label: "Total balance", value: balances.total, strong: true });
   return <InvoiceDocument data={{ title: walkIn ? "Walk-in invoice" : "Invoice", number: invoice.invoice_number,
     date: invoice.invoice_date, party: invoice.client_name, phone: invoice.client_phone,
+    balanceNote: partyBalance && !walkIn ? `Party balance as of ${partyBalance.asOf}. Other balance includes later transactions.` : undefined,
     notes: invoice.description || invoice.job_notes || invoice.job_name,
     lines: items.map(item => ({ product: item.category || item.description || "—", description: item.category ? item.description : "", qty: Number(item.qty), unit: item.unit,
       rate: invoiceUnitRate(item), amount: Number(item.amount), discount_pct: Number(item.discount_pct) || 0 })), totals }} />;
