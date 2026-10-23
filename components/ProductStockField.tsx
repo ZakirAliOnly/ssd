@@ -10,7 +10,10 @@ export function ProductStockField({ value, onChange, disabled = false, readOnly 
   if (packaging?.packaging_enabled) {
     const { packs, loose, size } = stockParts(Number(value) || 0, packaging);
     const pack = unitLabel("packet", packaging.base_unit), base = packaging.base_unit || "Piece";
-    const update = (kits: number, units: number) => onChange(String(Math.round((kits * size + units) * 100) / 100));
+    const update = (kits: number, units: number) => {
+      if (!Number.isInteger(kits) || kits < 0 || !Number.isFinite(units) || units < 0) return;
+      onChange(String(Math.round((kits * size + units) * 100) / 100));
+    };
     return <fieldset disabled={disabled} className="col-span-2 grid grid-cols-2 gap-3 rounded-lg border border-gray-200 p-3 text-sm">
       <legend className="font-semibold">Stock quantity</legend>
       <label htmlFor={id}>Quantity ({pack.toLowerCase()}s)<input id={id} type="number" min="0" step="1" value={packs} readOnly={readOnly} onChange={e => update(Number(e.target.value), loose)} className="block w-full border rounded p-2 mt-1" /></label>
