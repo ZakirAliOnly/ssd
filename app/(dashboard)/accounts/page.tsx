@@ -4,7 +4,6 @@ import { hasWhatsAppAutomation } from "@/lib/whatsappAutomation";
 import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
 import { productUnits, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
-import { InvoiceDiscountSummary } from "@/components/InvoiceDiscountSummary";
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
@@ -22,6 +21,8 @@ import { buildLedgerRows, computePartySignedBalance } from "@/lib/partyBalance";
 import { fetchPartySignedBalance, syncCachedAccountBalance, recomputeCachedBalance } from "@/lib/partyBalanceLive";
 import { DT } from "@/lib/dataTableStyles";
 import { PrintFooter } from "@/components/PrintFooter";
+import { SalesInvoiceDocument } from "@/components/InvoiceDocument";
+import { prepareInvoiceDocument, saveInvoicePdf } from "@/lib/invoicePrint";
 import { PrintHeader } from "@/components/PrintHeader";
 import {
   openWhatsAppNewTab,
@@ -671,27 +672,15 @@ export default function AccountsPage() {
     window.setTimeout(run, 3500);
   }
 
-  function applyInvPrintMode() {
-    const a4El = document.querySelector(".inv-a4-print-only") as HTMLElement | null;
-    if (a4El) {
-      a4El.style.setProperty("display", "flex", "important");
-      a4El.style.setProperty("flex-direction", "column", "important");
-      a4El.style.setProperty("min-height", "190mm", "important");
-    }
-    const el = document.createElement("style");
-    el.id = "__inv_a4_page_style";
-    el.textContent = "@page { size: A5 portrait; margin: 10mm 4mm; }";
-    document.head.appendChild(el);
+  async function applyInvPrintMode() {
+    const root = document.querySelector<HTMLElement>(".inv-a4-print-only");
+    if (!root) throw new Error("Invoice template not found.");
+    await prepareInvoiceDocument(root);
+    root.style.setProperty("display", "block", "important");
   }
 
   function restoreInvPrintMode() {
-    document.getElementById("__inv_a4_page_style")?.remove();
-    const a4El = document.querySelector(".inv-a4-print-only") as HTMLElement | null;
-    if (a4El) {
-      a4El.style.removeProperty("display");
-      a4El.style.removeProperty("flex-direction");
-      a4El.style.removeProperty("min-height");
-    }
+    document.querySelector<HTMLElement>(".inv-a4-print-only")?.style.removeProperty("display");
   }
 
   async function deletePartyInvoice(inv: Invoice) {
@@ -712,13 +701,14 @@ export default function AccountsPage() {
     if (!viewingInvoice || invPrinting) return;
     setInvPrinting(true);
     try {
-      applyInvPrintMode();
+      await applyInvPrintMode();
       scheduleAfterInvPrint(() => {
         restoreInvPrintMode();
         setInvPrinting(false);
       });
       window.print();
-    } catch {
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Print failed", "err");
       restoreInvPrintMode();
       setInvPrinting(false);
     }
@@ -728,56 +718,11 @@ export default function AccountsPage() {
     if (!viewingInvoice || invPrinting) return;
     setInvPrinting(true);
     try {
-      const a4El = document.querySelector(".inv-a4-print-only") as HTMLElement | null;
-      if (!a4El) { setInvPrinting(false); return; }
-
-      // Temporarily make visible for capture — flex column with A5 min-height
-      // matches the print layout so the footer sits at the bottom of the page.
-      a4El.style.setProperty("display", "flex", "important");
-      a4El.style.setProperty("flex-direction", "column", "important");
-      a4El.style.setProperty("min-height", "210mm", "important");
-      a4El.style.padding = "10mm 4mm";
-      a4El.style.boxSizing = "border-box";
-      a4El.style.position = "fixed";
-      a4El.style.top = "-9999px";
-      a4El.style.left = "0";
-      a4El.style.width = "148mm"; // A5 portrait
-
-      await new Promise((r) => setTimeout(r, 120));
-
-      const canvas = await html2canvas(a4El, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-
-      a4El.style.removeProperty("display");
-      a4El.style.removeProperty("flex-direction");
-      a4El.style.removeProperty("min-height");
-      a4El.style.position = "";
-      a4El.style.top = "";
-      a4El.style.left = "";
-      a4El.style.width = "";
-      a4El.style.padding = "";
-      a4El.style.boxSizing = "";
-
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW;
-      const imgH = (canvas.height * pageW) / canvas.width;
-      let y = 0;
-      let remaining = imgH;
-      let first = true;
-      while (remaining > 0.5) {
-        if (!first) pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, -y, imgW, imgH);
-        y += pageH;
-        remaining -= pageH;
-        first = false;
-      }
-
+      const root = document.querySelector<HTMLElement>(".inv-a4-print-only");
+      if (!root) throw new Error("Invoice template not found.");
       const clientName = viewingInvoice.client_name.replace(/[^a-zA-Z0-9 ]/g, "").trim();
-      const invNum = viewingInvoice.invoice_number;
       const date = formatDate(viewingInvoice.invoice_date).replace(/\s+/g, "-");
-      pdf.save(`${clientName} ${invNum} ${date}.pdf`);
+      await saveInvoicePdf(root, `${clientName} ${viewingInvoice.invoice_number} ${date}.pdf`);
     } catch (e) {
       showToast("PDF download failed", "err");
       console.error(e);
@@ -2313,8 +2258,8 @@ export default function AccountsPage() {
                   style={{ borderColor: "var(--blue)", color: "var(--blue)" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--blue-pale)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
-                  title="Save and print A4">
-                  {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />} A4
+                  title="Save and print A5 landscape">
+                  {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />} A5 Landscape
                 </button>
 
                 <button onClick={() => void handleSaveInvoice()} disabled={invSaving}
@@ -2712,7 +2657,7 @@ export default function AccountsPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
                   >
                     {invPrinting ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
-                    A4
+                    A5 Landscape
                   </button>
 
                   <button
@@ -2874,123 +2819,9 @@ export default function AccountsPage() {
       )}
     </div>
 
-    {/* ── Invoice A5 print template — outside no-print wrapper so it's visible during window.print() ── */}
-    <div className="inv-a4-print-only" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 13 }}>
-      {viewingInvoice ? (() => {
-        const inv = viewingInvoice;
-        const items = viewingInvoiceItems;
-        return (
-          <>
-            <PrintHeader variant="invoice" />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px", background: "#075985", color: "#fff", marginBottom: 10 }}>
-              <span style={{ fontSize: 15, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase" }}>Invoice</span>
-              <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 13 }}>{inv.invoice_number}</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "0", marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 10, color: "#111", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Bill To</div>
-                <div style={{ fontWeight: 900, color: "#111", fontSize: 16, lineHeight: 1.2 }}>{inv.client_name}</div>
-                {inv.client_phone ? <div style={{ fontSize: 13, color: "#111", marginTop: 3 }}>{inv.client_phone}</div> : null}
-                {(inv.job_notes || inv.job_name) ? (
-                  <div style={{ fontSize: 12, color: "#111", marginTop: 6, lineHeight: 1.5 }}>
-                    <span style={{ fontWeight: 700 }}>Description: </span>{inv.job_notes || inv.job_name}
-                  </div>
-                ) : null}
-              </div>
-              <div style={{ textAlign: "right", minWidth: 110 }}>
-                <div style={{ marginBottom: 5, display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 6 }}>
-                  <span style={{ fontSize: 10, color: "#111", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>Date:</span>
-                  <span style={{ fontWeight: 700, fontSize: 14 }}>{formatDate(inv.invoice_date)}</span>
-                </div>
-              </div>
-            </div>
-            {(() => {
-              // CSS-grid layout (instead of <table>) so the items area can flex-grow
-              // and the filler block stretches the column lines to the totals block.
-              const gridCols = "5% 24% 21% 10% 14% 10% 16%";
-              const cellPad = "5px 3px";
-              return (
-                <div style={{ padding: "0", marginBottom: 12, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, fontSize: 13 }}>
-                  {/* Header row */}
-                  <div style={{ display: "grid", gridTemplateColumns: gridCols, background: "#075985", color: "#fff" }}>
-                    {[
-                      { label: "SN", align: "center" as const },
-                      { label: "Product", align: "left" as const },
-                      { label: "Description", align: "left" as const },
-                      { label: "Qty", align: "center" as const },
-                      { label: "Rate", align: "right" as const },
-                      { label: "Disc. %", align: "right" as const },
-                      { label: "Amount", align: "right" as const },
-                    ].map((h, i, arr) => (
-                      <div key={h.label} style={{ padding: "5px 3px", fontSize: 10, fontWeight: 700, textAlign: h.align, textTransform: "uppercase", letterSpacing: 0.2, borderLeft: "1px solid #000", ...(i === arr.length - 1 ? { borderRight: "1px solid #000" } : {}) }}>
-                        {h.label}
-                      </div>
-                    ))}
-                  </div>
-                  {/* Item rows */}
-                  {items.length === 0 ? (
-                    <div style={{ padding: 16, textAlign: "center", color: "#111", border: "1px solid #000" }}>No line items</div>
-                  ) : items.map((it, idx) => (
-                    <div key={idx} style={{ display: "grid", gridTemplateColumns: gridCols, background: idx % 2 === 0 ? "#fff" : "#f8fafc", breakInside: "avoid", overflowWrap: "anywhere", borderBottom: "1px solid #000" }}>
-                      <div style={{ padding: cellPad, textAlign: "center", color: "#111", borderLeft: "1px solid #000" }}>{idx + 1}</div>
-                      <div style={{ padding: cellPad, fontWeight: 600, color: "#111", borderLeft: "1px solid #000" }}>
-                        {it.category || it.description || "—"}
-                      </div>
-                      <div style={{ padding: cellPad, whiteSpace: "pre-wrap", borderLeft: "1px solid #000" }}>{it.category ? it.description || "—" : "—"}</div>
-                      <div style={{ padding: cellPad, textAlign: "center", fontFamily: "monospace", fontWeight: 700, borderLeft: "1px solid #000" }}>{it.qty} {it.unit && unitLabel(it.unit)}</div>
-
-                      <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", borderLeft: "1px solid #000" }}>{formatCurrency(invoiceUnitRate(it))}</div>
-                      <div style={{ padding: cellPad, textAlign: "right", fontVariantNumeric: "tabular-nums", borderLeft: "1px solid #000" }}>{Number(it.discount_pct) || 0}%</div>
-                      <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", fontWeight: 800, color: "#111", borderLeft: "1px solid #000", borderRight: "1px solid #000" }}>{formatCurrency(it.amount)}</div>
-                    </div>
-                  ))}
-                  {/* Filler — flex-grows to fill remaining space, carries column lines down to the totals. */}
-                  <div style={{ flex: 1, display: "grid", gridTemplateColumns: gridCols, borderBottom: "1px solid #000" }}>{Array.from({ length: 7 }, (_, index) => <div key={index} style={{ borderLeft: "1px solid #000", ...(index === 6 ? { borderRight: "1px solid #000" } : {}) }} />)}</div>
-                </div>
-              );
-            })()}
-            <div style={{ display: "flex", justifyContent: "flex-end", padding: "0", marginBottom: 16 }}>
-              <div style={{ width: 230 }}>
-                <InvoiceDiscountSummary invoice={inv} items={items} />                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>Previous Balance</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(inv.previous_balance)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "2px solid #111" }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>New Bill</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>{formatCurrency(inv.grand_total)}</span>
-                </div>
-                {inv.gst_amount > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>GST ({inv.gst_pct}%)</span>
-                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(inv.gst_amount)}</span>
-                  </div>
-                )}
-                {inv.stax_amount > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>Sales Tax ({inv.stax_pct}%)</span>
-                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(inv.stax_amount)}</span>
-                  </div>
-                )}
-                {inv.bra_amount > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>BRA ({inv.bra_pct}%)</span>
-                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(inv.bra_amount)}</span>
-                  </div>
-                )}
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "1px solid #e5e7eb" }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#111" }}>Received</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(inv.amount_received)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 10px", borderTop: "2px solid #111" }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Total Balance</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>{formatCurrency(inv.grand_total + inv.previous_balance - inv.amount_received)}</span>
-                </div>
-              </div>
-            </div>
-            <PrintFooter />
-          </>
-        );
-      })() : null}
+    {/* Shared measured A5 landscape invoice pages. */}
+    <div className="inv-a4-print-only">
+      {viewingInvoice && <SalesInvoiceDocument invoice={viewingInvoice} items={viewingInvoiceItems} />}
     </div>
 
     {/* Ledger print layout — mirrors the A4 invoice template (same header, colors, borders, footer) */}

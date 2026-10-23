@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { DT } from "@/lib/dataTableStyles";
 import html2canvas from "html2canvas";
+import { prepareInvoiceDocument, invoicePdfBlob } from "@/lib/invoicePrint";
 import jsPDF from "jspdf";
 import {
   PurchaseOrderPdfDocument,
@@ -901,44 +902,7 @@ export default function SupplierPage() {
   async function generatePdfBlob(): Promise<Blob> {
     const node = pdfRef.current;
     if (!node) throw new Error("PDF template not found");
-    const prevDisplay = node.style.display;
-    const prevPosition = node.style.position;
-    const prevLeft = node.style.left;
-    const prevTop = node.style.top;
-    const prevWidth = node.style.width;
-    node.style.display = "block";
-    node.style.position = "absolute";
-    node.style.left = "-99999px";
-    node.style.top = "0";
-    node.style.width = "210mm";
-    try {
-      await new Promise((r) => setTimeout(r, 100));
-      const canvas = await html2canvas(node, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgProps = pdf.getImageProperties(imgData);
-      const imgWidth = pageWidth;
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-      const totalPages = Math.max(1, Math.ceil(imgHeight / pageHeight));
-      for (let i = 0; i < totalPages; i++) {
-        if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, -pageHeight * i, imgWidth, imgHeight);
-      }
-      return pdf.output("blob");
-    } finally {
-      node.style.display = prevDisplay;
-      node.style.position = prevPosition;
-      node.style.left = prevLeft;
-      node.style.top = prevTop;
-      node.style.width = prevWidth;
-    }
+    return invoicePdfBlob(node);
   }
 
   async function updatePurchaseOrder() {
@@ -1100,6 +1064,8 @@ export default function SupplierPage() {
       }
       setPdfData(payload);
       await new Promise((r) => setTimeout(r, 200));
+      if (!pdfRef.current) throw new Error("Invoice template not found.");
+      await prepareInvoiceDocument(pdfRef.current);
       scheduleAfterPrint(() => {
         setPdfData(null);
         setPrintingPdfFor(null);
@@ -1128,6 +1094,8 @@ export default function SupplierPage() {
     try {
       setPdfData(payload);
       await new Promise((r) => setTimeout(r, 200));
+      if (!pdfRef.current) throw new Error("Invoice template not found.");
+      await prepareInvoiceDocument(pdfRef.current);
       scheduleAfterPrint(() => {
         setPdfData(null);
         setDraftPdfBusy(false);
@@ -1507,7 +1475,7 @@ export default function SupplierPage() {
         </section>
       </div>
 
-      <div ref={pdfRef} className="print-only" style={{ background: "#fff" }}>
+      <div ref={pdfRef} className="print-only invoice-print-root" style={{ background: "#fff" }}>
         {pdfData ? <PurchaseOrderPdfDocument data={pdfData} /> : null}
       </div>
 
