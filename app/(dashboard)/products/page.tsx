@@ -1,8 +1,8 @@
 "use client";
 
 import { ProductPackagingFields, emptyPackaging } from "@/components/ProductPackagingFields";
-import { stockDisplay, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
-import { useState, useEffect, useCallback } from "react";
+import { stockParts, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ProductCategoryModal } from "@/components/ProductCategoryModal";
 import { ProductCategorySelect } from "@/components/ProductCategorySelect";
 import { ProductStockField } from "@/components/ProductStockField";
@@ -52,6 +52,7 @@ export default function ProductsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [packaging, setPackaging] = useState({ ...emptyPackaging });
+  const stockEntryFactor = useRef(1);
   const [fName, setFName] = useState("");
   const [fCode, setFCode] = useState("");
   const [fCategoryId, setFCategoryId] = useState("");
@@ -92,6 +93,7 @@ export default function ProductsPage() {
   }, []);
 
   function openAdd() {
+    stockEntryFactor.current = 1;
     setPacketPrice(null);
     setPackaging({ ...emptyPackaging });
     setConversionUnit("piece");
@@ -195,7 +197,7 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-extrabold" style={{ color: "var(--gray-900)" }}>Products</h1>
-          <p className="text-xs mt-0.5" style={{ color: "var(--gray-800)" }}>Manage products, packaging and pricing. Pack stock is shown as equivalent quantities.</p>
+          <p className="text-xs mt-0.5" style={{ color: "var(--gray-800)" }}>Enter stock in kits. Vials per kit and vial price calculate total vials and kit price.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
         <button type="button" onClick={() => setShowCategoryModal(true)}
@@ -259,11 +261,13 @@ export default function ProductsPage() {
             <button type="button" onClick={() => setSearch("")} className="mt-2 text-[13px] font-semibold underline cursor-pointer" style={{ color: "var(--blue-deeper)" }}>Clear search</button>
           </div>
         ) : (
+          <>
+          <p className="px-5 py-3 text-xs border-b border-[var(--gray-100)]" style={{ color: "var(--gray-800)" }}>Example: 1 kit = 10 vials. Enter 3 kits to stock 30 vials. Selling 1 vial leaves 2.9 kits (29 vials). Kit/packet balances include opened stock.</p>
           <div className="overflow-x-auto">
-            <table className={`${DT.table} min-w-[760px]`}>
+            <table className={`${DT.table} min-w-[1100px]`}>
               <thead>
                 <tr>
-                  {["Item Code", "Product Name", "Description", "Category", "Quantity", "Cost Price", "Sale Price", "Stock value (cost)", "Margin", ""].map((h) => (
+                  {["Item Code", "Product / pack size", "Description", "Category", "Available stock", "Cost prices", "Selling prices", "Stock value at cost", "Margin by unit", "Actions"].map((h) => (
                     <th key={h} className={`${DT.th} text-left`} style={DT.thStyle}>
                       {h}
                     </th>
@@ -272,9 +276,16 @@ export default function ProductsPage() {
               </thead>
               <tbody>
                 {filteredProducts.map((p) => {
-                  const margin = p.sale_price > 0
-                    ? Math.round(((p.sale_price - p.cost_price) / p.sale_price) * 100)
-                    : 0;
+                  const base = p.base_unit || "Piece";
+                  const pack = unitLabel("packet", base);
+                  const basePlural = base === "Vial" ? "vials" : base === "Piece" ? "pieces" : `${base} units`;
+                  const { size } = stockParts(Number(p.quantity) || 0, p);
+                  const priceUnits = p.packaging_enabled ? [
+                    { unit: "packet", label: pack, factor: size },
+                    { unit: "piece", label: base, factor: 1 },
+                    ...(Number(p.packets_per_box) > 1 ? [{ unit: "box", label: "Outer box", factor: size * Number(p.packets_per_box) }] : []),
+                  ] : [{ unit: "unit", label: "Unit", factor: 1 }];
+                  const qtyText = (qty: number) => qty.toLocaleString("en-PK", { maximumFractionDigits: 2 });
                   return (
                     <tr key={p.id} className={DT.row}>
                       <td className={DT.td}>
@@ -293,21 +304,25 @@ export default function ProductsPage() {
                         )}
                       </td>
                       <td className={DT.td}><span className="text-[12px]" style={{ color: "var(--gray-800)" }}>{p.product_categories?.name ?? "Uncategorized"}</span></td>
-                      <td className={`${DT.td} ${DT.cellMono}`} style={{ color: p.quantity === 0 ? "var(--red)" : "var(--gray-900)" }}>{stockDisplay(p.quantity ?? 0, p)}</td>
-                      <td className={`${DT.td} ${DT.cellMono}`} style={{ color: "var(--gray-900)" }}>
-                        {formatCurrency(p.packaging_enabled ? Number(p.cost_price) * Number(p.pieces_per_packet) : p.cost_price)}
-                        <small className="block text-xs">per {p.packaging_enabled ? unitLabel("packet", p.base_unit) : "unit"}</small>
+                      <td className={`${DT.td} min-w-[170px]`} style={{ color: Number(p.quantity) === 0 ? "var(--red)" : "var(--gray-900)" }}>
+                        {p.packaging_enabled ? <dl className="space-y-1 text-xs">
+                          <div className="flex justify-between gap-3 font-semibold"><dt>{pack}s</dt><dd className="font-mono">{(Number(p.quantity) / size).toLocaleString("en-PK", { maximumFractionDigits: 10 })}</dd></div>
+                          <div className="flex justify-between gap-3 border-t border-[var(--gray-200)] pt-1"><dt>Total {basePlural}</dt><dd className="font-mono font-semibold">{qtyText(Number(p.quantity) || 0)}</dd></div>
+                        </dl> : <span className="font-mono">{qtyText(Number(p.quantity) || 0)} units</span>}
                       </td>
-                      <td className={`${DT.td} font-mono font-bold text-[15px]`} style={{ color: "var(--blue-deeper)" }}>
-                        {formatCurrency(p.sale_price)}
-                        {p.packaging_enabled && <small className="block text-xs font-normal">per {p.base_unit}; {p.pieces_per_packet! > 1 && <>{unitLabel("packet", p.base_unit)} {formatCurrency(unitSalePrice(p, "packet"))}; </>}{p.packets_per_box! > 1 && <>box {formatCurrency(unitSalePrice(p, "box"))}</>}</small>}
+                      <td className={`${DT.td} min-w-[130px]`}>
+                        <dl className="space-y-1 text-xs">{priceUnits.map((u, i) => <div key={u.unit} className={`flex justify-between gap-3 ${i === 0 ? "font-semibold" : ""}`}><dt>Per {u.label.toLowerCase()}</dt><dd className="font-mono whitespace-nowrap">{formatCurrency(Number(p.cost_price) * u.factor)}</dd></div>)}</dl>
+                      </td>
+                      <td className={`${DT.td} min-w-[130px]`} style={{ color: "var(--blue-deeper)" }}>
+                        <dl className="space-y-1 text-xs">{priceUnits.map((u, i) => <div key={u.unit} className={`flex justify-between gap-3 ${i === 0 ? "font-semibold" : ""}`}><dt>Per {u.label.toLowerCase()}</dt><dd className="font-mono whitespace-nowrap">{formatCurrency(unitSalePrice(p, u.unit))}</dd></div>)}</dl>
                       </td>
                       <td className={`${DT.td} ${DT.cellMono}`}>{formatCurrency(Number(p.quantity) * Number(p.cost_price))}</td>
                       <td className={DT.td}>
-                        <span className={DT.badge}
-                          style={{ background: margin >= 20 ? "var(--green-light)" : "var(--orange-light)", color: margin >= 20 ? "var(--green)" : "#B45309" }}>
-                          {margin}%
-                        </span>
+                        <dl className="space-y-1 text-xs">{priceUnits.map(u => {
+                          const sale = unitSalePrice(p, u.unit), cost = Number(p.cost_price) * u.factor;
+                          const margin = sale > 0 ? Math.round((sale - cost) / sale * 100) : 0;
+                          return <div key={u.unit} className="flex justify-between items-center gap-3"><dt>Per {u.label.toLowerCase()}</dt><dd className={DT.badge} style={{ background: margin >= 20 ? "var(--green-light)" : "var(--orange-light)", color: margin >= 20 ? "var(--green)" : "#B45309" }}>{margin}%</dd></div>;
+                        })}</dl>
                       </td>
                       <td className={DT.td}>
                         <div className="flex items-center gap-1.5">
@@ -331,6 +346,7 @@ export default function ProductsPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
@@ -378,7 +394,14 @@ export default function ProductsPage() {
 
               {/* Pricing Type */}
               <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
-              <ProductPackagingFields packetPrice={packetPrice ?? calculatedPacketPrice} onPacketPriceChange={setPacketPrice} packetPriceOverridden={packetPrice !== null} onResetPacketPrice={() => setPacketPrice(null)} piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={true} value={packaging} onChange={p => { setPackaging(p); setConversionConfirmed(false);
+              <ProductPackagingFields packetPrice={packetPrice ?? calculatedPacketPrice} onPacketPriceChange={setPacketPrice} packetPriceOverridden={packetPrice !== null} onResetPacketPrice={() => setPacketPrice(null)} piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={true} value={packaging} onChange={p => {
+                const factor = p.packaging_enabled ? p.pieces_per_packet : 1;
+                if (!editingId && factor > 0 && Number.isFinite(factor) && factor !== stockEntryFactor.current) {
+                  const previousFactor = stockEntryFactor.current;
+                  setFQuantity(current => String(Math.round(Number(current) / previousFactor * factor * 100) / 100));
+                  stockEntryFactor.current = factor;
+                }
+                setPackaging(p); setConversionConfirmed(false);
                 const old = products.find(row => row.id === editingId);
                 if (old && !old.packaging_enabled) { const factor = conversionUnit === "piece" ? 1 : p.pieces_per_packet * (conversionUnit === "box" ? p.packets_per_box : 1); if (factor > 0 && factor !== conversionFactor) setFSale(String(Math.round(Number(old.sale_price) / factor * 100) / 100)); }
                 if (old?.packaging_enabled && p.pieces_per_packet !== packaging.pieces_per_packet) setFCost(String(Number(fCost) / Math.max(1, packaging.pieces_per_packet) * p.pieces_per_packet));
@@ -396,7 +419,7 @@ export default function ProductsPage() {
               </div>}
               <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving || !!editingId} />
               {editingId && <ProductBatchList productId={editingId} />}
-              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? `Stock is entered in ${unitLabel("packet", packaging.base_unit).toLowerCase()}s plus loose ${packaging.base_unit.toLowerCase()}s. Cost is per ${unitLabel("packet", packaging.base_unit).toLowerCase()}.` : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
+              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? `Stock is entered in ${unitLabel("packet", packaging.base_unit).toLowerCase()}s only; ${packaging.base_unit.toLowerCase()} stock is calculated. Cost is per ${unitLabel("packet", packaging.base_unit).toLowerCase()}.` : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
 
               {/* Item Code */}
               <div className="flex flex-col gap-1">
