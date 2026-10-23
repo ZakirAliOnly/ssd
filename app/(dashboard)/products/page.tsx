@@ -1,7 +1,7 @@
 "use client";
 
 import { ProductPackagingFields, emptyPackaging } from "@/components/ProductPackagingFields";
-import { stockDisplay, unitSalePrice, type Packaging } from "@/lib/productUnits";
+import { stockDisplay, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
 import { useState, useEffect, useCallback } from "react";
 import { ProductCategoryModal } from "@/components/ProductCategoryModal";
 import { ProductCategorySelect } from "@/components/ProductCategorySelect";
@@ -64,7 +64,7 @@ export default function ProductsPage() {
   const [conversionConfirmed, setConversionConfirmed] = useState(false);
   const converting = !!editingId && packaging.packaging_enabled && !products.find(p => p.id === editingId)?.packaging_enabled;
   const conversionFactor = conversionUnit === "piece" ? 1 : packaging.pieces_per_packet * (conversionUnit === "box" ? packaging.packets_per_box : 1);
-  const effectiveCost = converting ? Number(products.find(p => p.id === editingId)?.cost_price || 0) / Math.max(1, conversionFactor) : Number(fCost) || 0;
+  const effectiveCost = converting ? Number(products.find(p => p.id === editingId)?.cost_price || 0) / Math.max(1, conversionFactor) * packaging.pieces_per_packet : Number(fCost) || 0;
   const [originalQuantity, setOriginalQuantity] = useState(0);
   const [fNonExpiry, setFNonExpiry] = useState(true);
   const [fExpiryDate, setFExpiryDate] = useState("");
@@ -106,7 +106,7 @@ export default function ProductsPage() {
   }
 
   function openEdit(p: Product) {
-    setPacketPrice(null);
+    setPacketPrice(p.packaging_enabled && Number(p.packet_sale_price) > 0 && Number(p.packet_sale_price) !== Math.round(Number(p.sale_price) * Number(p.pieces_per_packet) * 100) / 100 ? String(p.packet_sale_price) : null);
     setPackaging({ ...emptyPackaging, packaging_enabled: !!p.packaging_enabled, base_unit: p.base_unit || "Piece", pieces_per_packet: p.pieces_per_packet || 1, packets_per_box: p.packets_per_box || 1, packet_sale_price: Number(p.packet_sale_price || 0), box_sale_price: Number(p.box_sale_price || 0) });
     setConversionUnit("piece"); setConversionConfirmed(false);
     setOriginalQuantity(p.quantity ?? 0);
@@ -118,7 +118,7 @@ export default function ProductsPage() {
     setFName(p.name);
     setFCode(p.code);
     setFDescription(p.description?.trim() ? p.description : "");
-    setFCost(String(p.cost_price));
+    setFCost(String(Number(p.cost_price) * (p.packaging_enabled ? Number(p.pieces_per_packet) || 1 : 1)));
     setFSale(String(p.sale_price));
     setShowModal(true);
   }
@@ -130,7 +130,7 @@ export default function ProductsPage() {
     }
   }
 
-  const packetEntry = !editingId && packaging.packaging_enabled;
+  const packetEntry = packaging.packaging_enabled;
   const entryFactor = packetEntry ? packaging.pieces_per_packet : 1;
   const calculatedPacketPrice = Math.round((Number(fSale) || 0) * entryFactor * 100) / 100;
   const effectivePacketPrice = packetPrice === null ? calculatedPacketPrice : Number(packetPrice);
@@ -138,15 +138,15 @@ export default function ProductsPage() {
   async function handleSave() {
     if (!fNonExpiry && !fExpiryDate) { showToast("Enter the expiry date", "err"); return; }
     if (converting && !conversionConfirmed) { showToast("Review and confirm the existing stock conversion", "err"); return; }
-    const quantity = Math.round(Number(fQuantity) * entryFactor * 100) / 100;
+    const quantity = Number(fQuantity);
     if (!fQuantity.trim() || !Number.isFinite(quantity) || Math.abs(Number(fQuantity) - Math.round(Number(fQuantity) * 100) / 100) > 0.00000001 || quantity < 0 || quantity > 2147483647) {
       showToast("Enter stock quantity of zero or more with up to two decimal places", "err"); return;
     }
     if (!fCategoryId) { showToast("Select a category", "err"); return; }
     if (!fName.trim()) { showToast("Enter product name", "err"); return; }
 
-    if (packetEntry && (!Number.isInteger(entryFactor) || entryFactor < 1 || entryFactor > 1000000)) { showToast("Enter whole pieces per packet between 1 and 1,000,000", "err"); return; }
-    if (packetEntry && packetPrice !== null && (!packetPrice.trim() || !Number.isFinite(Number(packetPrice)) || Number(packetPrice) < 0)) { showToast("Enter a packet selling price of zero or more", "err"); return; }
+    if (packetEntry && (!Number.isInteger(entryFactor) || entryFactor < 1 || entryFactor > 1000000)) { showToast("Enter whole loose units per kit / packet between 1 and 1,000,000", "err"); return; }
+    if (packetEntry && packetPrice !== null && (!packetPrice.trim() || !Number.isFinite(Number(packetPrice)) || Number(packetPrice) < 0)) { showToast("Enter a kit / packet selling price of zero or more", "err"); return; }
     const payload = {
       code: fCode || generateCode(fName, products),
       name: fName.trim(),
@@ -154,7 +154,7 @@ export default function ProductsPage() {
       cost_price: (parseFloat(fCost) || 0) / entryFactor,
       sale_price: parseFloat(fSale) || 0,
       ...packaging,
-      ...(packetEntry ? { packets_per_box: 1, box_sale_price: 0, packet_sale_price: effectivePacketPrice } : {}),
+      ...(packetEntry ? { packet_sale_price: effectivePacketPrice } : {}),
       pricing_type: "standalone",
       category_id: fCategoryId,
       ...(converting ? { conversion_unit: conversionUnit, expected_quantity: originalQuantity } : !editingId ? { quantity } : quantity !== originalQuantity ? { quantity, expected_quantity: originalQuantity } : {}),
@@ -263,7 +263,7 @@ export default function ProductsPage() {
             <table className={`${DT.table} min-w-[760px]`}>
               <thead>
                 <tr>
-                  {["Item Code", "Product Name", "Description", "Category", "Quantity", "Cost Price", "Sale Price", "Margin", ""].map((h) => (
+                  {["Item Code", "Product Name", "Description", "Category", "Quantity", "Cost Price", "Sale Price", "Stock value (cost)", "Margin", ""].map((h) => (
                     <th key={h} className={`${DT.th} text-left`} style={DT.thStyle}>
                       {h}
                     </th>
@@ -283,7 +283,7 @@ export default function ProductsPage() {
                         </span>
                       </td>
                       <td className={`${DT.td} ${DT.cellPrimary}`} style={{ color: "var(--gray-900)" }}>
-                        {p.name}{p.packaging_enabled && <small className="block font-normal text-xs">Packet: {p.pieces_per_packet} {p.base_unit}; box: {p.packets_per_box} packets</small>}
+                        {p.name}{p.packaging_enabled && <small className="block font-normal text-xs">1 {unitLabel("packet", p.base_unit)} = {p.pieces_per_packet} {p.base_unit}s{Number(p.packets_per_box) > 1 && `; outer box = ${p.packets_per_box} packs`}</small>}
                       </td>
                       <td className={`${DT.td} max-w-[220px] sm:max-w-[280px]`} style={{ color: "var(--gray-800)" }}>
                         {p.description?.trim() ? (
@@ -295,12 +295,14 @@ export default function ProductsPage() {
                       <td className={DT.td}><span className="text-[12px]" style={{ color: "var(--gray-800)" }}>{p.product_categories?.name ?? "Uncategorized"}</span></td>
                       <td className={`${DT.td} ${DT.cellMono}`} style={{ color: p.quantity === 0 ? "var(--red)" : "var(--gray-900)" }}>{stockDisplay(p.quantity ?? 0, p)}</td>
                       <td className={`${DT.td} ${DT.cellMono}`} style={{ color: "var(--gray-900)" }}>
-                        {formatCurrency(p.cost_price)}
+                        {formatCurrency(p.packaging_enabled ? Number(p.cost_price) * Number(p.pieces_per_packet) : p.cost_price)}
+                        <small className="block text-xs">per {p.packaging_enabled ? unitLabel("packet", p.base_unit) : "unit"}</small>
                       </td>
                       <td className={`${DT.td} font-mono font-bold text-[15px]`} style={{ color: "var(--blue-deeper)" }}>
                         {formatCurrency(p.sale_price)}
-                        {p.packaging_enabled && <small className="block text-xs font-normal">per {p.base_unit}; {p.pieces_per_packet! > 1 && <>packet {formatCurrency(unitSalePrice(p, "packet"))}; </>}{p.packets_per_box! > 1 && <>box {formatCurrency(unitSalePrice(p, "box"))}</>}</small>}
+                        {p.packaging_enabled && <small className="block text-xs font-normal">per {p.base_unit}; {p.pieces_per_packet! > 1 && <>{unitLabel("packet", p.base_unit)} {formatCurrency(unitSalePrice(p, "packet"))}; </>}{p.packets_per_box! > 1 && <>box {formatCurrency(unitSalePrice(p, "box"))}</>}</small>}
                       </td>
+                      <td className={`${DT.td} ${DT.cellMono}`}>{formatCurrency(Number(p.quantity) * Number(p.cost_price))}</td>
                       <td className={DT.td}>
                         <span className={DT.badge}
                           style={{ background: margin >= 20 ? "var(--green-light)" : "var(--orange-light)", color: margin >= 20 ? "var(--green)" : "#B45309" }}>
@@ -376,16 +378,17 @@ export default function ProductsPage() {
 
               {/* Pricing Type */}
               <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
-              <ProductPackagingFields packetPrice={packetPrice ?? calculatedPacketPrice} onPacketPriceChange={setPacketPrice} packetPriceOverridden={packetPrice !== null} onResetPacketPrice={() => setPacketPrice(null)} piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={!editingId} value={packaging} onChange={p => { setPackaging(p); setConversionConfirmed(false);
+              <ProductPackagingFields packetPrice={packetPrice ?? calculatedPacketPrice} onPacketPriceChange={setPacketPrice} packetPriceOverridden={packetPrice !== null} onResetPacketPrice={() => setPacketPrice(null)} piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={true} value={packaging} onChange={p => { setPackaging(p); setConversionConfirmed(false);
                 const old = products.find(row => row.id === editingId);
                 if (old && !old.packaging_enabled) { const factor = conversionUnit === "piece" ? 1 : p.pieces_per_packet * (conversionUnit === "box" ? p.packets_per_box : 1); if (factor > 0 && factor !== conversionFactor) setFSale(String(Math.round(Number(old.sale_price) / factor * 100) / 100)); }
+                if (old?.packaging_enabled && p.pieces_per_packet !== packaging.pieces_per_packet) setFCost(String(Number(fCost) / Math.max(1, packaging.pieces_per_packet) * p.pieces_per_packet));
               }} disabled={saving} locked={!!editingId && !!products.find(p => p.id === editingId)?.packaging_enabled} />
-              <ProductStockField packets={packetEntry} value={fQuantity} onChange={setFQuantity} disabled={saving || converting} />
+              <ProductStockField packaging={converting ? undefined : packaging} value={fQuantity} onChange={setFQuantity} disabled={saving || converting} />
               {converting && <div className="col-span-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm space-y-2">
                 <label>What does the existing stock quantity represent?<select aria-label="Existing stock unit" className="block w-full border rounded p-2 mt-1" value={conversionUnit} onChange={e => { setConversionUnit(e.target.value); setConversionConfirmed(false);
                     const factor = e.target.value === "piece" ? 1 : packaging.pieces_per_packet * (e.target.value === "box" ? packaging.packets_per_box : 1);
                     setFSale(String(Math.round(Number(products.find(p => p.id === editingId)?.sale_price || 0) / factor * 100) / 100)); }}>
-                  <option value="piece">Pieces / base units</option><option value="packet">Packets</option><option value="box">Boxes</option>
+                  <option value="piece">Loose {packaging.base_unit}s</option><option value="packet">Full {unitLabel("packet", packaging.base_unit)}s</option><option value="box">Outer boxes</option>
                 </select></label>
                 <p>{originalQuantity} existing units × {conversionFactor} = <strong>{originalQuantity * conversionFactor} {packaging.base_unit}</strong>.</p>
                 <p>Cost per {packaging.base_unit}: Rs {(Number(products.find(p => p.id === editingId)?.cost_price || 0) / conversionFactor).toFixed(8)}. Total stock cost stays the same. Invoice quantities and amounts are preserved.</p>
@@ -393,7 +396,7 @@ export default function ProductsPage() {
               </div>}
               <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving || !!editingId} />
               {editingId && <ProductBatchList productId={editingId} />}
-              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? "Stock and cost are per packet; piece and packet selling prices are separate" : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
+              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? `Stock is entered in ${unitLabel("packet", packaging.base_unit).toLowerCase()}s plus loose ${packaging.base_unit.toLowerCase()}s. Cost is per ${unitLabel("packet", packaging.base_unit).toLowerCase()}.` : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
 
               {/* Item Code */}
               <div className="flex flex-col gap-1">
@@ -407,7 +410,7 @@ export default function ProductsPage() {
               {/* Cost Price */}
               <div className="flex flex-col gap-1">
                 <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
-                  {packetEntry ? "Packet cost price (Rs)" : "Cost Price (Rs)"}
+                  {packetEntry ? `${unitLabel("packet", packaging.base_unit)} cost price (Rs)` : "Cost Price (Rs)"}
                 </label>
                 <input type="number" value={converting ? effectiveCost : fCost} disabled={converting} onChange={(e) => setFCost(e.target.value)}
                   placeholder="0" min="0" step="0.01"
@@ -430,7 +433,7 @@ export default function ProductsPage() {
                   style={{ background: "var(--green-light)", border: "1.5px solid rgba(14,173,106,.2)" }}>
                   <span className="text-[11px] font-semibold" style={{ color: "var(--green)" }}>
                     Margin: {Math.round((((packetEntry ? effectivePacketPrice : parseFloat(fSale)) - effectiveCost) / (packetEntry ? effectivePacketPrice : parseFloat(fSale))) * 100)}% —
-                    Rs {Math.round((packetEntry ? effectivePacketPrice : parseFloat(fSale)) - effectiveCost)} profit per {packetEntry ? "packet" : "unit"}
+                    Rs {Math.round((packetEntry ? effectivePacketPrice : parseFloat(fSale)) - effectiveCost)} profit per {packetEntry ? unitLabel("packet", packaging.base_unit).toLowerCase() : "unit"}
                   </span>
                 </div>
               )}

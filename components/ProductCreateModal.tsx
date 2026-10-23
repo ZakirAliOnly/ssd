@@ -1,7 +1,7 @@
 "use client";
 
 import { ProductPackagingFields, emptyPackaging } from "@/components/ProductPackagingFields";
-import { type Packaging } from "@/lib/productUnits";
+import { unitLabel, type Packaging } from "@/lib/productUnits";
 import { useEffect, useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import { ProductCategorySelect } from "@/components/ProductCategorySelect";
@@ -75,15 +75,15 @@ export function ProductCreateModal({
 
   async function handleSave() {
     if (!fNonExpiry && !fExpiryDate) { showToast("Enter the expiry date", "err"); return; }
-    const quantity = Math.round(Number(fQuantity) * entryFactor * 100) / 100;
+    const quantity = Number(fQuantity);
     if (!fQuantity.trim() || !Number.isFinite(quantity) || Math.abs(Number(fQuantity) - Math.round(Number(fQuantity) * 100) / 100) > 0.00000001 || quantity < 0 || quantity > 2147483647) {
       showToast("Enter stock quantity of zero or more with up to two decimal places", "err"); return;
     }
     if (!fCategoryId) { showToast("Select a category", "err"); return; }
     const trimmed = fName.trim();
     if (!trimmed) { showToast("Enter product name", "err"); return; }
-    if (packetEntry && (!Number.isInteger(entryFactor) || entryFactor < 1 || entryFactor > 1000000)) { showToast("Enter whole pieces per packet between 1 and 1,000,000", "err"); return; }
-    if (packetEntry && packetPrice !== null && (!packetPrice.trim() || !Number.isFinite(Number(packetPrice)) || Number(packetPrice) < 0)) { showToast("Enter a packet selling price of zero or more", "err"); return; }
+    if (packetEntry && (!Number.isInteger(entryFactor) || entryFactor < 1 || entryFactor > 1000000)) { showToast("Enter whole loose units per kit / packet between 1 and 1,000,000", "err"); return; }
+    if (packetEntry && packetPrice !== null && (!packetPrice.trim() || !Number.isFinite(Number(packetPrice)) || Number(packetPrice) < 0)) { showToast("Enter a kit / packet selling price of zero or more", "err"); return; }
     const payload = {
       code: fCode || nextProductCode(existingProducts),
       name: trimmed,
@@ -91,7 +91,7 @@ export function ProductCreateModal({
       cost_price: (parseFloat(fCost) || 0) / entryFactor,
       sale_price: parseFloat(fSale) || 0,
       ...packaging,
-      ...(packetEntry ? { packets_per_box: 1, box_sale_price: 0, packet_sale_price: effectivePacketPrice } : {}),
+      ...(packetEntry ? { packet_sale_price: effectivePacketPrice } : {}),
       pricing_type: "standalone",
       category_id: fCategoryId,
       quantity,
@@ -152,9 +152,9 @@ export function ProductCreateModal({
 
           <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
           <ProductPackagingFields packetPrice={packetPrice ?? calculatedPacketPrice} onPacketPriceChange={setPacketPrice} packetPriceOverridden={packetPrice !== null} onResetPacketPrice={() => setPacketPrice(null)} piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={true} value={packaging} onChange={setPackaging} disabled={saving} />
-              <ProductStockField packets={packetEntry} value={fQuantity} onChange={setFQuantity} disabled={saving} />
+              <ProductStockField packaging={packaging} value={fQuantity} onChange={setFQuantity} disabled={saving} />
           <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving} />
-              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? "Stock and cost are per packet; piece and packet selling prices are separate" : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
+              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? `Stock is entered in ${unitLabel("packet", packaging.base_unit).toLowerCase()}s plus loose ${packaging.base_unit.toLowerCase()}s. Cost is per ${unitLabel("packet", packaging.base_unit).toLowerCase()}.` : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Item Code</label>
@@ -166,7 +166,7 @@ export function ProductCreateModal({
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>
-              {packetEntry ? "Packet cost price (Rs)" : "Cost Price (Rs)"}
+              {packetEntry ? `${unitLabel("packet", packaging.base_unit)} cost price (Rs)` : "Cost Price (Rs)"}
             </label>
             <input type="number" value={fCost} onChange={(e) => setFCost(e.target.value)}
               placeholder="0" min="0" step="0.01"
@@ -187,7 +187,7 @@ export function ProductCreateModal({
               style={{ background: "var(--green-light)", border: "1.5px solid rgba(14,173,106,.2)" }}>
               <span className="text-[11px] font-semibold" style={{ color: "var(--green)" }}>
                 Margin: {Math.round((((packetEntry ? effectivePacketPrice : parseFloat(fSale)) - parseFloat(fCost)) / (packetEntry ? effectivePacketPrice : parseFloat(fSale))) * 100)}% —
-                Rs {Math.round((packetEntry ? effectivePacketPrice : parseFloat(fSale)) - parseFloat(fCost))} profit per {packetEntry ? "packet" : "unit"}
+                Rs {Math.round((packetEntry ? effectivePacketPrice : parseFloat(fSale)) - parseFloat(fCost))} profit per {packetEntry ? unitLabel("packet", packaging.base_unit).toLowerCase() : "unit"}
               </span>
             </div>
           )}
