@@ -13,7 +13,7 @@ export type DocumentTotal = { label: string; value: number; strong?: boolean };
 export type InvoiceDocumentData = {
   title: string; number: string; date: string; party: string; phone?: string;
   reference?: string; notes?: string; processedBy?: string; returnDocument?: boolean;
-  purchase?: boolean; balanceNote?: string; paymentMethod?: string; paymentStatus?: string; lines: DocumentLine[]; totals: DocumentTotal[];
+  purchase?: boolean; paymentMethod?: string; paymentStatus?: string; lines: DocumentLine[]; totals: DocumentTotal[];
 };
 export const documentNumber = (value: number) => Number(value || 0).toLocaleString("en-PK", { maximumFractionDigits: 2 });
 
@@ -50,7 +50,6 @@ export function InvoiceDocument({ data }: { data: InvoiceDocumentData }) {
         </tbody>
       </table>
       <div className="invoice-totals">{data.totals.map((total, i) => <div key={i} className={total.strong ? "invoice-total-strong" : ""}><span>{total.label}</span><span>{documentNumber(total.value)}</span></div>)}
-        {data.balanceNote && <p>{data.balanceNote}</p>}
         {data.returnDocument && <p>Credit recorded. No cash refund recorded.</p>}
         {data.processedBy && <p>Processed by: {data.processedBy}</p>}
       </div>
@@ -85,7 +84,6 @@ export function SalesInvoiceDocument({ invoice, items, walkIn = false, partyBala
     { label: "Total balance", value: balances.total, strong: true });
   return <InvoiceDocument data={{ title: walkIn ? "Walk-in invoice" : "Invoice", number: invoice.invoice_number,
     date: invoice.invoice_date, party: invoice.client_name, phone: invoice.client_phone,
-    balanceNote: partyBalance && !walkIn ? `Party balance as of ${partyBalance.asOf}. Other balance includes later transactions.` : undefined,
     notes: invoice.description || invoice.job_notes || invoice.job_name,
     lines: items.map(item => ({ product: item.category || item.description || "—", description: item.category ? item.description : "", qty: Number(item.qty), unit: item.unit,
       rate: invoiceUnitRate(item), amount: Number(item.amount), discount_pct: Number(item.discount_pct) || 0 })), totals }} />;
