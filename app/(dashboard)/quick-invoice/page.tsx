@@ -4,7 +4,7 @@ import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
 import { productUnits, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { db, saveInvoice } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
@@ -193,7 +193,15 @@ export default function InvoicePage() {
   const { methods: paymentMethods } = usePaymentMethods();
   const [products, setProducts] = useState<InvoiceProduct[]>([]);
   const [savedInvoices, setSavedInvoices] = useState<SavedInvoice[]>([]);
-  const [allAccounts, setAllAccounts] = useState<{ id: string; name: string; category: string }[]>([]);
+  const [historyMonth, setHistoryMonth] = useState("");
+  const [historyStatus, setHistoryStatus] = useState("all");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPages, setHistoryPages] = useState(1);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
+  const historyRequest = useRef<AbortController | null>(null);
   const [draft, setDraft] = useState<WalkInDraft | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -242,39 +250,29 @@ export default function InvoicePage() {
   }, []);
 
   const fetchSaved = useCallback(async () => {
-    const [{ data: invData }, { data: acctData }] = await Promise.all([
-      db
-        .from("invoices")
-        .select("id, invoice_number, client_name, invoice_date, grand_total, amount_received, previous_balance, balance_due, payment_status, payment_method, created_by_name, created_by_email, subtotal, discount_amount, discount_type, discount_value")
-        .eq("is_walk_in", true)
-        .order("created_at", { ascending: false })
-        .limit(50),
-      db.from("accounts").select("id, name, head_accounts(name)").order("name"),
-    ]);
-    if (invData) setSavedInvoices(invData as SavedInvoice[]);
-    if (acctData) {
-      setAllAccounts(
-        (acctData as Array<{ id: string; name: string; head_accounts?: { name?: string } | null }>).map((a) => {
-          const headName = String(a.head_accounts?.name ?? "").trim().toLowerCase();
-          const category =
-            headName.includes("government") ? "Government" :
-            headName.includes("press") ? "Press" :
-            headName.includes("shop") ? "Shop" :
-            "Others";
-          return { id: a.id, name: a.name, category };
-        })
-      );
-    }
-  }, []);
+    historyRequest.current?.abort();
+    const controller = new AbortController(); historyRequest.current = controller;
+    setHistoryLoading(true); setHistoryError("");
+    try {
+      const query = new URLSearchParams({ page: String(historyPage), status: historyStatus });
+      if (historyMonth) query.set("month", historyMonth);
+      const response = await fetch(`/api/invoices/walk-in-history?${query}`, { cache: "no-store", signal: controller.signal });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not load invoice history.");
+      if (controller.signal.aborted) return;
+      setSavedInvoices(result.invoices); setHistoryTotal(result.total); setHistoryPages(result.totalPages);
+      setHistoryPage(result.page);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setSavedInvoices([]);
+      setHistoryError(error instanceof Error ? error.message : "Could not load invoice history.");
+    } finally { if (!controller.signal.aborted) setHistoryLoading(false); }
+  }, [historyPage, historyMonth, historyStatus]);
 
-  const accountNameSet = useMemo(() => new Set(allAccounts.map((a) => a.name)), [allAccounts]);
-  const accountCategoryByName = useMemo(() => {
-    const m = new Map<string, string>();
-    allAccounts.forEach((a) => m.set(a.name, a.category));
-    return m;
-  }, [allAccounts]);
-  const walkInSavedInvoices = savedInvoices; // already filtered to is_walk_in=true at fetch time
-  const filteredInvoices = walkInSavedInvoices;
+  useEffect(() => {
+    void fetchSaved();
+    return () => historyRequest.current?.abort();
+  }, [fetchSaved, historyRefresh]);
 
   function openPayModal(inv: SavedInvoice) {
     setPayInvoice(inv);
@@ -339,7 +337,7 @@ export default function InvoicePage() {
     showToast("Payment recorded", "ok");
     setPayInvoice(null);
     setPaySaving(false);
-    void fetchSaved();
+    setHistoryRefresh(refresh => refresh + 1);
     void refreshWalkInStats();
   }
 
@@ -361,10 +359,9 @@ export default function InvoicePage() {
   }, []);
 
   useEffect(() => {
-    fetchSaved();
     void refreshWalkInStats();
     void fetchProducts();
-  }, [fetchSaved, refreshWalkInStats, fetchProducts]);
+  }, [refreshWalkInStats, fetchProducts]);
 
   // ── Inline product-create modal state (triggered from product picker rows) ──
   const [productCreate, setProductCreate] = useState<{ idx: number; initialName: string } | null>(null);
@@ -707,7 +704,7 @@ export default function InvoicePage() {
       setDraft(null);
       setSaving(false);
       void fetchProducts();
-      fetchSaved();
+      setHistoryRefresh(refresh => refresh + 1);
       void refreshWalkInStats();
       if (goToExpense) router.push("/expense");
 
@@ -933,7 +930,7 @@ export default function InvoicePage() {
       });
       showToast("Invoice deleted", "ok");
       void fetchProducts();
-      void fetchSaved();
+      setHistoryRefresh(refresh => refresh + 1);
       void refreshWalkInStats();
     } finally {
       setDeletingId(null);
@@ -1119,28 +1116,28 @@ export default function InvoicePage() {
           Previous Invoices
         </span>
         <div className="flex-1 h-px" style={{ background: "var(--gray-200)" }} />
-        <span className="text-[11px] font-semibold" style={{ color: "var(--gray-700)" }}>{savedInvoices.length} records</span>
+        <span className="text-[11px] font-semibold" style={{ color: "var(--gray-700)" }}>{historyLoading ? "Loading…" : historyError ? "History unavailable" : `${historyTotal} records`}</span>
       </div>
 
-      {savedInvoices.length === 0 ? (
-        <div className="bg-white rounded-[14px] border border-[var(--gray-100)] overflow-hidden py-14 text-center" style={{ boxShadow: "var(--shadow-sm)" }}>
-          <p className="text-[13px] m-0 px-4" style={{ color: "var(--gray-700)" }}>
-            No invoices yet — use <strong>New Invoice</strong> to add one
-          </p>
-        </div>
-      ) : (
         <div className="space-y-5">
           <div className="bg-white rounded-[14px] border border-[var(--gray-100)] overflow-hidden" style={{ boxShadow: "var(--shadow-sm)" }}>
             <div className="px-4 py-3 border-b border-[var(--gray-100)] bg-[var(--gray-50)] flex items-end justify-between gap-3 flex-wrap">
               <div>
                 <h2 className="text-[14px] font-extrabold m-0" style={{ color: "var(--gray-900)" }}>Invoice history</h2>
-                <p className="text-[11px] m-0 mt-0.5" style={{ color: "var(--gray-600)" }}>
-                  Walk-in customers only. Party invoices are managed in the Accounts section.
-                </p>
+                <p className="text-[11px] m-0 mt-0.5" style={{ color: "var(--gray-600)" }}>Walk-in customers only. 15 invoices per page. Party invoices are managed in Accounts.</p>
+              </div>
+              <div className="flex items-end gap-3 flex-wrap">
+                <label className="text-xs font-semibold">Month / year<input type="month" aria-label="Invoice month and year" value={historyMonth} onChange={e => { setHistoryMonth(e.target.value); setHistoryPage(1); }} className="block mt-1 rounded-lg border border-[var(--gray-200)] bg-white px-3 py-2 text-sm" /></label>
+                <label className="text-xs font-semibold">Payment status<select aria-label="Invoice payment status" value={historyStatus} onChange={e => { setHistoryStatus(e.target.value); setHistoryPage(1); }} className="block mt-1 rounded-lg border border-[var(--gray-200)] bg-white px-3 py-2 text-sm">
+                  <option value="all">All</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="partial">Partial</option>
+                </select></label>
+                <button type="button" onClick={() => { setHistoryMonth(""); setHistoryStatus("all"); setHistoryPage(1); }} disabled={!historyMonth && historyStatus === "all" && historyPage === 1} className="rounded-lg border border-[var(--gray-200)] bg-white px-3 py-2 text-sm disabled:opacity-50">Clear filters</button>
               </div>
             </div>
-            {filteredInvoices.length === 0 ? (
-              <p className="text-[13px] text-center py-8 m-0 px-4" style={{ color: "var(--gray-600)" }}>No walk-in invoices yet.</p>
+            {historyLoading ? <p role="status" className="text-sm text-center py-8">Loading invoice history…</p>
+            : historyError ? <p role="alert" className="text-sm text-center py-8">{historyError} <button type="button" onClick={() => void fetchSaved()} className="underline">Retry</button></p>
+            : savedInvoices.length === 0 ? (
+              <p className="text-[13px] text-center py-8 m-0 px-4" style={{ color: "var(--gray-600)" }}>{historyMonth || historyStatus !== "all" ? "No invoices match these filters." : "No walk-in invoices yet. Use New Invoice to add one."}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className={`${DT.table} min-w-[640px]`}>
@@ -1158,7 +1155,7 @@ export default function InvoicePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredInvoices.map((inv) => {
+                    {savedInvoices.map((inv) => {
                         const s = STATUS[inv.payment_status] ?? STATUS.unpaid;
                         const due = Number(inv.balance_due);
                         const busy =
@@ -1281,9 +1278,14 @@ export default function InvoicePage() {
                 </table>
               </div>
             )}
+            {!historyError && <div className="px-4 py-3 border-t border-[var(--gray-100)] flex items-center justify-between gap-3 flex-wrap">
+              <p aria-live="polite" className="text-xs m-0">{historyLoading ? "Loading…" : `Showing ${historyTotal ? (historyPage - 1) * 15 + 1 : 0}–${Math.min(historyPage * 15, historyTotal)} of ${historyTotal} invoices · Page ${historyPage} of ${historyPages}`}</p>
+              <nav aria-label="Invoice history pages" className="flex gap-2">
+                {[{ label: "First", page: 1, disabled: historyPage <= 1 }, { label: "Previous", page: historyPage - 1, disabled: historyPage <= 1 }, { label: "Next", page: historyPage + 1, disabled: historyPage >= historyPages }, { label: "Last", page: historyPages, disabled: historyPage >= historyPages }].map(button => <button key={button.label} type="button" aria-label={`${button.label} history page`} disabled={historyLoading || button.disabled} onClick={() => setHistoryPage(button.page)} className="rounded-lg border border-[var(--gray-200)] bg-white px-3 py-1.5 text-xs disabled:opacity-40">{button.label}</button>)}
+              </nav>
+            </div>}
           </div>
         </div>
-      )}
 
       {payInvoice ? (
         <div className="fixed inset-0 z-[850] flex items-center justify-center p-4" style={{ background: "rgba(10,30,50,.45)" }}>
