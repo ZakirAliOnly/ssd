@@ -2229,8 +2229,8 @@ export default function AccountsPage() {
                   style={{ borderColor: "var(--blue)", color: "var(--blue)" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--blue-pale)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
-                  title="Save and print A5 landscape">
-                  {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />} A5 Landscape
+                  title="Save and print half Legal">
+                  {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />} Half Legal
                 </button>
 
                 <button onClick={() => void handleSaveInvoice()} disabled={invSaving}
@@ -2630,7 +2630,7 @@ export default function AccountsPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
                   >
                     {invPrinting ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
-                    A5 Landscape
+                    Half Legal
                   </button>
 
                   <button
@@ -2792,7 +2792,7 @@ export default function AccountsPage() {
       )}
     </div>
 
-    {/* Shared measured A5 landscape invoice pages. */}
+    {/* Shared measured half Legal invoice pages. */}
     <div className="inv-a4-print-only">
       {viewingInvoice && <SalesInvoiceDocument invoice={viewingInvoice} items={viewingInvoiceItems} partyBalance={invoicePartyBalance?.id === viewingInvoice.id ? invoicePartyBalance : undefined} />}
     </div>

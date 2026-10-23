@@ -158,9 +158,9 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   }
 }
 
-/* A5 documents use their own page so reports and ledgers retain A4. */
+/* Documents use their own page sizes so reports and ledgers retain A4. */
 @page delivery-challan { size: A5 portrait; margin: 0; }
-@page party-invoice { size: A5 landscape; margin: 0; }
+@page party-invoice { size: 215.9mm 177.8mm; margin: 0; }
 @page report-a4 { size: A4 portrait; margin: 12mm; }
 @page report-a4-wide { size: A4 landscape; margin: 12mm; }
 @media print {

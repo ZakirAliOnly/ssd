@@ -1,6 +1,9 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
+// Half a US Legal sheet: 8.5 × 7 inches, landscape. Keep in sync with
+// invoice-print.css; browser/PDF checks verify the physical page dimensions.
+export const INVOICE_PAPER_MM = { width: 215.9, height: 177.8, padding: 6 } as const;
 const MM = 96 / 25.4;
 const height = (node: Element) => node.getBoundingClientRect().height;
 
@@ -35,7 +38,7 @@ function splitTallRow(row: HTMLTableRowElement, capacity: number): HTMLTableRowE
         const mid = Math.floor((low + high) / 2); render(mid);
         if (height(probe) <= capacity) { best = mid; low = mid + 1; } else high = mid - 1;
       }
-      if (!best) throw new Error("An invoice row cannot fit on A5. Review its content.");
+      if (!best) throw new Error("An invoice row cannot fit on half Legal paper. Review its content.");
       const pieces = render(best);
       result.push(probe.cloneNode(true) as HTMLTableRowElement);
       pieces.forEach((piece, i) => { remaining[i] = remaining[i].slice(piece.length); });
@@ -52,7 +55,7 @@ export async function prepareInvoiceDocument(root: HTMLElement): Promise<HTMLEle
   const documents = [...root.querySelectorAll<HTMLElement>(".invoice-document")];
   if (!documents.length) throw new Error("Invoice print template not found.");
   root.style.setProperty("display", "block", "important");
-  Object.assign(root.style, { position: "fixed", top: "0", left: "-20000px", width: "210mm", maxWidth: "none" });
+  Object.assign(root.style, { position: "fixed", top: "0", left: "-20000px", width: `${INVOICE_PAPER_MM.width}mm`, maxWidth: "none" });
   try {
     const sheets: HTMLElement[] = [];
     for (const doc of documents) {
@@ -65,9 +68,9 @@ export async function prepareInvoiceDocument(root: HTMLElement): Promise<HTMLEle
         const table = source.querySelector<HTMLTableElement>("table")!;
         // Footer has a 5px margin in addition to its measured border/padding.
         // A small safety allowance absorbs fractional CSS/physical pixel rounding.
-        const capacity = 136 * MM - height(header) - height(footer) - 5 - height(table.tHead!) - 5;
+        const capacity = (INVOICE_PAPER_MM.height - 2 * INVOICE_PAPER_MM.padding) * MM - height(header) - height(footer) - 5 - height(table.tHead!) - 5;
         const summaryHeight = height(summary);
-        if (capacity < 40 || summaryHeight > capacity) throw new Error("Invoice header or totals exceed A5 page space. Shorten the document details.");
+        if (capacity < 40 || summaryHeight > capacity) throw new Error("Invoice header or totals exceed half Legal page space. Shorten the document details.");
         const rows = [...table.tBodies[0].rows].flatMap(row => splitTallRow(row, capacity));
         const measure = (row: HTMLTableRowElement) => {
           table.tBodies[0].appendChild(row); const result = height(row); row.remove(); return result;
@@ -121,13 +124,13 @@ export async function invoicePdfBlob(root: HTMLElement): Promise<Blob> {
   const sheets = await prepareInvoiceDocument(root);
   const originalStyle = root.getAttribute("style");
   root.style.setProperty("display", "block", "important");
-  Object.assign(root.style, { position: "fixed", top: "0", left: "-20000px", width: "210mm", maxWidth: "none" });
+  Object.assign(root.style, { position: "fixed", top: "0", left: "-20000px", width: `${INVOICE_PAPER_MM.width}mm`, maxWidth: "none" });
   try {
-    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a5", compress: true });
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [INVOICE_PAPER_MM.width, INVOICE_PAPER_MM.height], compress: true });
     for (const [i, sheet] of sheets.entries()) {
       const canvas = await html2canvas(sheet, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
       if (i) pdf.addPage();
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 210, 148, undefined, "FAST");
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, INVOICE_PAPER_MM.width, INVOICE_PAPER_MM.height, undefined, "FAST");
     }
     return pdf.output("blob");
   } finally {
