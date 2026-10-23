@@ -1,24 +1,28 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import { stockParts, unitLabel, type Packaging } from "@/lib/productUnits";
 
 export function ProductStockField({ value, onChange, disabled = false, readOnly = false, packets = false, packaging }: {
   value: string; onChange: (value: string) => void; disabled?: boolean; readOnly?: boolean; packets?: boolean; packaging?: Packaging;
 }) {
   const id = useId();
+  const [draft, setDraft] = useState<{ baseValue: string; size: number; input: string } | null>(null);
   if (packaging?.packaging_enabled) {
-    const { packs, loose, size } = stockParts(Number(value) || 0, packaging);
+    const { size } = stockParts(Number(value) || 0, packaging);
     const pack = unitLabel("packet", packaging.base_unit), base = packaging.base_unit || "Piece";
-    const update = (kits: number, units: number) => {
-      if (!Number.isInteger(kits) || kits < 0 || !Number.isFinite(units) || units < 0) return;
-      onChange(String(Math.round((kits * size + units) * 100) / 100));
+    const kits = draft?.baseValue === value && draft.size === size ? draft.input : String(Number(((Number(value) || 0) / size).toFixed(10)));
+    const update = (input: string) => {
+      const count = Number(input);
+      if (!Number.isFinite(count) || count < 0) return;
+      const baseValue = String(Math.round(count * size * 100) / 100);
+      setDraft({ baseValue, size, input });
+      onChange(baseValue);
     };
-    return <fieldset disabled={disabled} className="col-span-2 grid grid-cols-2 gap-3 rounded-lg border border-gray-200 p-3 text-sm">
+    return <fieldset disabled={disabled} className="col-span-2 rounded-lg border border-gray-200 p-3 text-sm">
       <legend className="font-semibold">Stock quantity</legend>
-      <label htmlFor={id}>Quantity ({pack.toLowerCase()}s)<input id={id} type="number" min="0" step="1" value={packs} readOnly={readOnly} onChange={e => update(Number(e.target.value), loose)} className="block w-full border rounded p-2 mt-1" /></label>
-      <label htmlFor={`${id}-loose`}>Extra loose {base.toLowerCase()}s<input id={`${id}-loose`} type="number" min="0" step="0.01" value={loose} readOnly={readOnly} onChange={e => update(packs, Number(e.target.value))} className="block w-full border rounded p-2 mt-1" /></label>
-      <p className="col-span-2 text-xs">{packs} {pack.toLowerCase()}s × {size} + {loose} loose = <strong>{Number(value) || 0} {base.toLowerCase()}s total</strong>. Purchases add stock; sales deduct the selected unit automatically.</p>
+      <label htmlFor={id}>Quantity ({pack.toLowerCase()}s)<input id={id} type="number" min="0" max={2147483647 / size} step="any" value={kits} readOnly={readOnly} onChange={e => update(e.target.value)} aria-describedby={`${id}-help`} className="block w-full border rounded p-2 mt-1" /></label>
+      <p id={`${id}-help`} className="mt-2 text-xs">Enter {pack.toLowerCase()} quantity only. Each {pack.toLowerCase()} contains {size} {base.toLowerCase()}s. Calculated stock: <strong>{Number(value) || 0} {base.toLowerCase()}s total</strong>. After loose sales, the {pack.toLowerCase()} balance can be fractional.</p>
     </fieldset>;
   }
   return (

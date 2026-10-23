@@ -2,7 +2,7 @@
 
 import { ProductPackagingFields, emptyPackaging } from "@/components/ProductPackagingFields";
 import { unitLabel, type Packaging } from "@/lib/productUnits";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { X, Loader2 } from "lucide-react";
 import { ProductCategorySelect } from "@/components/ProductCategorySelect";
 import { db } from "@/lib/db";
@@ -44,6 +44,7 @@ export function ProductCreateModal({
   onCreated: (p: CreatedProduct) => void;
 }) {
   const [packaging, setPackaging] = useState({ ...emptyPackaging });
+  const stockEntryFactor = useRef(1);
   const [fName, setFName] = useState(initialName);
   const [fCode, setFCode] = useState(() => nextProductCode(existingProducts));
   const [fCategoryId, setFCategoryId] = useState("");
@@ -151,10 +152,18 @@ export function ProductCreateModal({
           </div>
 
           <ProductCategorySelect value={fCategoryId} onChange={setFCategoryId} disabled={saving} />
-          <ProductPackagingFields packetPrice={packetPrice ?? calculatedPacketPrice} onPacketPriceChange={setPacketPrice} packetPriceOverridden={packetPrice !== null} onResetPacketPrice={() => setPacketPrice(null)} piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={true} value={packaging} onChange={setPackaging} disabled={saving} />
+          <ProductPackagingFields packetPrice={packetPrice ?? calculatedPacketPrice} onPacketPriceChange={setPacketPrice} packetPriceOverridden={packetPrice !== null} onResetPacketPrice={() => setPacketPrice(null)} piecePrice={fSale} onPiecePriceChange={setFSale} packetEntry={true} value={packaging} onChange={next => {
+            const factor = next.packaging_enabled ? next.pieces_per_packet : 1;
+            if (factor > 0 && Number.isFinite(factor) && factor !== stockEntryFactor.current) {
+              const previousFactor = stockEntryFactor.current;
+              setFQuantity(current => String(Math.round(Number(current) / previousFactor * factor * 100) / 100));
+              stockEntryFactor.current = factor;
+            }
+            setPackaging(next);
+          }} disabled={saving} />
               <ProductStockField packaging={packaging} value={fQuantity} onChange={setFQuantity} disabled={saving} />
           <ProductExpiryField nonExpiry={fNonExpiry} date={fExpiryDate} onNonExpiryChange={setFNonExpiry} onDateChange={setFExpiryDate} disabled={saving} />
-              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? `Stock is entered in ${unitLabel("packet", packaging.base_unit).toLowerCase()}s plus loose ${packaging.base_unit.toLowerCase()}s. Cost is per ${unitLabel("packet", packaging.base_unit).toLowerCase()}.` : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
+              <div className="col-span-2 text-xs" style={{ color: "var(--gray-800)" }}>{packetEntry ? `Stock is entered in ${unitLabel("packet", packaging.base_unit).toLowerCase()}s only; ${packaging.base_unit.toLowerCase()} stock is calculated. Cost is per ${unitLabel("packet", packaging.base_unit).toLowerCase()}.` : packaging.packaging_enabled ? `Stock, cost and base sale price use ${packaging.base_unit}` : "Standalone (fixed price per unit)"}</div>
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Item Code</label>
