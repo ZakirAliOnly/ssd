@@ -2569,7 +2569,6 @@ export default function AccountsPage() {
                   <p className="text-[12.5px] mb-5 text-center py-4" style={{ color: "var(--gray-500)" }}>No line items recorded for this invoice.</p>
                 )}
 
-                {invoicePartyBalance?.id === viewingInvoice.id && <p className="text-xs mb-2">Party balance as of {invoicePartyBalance.asOf}. Other balance includes later transactions.</p>}
                 {/* Totals */}
                 <div className="flex justify-end">
                   <div className="w-[min(280px,100%)] flex flex-col gap-1.5">
