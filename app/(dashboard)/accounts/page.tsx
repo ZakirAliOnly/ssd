@@ -17,10 +17,11 @@ import type { Account, HeadAccount, Invoice, CashbookEntry, InvoiceItem } from "
 import { usePaymentMethods, type PaymentMethod } from "@/lib/paymentMethods";
 import { LedgerLineItems } from "@/components/LedgerLineItems";
 import { ledgerRowsForDateRange, openingBalanceBeforeDate } from "@/lib/ledger";
-import { buildLedgerRows, computePartySignedBalance } from "@/lib/partyBalance";
+import { buildLedgerRows } from "@/lib/partyBalance";
 import { fetchPartySignedBalance, syncCachedAccountBalance, recomputeCachedBalance } from "@/lib/partyBalanceLive";
 import { DT } from "@/lib/dataTableStyles";
 import { PrintFooter } from "@/components/PrintFooter";
+import { partyInvoiceBalances } from "@/lib/partyOverview";
 import { SalesInvoiceDocument } from "@/components/InvoiceDocument";
 import { prepareInvoiceDocument, saveInvoicePdf } from "@/lib/invoicePrint";
 import { PrintHeader } from "@/components/PrintHeader";
@@ -166,8 +167,10 @@ export default function AccountsPage() {
   // Invoice print state
   const [invPrinting, setInvPrinting] = useState(false);
 
-  const [partyInvoices, setPartyInvoices] = useState<Invoice[]>([]);
-  const [partyCashbook, setPartyCashbook] = useState<CashbookEntry[]>([]);
+  const [partyBalances, setPartyBalances] = useState<Record<string, number>>({});
+  const [partyLoading, setPartyLoading] = useState(true);
+  const [partyLoadError, setPartyLoadError] = useState("");
+  const [invoicePartyBalance, setInvoicePartyBalance] = useState<{ id: string; closing: number; asOf: string } | null>(null);
 
   const ledgerAllRows = useMemo(() => {
     if (!ledgerAccount) return [];
@@ -184,63 +187,19 @@ export default function AccountsPage() {
     [ledgerAllRows, ledgerDateFrom]
   );
 
-  // Credit column is derived from the ledger (invoices + cashbook), NOT from the
-  // cached `accounts.balance` column. The cached column has historically drifted
-  // from the ledger because some write paths updated one side but not the other,
-  // and rate × sqft fractional totals (e.g. 4,102.50 displayed as Rs 4,103) leave
-  // hidden sub-rupee residuals. Computing from the ledger here makes the Credit
-  // column and the ledger modal's closing balance always agree.
-  const effectivePartySigned = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const a of accounts) {
-      map.set(a.id, computePartySignedBalance(a.name, partyInvoices, partyCashbook));
-    }
-    return map;
-  }, [accounts, partyInvoices, partyCashbook]);
+  const effectivePartySigned = useMemo(() => new Map(Object.entries(partyBalances)), [partyBalances]);
 
   const fetchData = useCallback(async () => {
-    const [{ data: acctData }, { data: headData }, { data: invData }, { data: cbData }] = await Promise.all([
-      db.from("accounts").select("*, head_accounts(*)").order("name"),
-      db.from("head_accounts").select("*").order("code"),
-      db.from("invoices").select("*").order("invoice_date", { ascending: true }).order("created_at", { ascending: true }),
-      db.from("cashbook").select("*").order("date", { ascending: true }).order("created_at", { ascending: true }),
-    ]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (acctData) setAccounts(acctData as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (headData) setHeads(headData as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (invData) setPartyInvoices(invData as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (cbData) setPartyCashbook(cbData as any);
+    setPartyLoading(true); setPartyLoadError("");
+    try {
+      const response = await fetch("/api/accounts/overview", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not load parties.");
+      setAccounts(result.accounts); setHeads(result.heads); setPartyBalances(result.balances);
+    } catch (error) {
+      setPartyLoadError(error instanceof Error ? error.message : "Could not load parties.");
+    } finally { setPartyLoading(false); }
   }, []);
-
-  // One-shot background sweep: when the accounts page loads, walk the in-memory
-  // accounts/invoices/cashbook and silently repair any cached `accounts.balance`
-  // rows that disagree with the ledger by more than a rupee. New write paths
-  // already keep the cache in lock-step with the ledger, so this only matters
-  // for historical drift that landed before this fix shipped.
-  useEffect(() => {
-    if (accounts.length === 0 || partyInvoices.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      for (const a of accounts) {
-        if (cancelled) return;
-        const ledgerSigned = computePartySignedBalance(a.name, partyInvoices, partyCashbook);
-        const cachedSigned = a.bal_type === "credit" ? Number(a.balance) : -Number(a.balance);
-        if (Math.abs(ledgerSigned - cachedSigned) > 0.5) {
-          console.warn(
-            `[accounts] historical drift for ${a.name}: ledger=${ledgerSigned} cached=${cachedSigned} — repairing`
-          );
-          try { await syncCachedAccountBalance(a.name, ledgerSigned); } catch (e) { console.error(e); }
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-    // Run once when the data first arrives. Subsequent writes are kept consistent
-    // by recomputeCachedBalance in the affected mutation paths.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts.length, partyInvoices.length, partyCashbook.length]);
 
   const fetchInvProducts = useCallback(async () => {
     const { data } = await db.from("products").select("id, code, name, sale_price, description, pricing_type, expiry_date, quantity, packaging_enabled, base_unit, pieces_per_packet, packets_per_box, packet_sale_price, box_sale_price, product_categories(name)");
@@ -261,8 +220,7 @@ export default function AccountsPage() {
 
   useEffect(() => {
     fetchData();
-    void fetchInvProducts();
-  }, [fetchData, fetchInvProducts]);
+  }, [fetchData]);
 
   const filtered = accounts.filter((a) => {
     const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase());
@@ -567,12 +525,13 @@ export default function AccountsPage() {
     setLedgerInvoices([]);
     setLedgerCashbook([]);
     setLedgerItemsByInvoice({});
-    const [{ data: invData, error: invErr }, { data: cbData, error: cbErr }] = await Promise.all([
-      db.from("invoices").select("*").eq("client_name", account.name).eq("is_walk_in", false).order("invoice_date", { ascending: true }).order("created_at", { ascending: true }),
-      db.from("cashbook").select("*").ilike("account_name", account.name).order("date", { ascending: true }).order("created_at", { ascending: true }),
-    ]);
-    if (invErr) showToast(invErr.message, "err");
-    if (cbErr) showToast(cbErr.message, "err");
+    let fresh;
+    try { fresh = await fetchPartySignedBalance(account.name); }
+    catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not load ledger", "err");
+      setLedgerLoading(false); return;
+    }
+    const invData = fresh.invoices, cbData = fresh.cashbook;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (invData) setLedgerInvoices(invData as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -645,18 +604,26 @@ export default function AccountsPage() {
     setViewingInvoiceItems([]);
   }
 
+  async function refreshInvoiceBalance(invoice: Invoice) {
+    const fresh = await fetchPartySignedBalance(invoice.client_name);
+    const balance = { id: invoice.id, closing: fresh.signed, asOf: new Date().toLocaleString("en-PK") };
+    setInvoicePartyBalance(balance);
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    return balance;
+  }
+
   async function openInvoiceDetail(inv: Invoice) {
-    setViewingInvoice(inv);
-    setViewingInvoiceItemsLoading(true);
-    setViewingInvoiceItems([]);
-    const { data, error } = await db
-      .from("invoice_items")
-      .select("*")
-      .eq("invoice_id", inv.id)
-      .order("id", { ascending: true });
-    if (error) showToast(error.message, "err");
-    if (data) setViewingInvoiceItems(data as InvoiceItem[]);
-    setViewingInvoiceItemsLoading(false);
+    setViewingInvoice(inv); setInvoicePartyBalance(null);
+    setViewingInvoiceItemsLoading(true); setViewingInvoiceItems([]);
+    try {
+      const [result] = await Promise.all([
+        db.from("invoice_items").select("*").eq("invoice_id", inv.id).order("id", { ascending: true }),
+        refreshInvoiceBalance(inv),
+      ]);
+      if (result.error) throw new Error(result.error.message);
+      setViewingInvoiceItems(result.data as InvoiceItem[]);
+    } catch (error) { showToast(error instanceof Error ? error.message : "Could not load invoice", "err"); }
+    finally { setViewingInvoiceItemsLoading(false); }
   }
 
   // ── Invoice print helpers ──────────────────────────────────────────────────
@@ -697,10 +664,11 @@ export default function AccountsPage() {
     } finally { setDeletingInvoiceId(null); }
   }
 
-  async function printViewingInvoice() {
-    if (!viewingInvoice || invPrinting) return;
+  async function printViewingInvoice(invoice = viewingInvoice) {
+    if (!invoice || invPrinting) return;
     setInvPrinting(true);
     try {
+      await refreshInvoiceBalance(invoice);
       await applyInvPrintMode();
       scheduleAfterInvPrint(() => {
         restoreInvPrintMode();
@@ -718,6 +686,7 @@ export default function AccountsPage() {
     if (!viewingInvoice || invPrinting) return;
     setInvPrinting(true);
     try {
+      await refreshInvoiceBalance(viewingInvoice);
       const root = document.querySelector<HTMLElement>(".inv-a4-print-only");
       if (!root) throw new Error("Invoice template not found.");
       const clientName = viewingInvoice.client_name.replace(/[^a-zA-Z0-9 ]/g, "").trim();
@@ -915,7 +884,7 @@ export default function AccountsPage() {
       }
 
       // ── CREATE MODE ────────────────────────────────────────────────────────────
-      const previousSigned = effectivePartySigned.get(invoiceAccount.id) ?? 0;
+      const previousSigned = (await fetchPartySignedBalance(invoiceAccount.name)).signed;
       // Total the party owes including this new bill (previousSigned > 0 = they owe us)
       const totalDueSave = Math.max(0, Math.round((previousSigned + grandTotal) * 100) / 100);
       const paidParsed = parseFloat(String(invAmountPaid).replace(/,/g, "")) || 0;
@@ -937,7 +906,7 @@ export default function AccountsPage() {
         invoice_date: today,
         subtotal,
         grand_total: grandTotal,
-        previous_balance: Math.max(0, previousSigned),
+        previous_balance: previousSigned,
         amount_received: amountReceived,
         balance_due: balanceDue,
         payment_status: paymentStatus,
@@ -1055,7 +1024,7 @@ export default function AccountsPage() {
         fetchData();
         // Give React one tick to render the template, then print
         await new Promise((r) => setTimeout(r, 150));
-        await printViewingInvoice();
+        await printViewingInvoice(invData as Invoice);
       } else {
         pendingProductIdsRef.current = [];
         closeInvoiceModal();
@@ -1094,7 +1063,7 @@ export default function AccountsPage() {
 
   async function openPartyLastTransactionWhatsApp(account: Account) {
     // Re-query the ledger so the WhatsApp message reflects the DB right now,
-    // not whatever stale `partyInvoices`/`partyCashbook` happen to be in memory.
+    // rather than the list snapshot loaded earlier.
     // Auto-repair the cached `accounts.balance` if it has drifted from the ledger
     // (otherwise the Credit column on this page would still show the stale value).
     const fresh = await fetchPartySignedBalance(account.name);
@@ -1116,7 +1085,7 @@ export default function AccountsPage() {
     // If last transaction is an invoice, enrich the message with full invoice details + line items
     let invoiceExtra: import("@/lib/whatsappWaMe").InvoiceExtraForWhatsApp | undefined;
     if (last.debit > 0) {
-      const matchedInv = partyInvoices.find((inv) => inv.invoice_number === last.doc && inv.client_name === account.name);
+      const matchedInv = fresh.invoices.find((inv) => inv.invoice_number === last.doc && inv.client_name === account.name);
       if (matchedInv) {
         const { data: itemRows } = await db
           .from("invoice_items")
@@ -1473,6 +1442,8 @@ export default function AccountsPage() {
         );
       })()}
 
+      {partyLoading && <p role="status" className="text-sm mb-3">Loading parties…</p>}
+      {partyLoadError && <p role="alert" className="text-sm mb-3">{partyLoadError} <button type="button" onClick={() => void fetchData()} className="underline">Retry</button></p>}
       {/* Card */}
       <div className="bg-white rounded-[14px] border border-[var(--gray-100)] overflow-hidden" style={{ boxShadow: "var(--shadow-sm)" }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--gray-100)] flex-wrap gap-3">
@@ -2598,11 +2569,12 @@ export default function AccountsPage() {
                   <p className="text-[12.5px] mb-5 text-center py-4" style={{ color: "var(--gray-500)" }}>No line items recorded for this invoice.</p>
                 )}
 
+                {invoicePartyBalance?.id === viewingInvoice.id && <p className="text-xs mb-2">Party balance as of {invoicePartyBalance.asOf}. Other balance includes later transactions.</p>}
                 {/* Totals */}
                 <div className="flex justify-end">
                   <div className="w-[min(280px,100%)] flex flex-col gap-1.5">
                     {[
-                      { label: "New Bill", value: formatCurrency(viewingInvoice.subtotal), bold: false, color: undefined },
+                      { label: "Subtotal", value: formatCurrency(viewingInvoice.subtotal), bold: false, color: undefined },
                       ...(viewingInvoice.discount_amount > 0
                         ? [{ label: `Discount`, value: `− ${formatCurrency(viewingInvoice.discount_amount)}`, bold: false, color: undefined }]
                         : []),
@@ -2615,9 +2587,10 @@ export default function AccountsPage() {
                       ...(viewingInvoice.bra_amount > 0
                         ? [{ label: `BRA (${viewingInvoice.bra_pct}%)`, value: `+ ${formatCurrency(viewingInvoice.bra_amount)}`, bold: false, color: "#B45309" }]
                         : []),
-                      { label: "Grand Total", value: formatCurrency(viewingInvoice.grand_total), bold: true, color: undefined },
+                      { label: "New Bill", value: formatCurrency(viewingInvoice.grand_total), bold: true, color: undefined },
                       { label: "Amount Received", value: formatCurrency(viewingInvoice.amount_received), bold: false, color: undefined },
-                      { label: "Balance Due", value: formatCurrency(viewingInvoice.balance_due), bold: true, color: undefined },
+                      { label: "Previous / other balance", value: formatCurrency(partyInvoiceBalances(viewingInvoice, invoicePartyBalance?.id === viewingInvoice.id ? invoicePartyBalance.closing : undefined).previous), bold: false, color: undefined },
+                      { label: "Total balance", value: invoicePartyBalance?.id === viewingInvoice.id ? formatCurrency(invoicePartyBalance.closing) : "Refresh required", bold: true, color: undefined },
                     ].map(({ label, value, bold, color }) => (
                       <div key={label} className="flex items-center justify-between px-3 py-1.5 rounded-[8px]" style={{ background: bold ? "#F5F3FF" : "transparent" }}>
                         <span className="text-[12px]" style={{ color: color ?? (bold ? "#6D28D9" : "var(--gray-600)"), fontWeight: bold ? 700 : 500 }}>{label}</span>
@@ -2821,7 +2794,7 @@ export default function AccountsPage() {
 
     {/* Shared measured A5 landscape invoice pages. */}
     <div className="inv-a4-print-only">
-      {viewingInvoice && <SalesInvoiceDocument invoice={viewingInvoice} items={viewingInvoiceItems} />}
+      {viewingInvoice && <SalesInvoiceDocument invoice={viewingInvoice} items={viewingInvoiceItems} partyBalance={invoicePartyBalance?.id === viewingInvoice.id ? invoicePartyBalance : undefined} />}
     </div>
 
     {/* Ledger print layout — mirrors the A4 invoice template (same header, colors, borders, footer) */}

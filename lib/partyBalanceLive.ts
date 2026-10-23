@@ -24,15 +24,11 @@ export type FreshPartyBalance = {
  * use the ledger-derived value, not the cached one.
  */
 export async function fetchPartySignedBalance(accountName: string): Promise<FreshPartyBalance> {
-  const [invRes, cbRes, acctRes] = await Promise.all([
-    db.from("invoices").select("*").eq("client_name", accountName).eq("is_walk_in", false),
-    db.from("cashbook").select("*").ilike("account_name", accountName),
-    db.from("accounts").select("balance, bal_type").eq("name", accountName).single(),
-  ]);
-
-  const invoices = ((invRes as { data: Invoice[] | null }).data ?? []) as Invoice[];
-  const cashbook = ((cbRes as { data: CashbookEntry[] | null }).data ?? []) as CashbookEntry[];
-  const acct = (acctRes as { data: { balance: number; bal_type: string } | null }).data;
+  const response = await fetch(`/api/accounts/overview?party=${encodeURIComponent(accountName)}`, { cache: "no-store" });
+  const result = await response.json();
+  if (!response.ok || !result.accounts?.length || !Array.isArray(result.invoices) || !Array.isArray(result.cashbook)) throw new Error(result.error || "Could not refresh the party balance. Please try again.");
+  const invoices = result.invoices as Invoice[], cashbook = result.cashbook as CashbookEntry[];
+  const acct = result.accounts[0] as { balance: number; bal_type: string };
   const signed = computePartySignedBalance(accountName, invoices, cashbook);
 
   let cachedSigned: number | null = null;

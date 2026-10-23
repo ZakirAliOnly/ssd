@@ -36,3 +36,14 @@ test('return documents keep original invoice references and credit-only wording'
 test('numeric rate and amount formatting keeps decimals without a currency prefix', () => {
   assert.equal(documentNumber(178.2),'178.2');assert.equal(documentNumber(13365),'13,365');assert.equal(documentNumber(0),'0');
 });
+
+test('invoice totals put discounts before bill, received, previous and total', () => {
+  const html=renderToStaticMarkup(createElement(SalesInvoiceDocument,{invoice,items}));
+  const labels=['Product discounts','New bill (PKR)','Received amount','Previous balance','Total balance'];
+  for(let i=1;i<labels.length;i++)assert.ok(html.indexOf(labels[i-1])<html.indexOf(labels[i]));
+});
+test('live party print states its balance basis and matches the ledger closing', () => {
+  const html=renderToStaticMarkup(createElement(SalesInvoiceDocument,{invoice:{...invoice,grand_total:28950,amount_received:0,previous_balance:127250},items,partyBalance:{closing:128950,asOf:'23 Oct 2026 12:00'}}));
+  assert.match(html,/128,950/);assert.match(html,/100,000/);assert.doesNotMatch(html,/156,200/);
+  assert.match(html,/Previous \/ other balance/);assert.match(html,/Other balance includes later transactions/);
+});
