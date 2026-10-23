@@ -10,7 +10,7 @@ export function InvoiceUnitSelect({ product, unit, factor, onChange, className, 
       ? units
       : [{ value: selected, label: unitLabel(selected), factor: factor ?? 1 }, ...units];
     return <fieldset className="mt-2 min-w-0">
-      <legend className="text-xs font-semibold" style={{ color: "var(--gray-800)" }}>Sell in</legend>
+      <legend className="text-xs font-semibold" style={{ color: "var(--gray-800)" }}>How do you want to sell?</legend>
       <div className="mt-1 flex flex-wrap gap-1.5">
         {options.map(row => {
           const active = row.value === selected;
@@ -28,7 +28,7 @@ export function InvoiceUnitSelect({ product, unit, factor, onChange, className, 
         })}
       </div>
       {selected === "packet" && <p className="mt-1 text-xs" style={{ color: "var(--gray-800)" }}>
-        1 packet = {factor ?? options.find(row => row.value === selected)?.factor ?? 1} {product?.base_unit || "pieces"}
+        1 {unitLabel("packet", product?.base_unit).toLowerCase()} = {factor ?? options.find(row => row.value === selected)?.factor ?? 1} {product?.base_unit || "pieces"}
       </p>}
     </fieldset>;
   }
