@@ -1,0 +1,43 @@
+/* Shared by sales, purchases and returns. Fixed sheets are used by both browser
+   printing and PDF export, so no page is a crop of a tall document image. */
+@page invoice-a5-landscape { size: A5 landscape; margin: 0; }
+.invoice-document { color: #000; background: #fff; font: 11px/1.25 Arial, Helvetica, sans-serif; }
+.invoice-document * { box-sizing: border-box; color: #000; border-color: #000; }
+.invoice-source { display: none; width: 210mm; padding: 6mm; }
+.invoice-measuring .invoice-source { display: block; }
+.invoice-measuring .invoice-pages { display: none; }
+.invoice-sheet { width: 210mm; height: 148mm; padding: 6mm; display: flex; flex-direction: column; background: #fff; overflow: visible; }
+.invoice-page-header, .invoice-page-footer { flex-shrink: 0; }
+.invoice-letterhead { display: flex; align-items: center; justify-content: center; gap: 14px; padding-bottom: 5px; text-align: center; border-bottom: 1px solid #000; }
+.invoice-letterhead svg { width: 52px; height: 47px; flex-shrink: 0; }
+.invoice-letterhead strong { display: block; font-size: 21px; letter-spacing: 1px; line-height: 1.1; }
+.invoice-letterhead div div { font-size: 9px; margin-top: 3px; }
+.invoice-document-title { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; text-transform: uppercase; border-bottom: 1px solid #000; font-size: 12px; }
+.invoice-party-meta { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; overflow-wrap: anywhere; }
+.invoice-party-meta > div:last-child { flex-shrink: 0; white-space: nowrap; }
+.invoice-reference { padding-bottom: 4px; font-size: 9px; overflow-wrap: anywhere; }
+.invoice-page-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.invoice-items-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10px; }
+.invoice-items-table th, .invoice-items-table td { border: 1px solid #000; padding: 4px; vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
+.invoice-items-table th { background: #fff; text-align: left; text-transform: uppercase; font-size: 9px; }
+.invoice-items-table th:first-child, .invoice-items-table td:first-child { text-align: center; }
+.invoice-items-table td.invoice-number { text-align: right; font-variant-numeric: tabular-nums; }
+.invoice-items-table td.invoice-quantity { text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 10px; }
+.invoice-quantity small { font-size: 7px; margin-left: 3px; white-space: nowrap; }
+.invoice-totals { width: 78mm; margin-left: auto; padding-top: 6px; flex-shrink: 0; }
+.invoice-page-body > .invoice-totals { margin-top: auto; }
+.invoice-totals > div { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; font-variant-numeric: tabular-nums; }
+.invoice-total-strong { border-top: 1px solid #000; font-weight: bold; }
+.invoice-totals p { margin: 3px 0 0; font-size: 9px; overflow-wrap: anywhere; }
+.invoice-page-footer { display: flex; justify-content: space-between; align-items: end; gap: 8px; padding-top: 5px; margin-top: 5px; border-top: 1px solid #000; font-size: 8px; }
+.invoice-page-footer > span:last-child { white-space: nowrap; }
+.invoice-continuation { font-size: 8px; }
+@media print {
+  .invoice-document { width: 210mm !important; max-width: none !important; }
+  .invoice-source { display: none !important; }
+  .invoice-sheet { page: invoice-a5-landscape; break-after: page; break-inside: avoid; margin: 0 !important; }
+  .invoice-sheet:last-child { break-after: auto; }
+  .invoice-sheet, .invoice-sheet * { max-width: none !important; color: #000 !important; background: #fff !important; border-color: #000 !important; box-shadow: none !important; }
+  .inv-a4-print-only, .invoice-print-root { page: invoice-a5-landscape; padding: 0 !important; margin: 0 !important; width: 210mm !important; min-height: 0 !important; }
+  dialog::backdrop { display: none !important; }
+}

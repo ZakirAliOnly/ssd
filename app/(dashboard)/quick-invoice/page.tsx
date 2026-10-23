@@ -3,20 +3,18 @@
 import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
 import { productUnits, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
 import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
-import { InvoiceDiscountSummary } from "@/components/InvoiceDiscountSummary";
-import { InvoiceLineDiscount } from "@/components/InvoiceLineDiscount";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { db, saveInvoice } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
 import { Plus, Printer, Trash2, FileText, Clock, X, Loader2, Download, Wallet } from "lucide-react";
-import { PrintHeader } from "@/components/PrintHeader";
-import { PrintFooter } from "@/components/PrintFooter";
+import { SalesInvoiceDocument } from "@/components/InvoiceDocument";
+import { prepareInvoiceDocument, invoicePdfBlob } from "@/lib/invoicePrint";
+
 import { DT } from "@/lib/dataTableStyles";
 import type { Invoice } from "@/lib/database.types";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+
 import { openWhatsAppMessageOnlyNewTab, openWhatsAppNewTab, buildInvoiceShareWhatsAppMessage } from "@/lib/whatsappWaMe";
 import { normalizePaymentMethod, usePaymentMethods, type PaymentMethod } from "@/lib/paymentMethods";
 import { createExpense } from "@/lib/expenses";
@@ -827,62 +825,7 @@ export default function InvoicePage() {
   async function generateInvoicePdfBlob(): Promise<Blob> {
     const node = invoicePdfRef.current;
     if (!node) throw new Error("Invoice PDF template not found");
-
-    const prevDisplay = node.style.display;
-    const prevPosition = node.style.position;
-    const prevLeft = node.style.left;
-    const prevTop = node.style.top;
-    const prevWidth = node.style.width;
-    const prevFlexDirection = node.style.flexDirection;
-    const prevMinHeight = node.style.minHeight;
-
-    // Capture the same content-height receipt used for thermal printing.
-    node.style.display = "flex";
-    node.style.flexDirection = "column";
-    node.style.minHeight = "0";
-    node.style.position = "absolute";
-    node.style.left = "-99999px";
-    node.style.top = "0";
-    node.style.width = "80mm";
-
-    try {
-      await new Promise((r) => setTimeout(r, 100));
-
-      const canvas = await html2canvas(node, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-      const receiptHeight = Math.max(100, (canvas.height * 80) / canvas.width);
-      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: [80, receiptHeight] });
-
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      const imgProps = pdf.getImageProperties(imgData);
-      const imgWidth = pageWidth;
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-
-      const totalPages = Math.max(1, Math.ceil((imgHeight - 0.5) / pageHeight));
-      for (let i = 0; i < totalPages; i++) {
-        if (i > 0) pdf.addPage();
-        const y = -pageHeight * i;
-        pdf.addImage(imgData, "PNG", 0, y, imgWidth, imgHeight);
-      }
-
-      return pdf.output("blob");
-    } finally {
-      node.style.display = prevDisplay;
-      node.style.position = prevPosition;
-      node.style.left = prevLeft;
-      node.style.top = prevTop;
-      node.style.width = prevWidth;
-      node.style.flexDirection = prevFlexDirection;
-      node.style.minHeight = prevMinHeight;
-    }
+    return invoicePdfBlob(node);
   }
 
   async function downloadInvoicePdf(inv: SavedInvoice) {
@@ -924,28 +867,15 @@ export default function InvoicePage() {
     void fn();
   }
 
-  function applyPrintMode() {
-    const a4El = document.querySelector(".thermal-invoice") as HTMLElement | null;
-    if (a4El) {
-      a4El.style.setProperty("display", "flex", "important");
-      a4El.style.setProperty("flex-direction", "column", "important");
-      a4El.style.setProperty("min-height", "0", "important");
-    }
-    const el = document.createElement("style");
-    el.id = "__a4_page_style";
-    const receiptHeight = Math.max(100, Math.ceil((a4El?.scrollHeight ?? 378) * 25.4 / 96) + 2);
-    el.textContent = `@page { size: 80mm ${receiptHeight}mm; margin: 0; }`;
-    document.head.appendChild(el);
+  async function applyPrintMode() {
+    const root = invoicePdfRef.current;
+    if (!root) throw new Error("Invoice template not found.");
+    await prepareInvoiceDocument(root);
+    root.style.setProperty("display", "block", "important");
   }
 
   function restorePrintMode() {
-    document.getElementById("__a4_page_style")?.remove();
-    const a4El = document.querySelector(".thermal-invoice") as HTMLElement | null;
-    if (a4El) {
-      a4El.style.removeProperty("display");
-      a4El.style.removeProperty("flex-direction");
-      a4El.style.removeProperty("min-height");
-    }
+    invoicePdfRef.current?.style.removeProperty("display");
   }
 
   async function printSavedInvoicePdf(inv: SavedInvoice) {
@@ -956,7 +886,7 @@ export default function InvoicePage() {
       if (!payload) { setPrintingPdfFor(null); return; }
       setInvoicePdfData(payload);
       await new Promise((r) => setTimeout(r, 200));
-      applyPrintMode();
+      await applyPrintMode();
       scheduleAfterPrint(() => {
         restorePrintMode();
         setInvoicePdfData(null);
@@ -1073,7 +1003,7 @@ export default function InvoicePage() {
     try {
       setInvoicePdfData(draftToPdfPayload(draft));
       await new Promise((r) => setTimeout(r, 200));
-      applyPrintMode();
+      await applyPrintMode();
       scheduleAfterPrint(() => {
         restorePrintMode();
         setInvoicePdfData(null);
@@ -1462,77 +1392,8 @@ export default function InvoicePage() {
       ) : null}
     </div>
 
-      {/* ── A4 print template — hidden on screen, shown when printing (A4) ── */}
-      <div ref={invoicePdfRef} className="a4-print-only thermal-invoice" style={{ width: "80mm", maxWidth: "100%", boxSizing: "border-box", padding: "3mm", background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#000", fontSize: 12, lineHeight: 1.4 }}>
-        {invoicePdfData ? (
-          <>
-            <PrintHeader variant="thermal" />
-            <div style={{ textAlign: "center", fontWeight: 700, marginBottom: 8 }}>WALK-IN INVOICE</div>
-            <div style={{ marginBottom: 8, overflowWrap: "anywhere" }}>
-              <div><strong>Invoice:</strong> {invoicePdfData.invoice.invoice_number}</div>
-              <div><strong>Date:</strong> {formatDate(invoicePdfData.invoice.invoice_date)}</div>
-              <div><strong>Customer:</strong> {invoicePdfData.invoice.client_name}</div>
-              {invoicePdfData.invoice.client_phone && <div>{invoicePdfData.invoice.client_phone}</div>}
-              {invoicePdfData.invoice.description && <div style={{ whiteSpace: "pre-wrap" }}>{invoicePdfData.invoice.description}</div>}
-            </div>
-            <div style={{ borderTop: "1px dashed #000", borderBottom: "1px dashed #000", marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontWeight: 700 }}><span>Product / Qty / Rate</span><span>Amount</span></div>
-              {invoicePdfData.items.map((it, idx) => (
-                <div key={idx} style={{ padding: "6px 0", borderTop: "1px dotted #000", breakInside: "avoid", overflowWrap: "anywhere" }}>
-                  <div style={{ fontWeight: 700 }}>{it.category}</div>
-                  {it.description && <div style={{ whiteSpace: "pre-wrap" }}>{it.description}</div>}
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontVariantNumeric: "tabular-nums" }}>
-                    <span>{it.qty} {it.unit && unitLabel(it.unit)} x {formatCurrency(invoiceUnitRate(it))}</span><strong>{formatCurrency(it.amount)}</strong>
-                  </div>
-                  <InvoiceLineDiscount line={it} />
-                </div>
-              ))}
-            </div>
-
-            {/* Totals */}
-            <div style={{ display: "flex", justifyContent: "flex-end", padding: "0", marginBottom: 16 }}>
-              <div style={{ width: "100%" }}>
-                <InvoiceDiscountSummary invoice={invoicePdfData.invoice} items={invoicePdfData.items} />                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>Previous Balance</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(invoicePdfData.invoice.previous_balance)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "2px solid #111" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>New Bill</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>{formatCurrency(invoicePdfData.invoice.grand_total)}</span>
-                </div>
-                {invoicePdfData.invoice.gst_amount > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>GST ({invoicePdfData.invoice.gst_pct}%)</span>
-                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(invoicePdfData.invoice.gst_amount)}</span>
-                  </div>
-                )}
-                {invoicePdfData.invoice.stax_amount > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>Sales Tax ({invoicePdfData.invoice.stax_pct}%)</span>
-                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(invoicePdfData.invoice.stax_amount)}</span>
-                  </div>
-                )}
-                {invoicePdfData.invoice.bra_amount > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>BRA ({invoicePdfData.invoice.bra_pct}%)</span>
-                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>+ {formatCurrency(invoicePdfData.invoice.bra_amount)}</span>
-                  </div>
-                )}
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "1px solid #e5e7eb" }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#111" }}>Received</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#111" }}>{formatCurrency(invoicePdfData.invoice.amount_received)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "2px solid #111" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Total Balance</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>{formatCurrency(invoicePdfData.invoice.grand_total + invoicePdfData.invoice.previous_balance - invoicePdfData.invoice.amount_received)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ textAlign: "center", borderTop: "1px dashed #000", paddingTop: 8 }}>Thank you for your business.</div>
-            <PrintFooter style={{ marginTop: 8, fontSize: 11 }} />
-          </>
-        ) : null}
+      <div ref={invoicePdfRef} className="a4-print-only invoice-print-root">
+        {invoicePdfData && <SalesInvoiceDocument invoice={invoicePdfData.invoice} items={invoicePdfData.items} walkIn />}
       </div>
 
       {draft && (

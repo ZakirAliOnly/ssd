@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, RotateCcw, ChevronLeft, ChevronRight, X, Printer } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/helpers";
-import { PrintHeader } from "@/components/PrintHeader";
-import { PrintFooter } from "@/components/PrintFooter";
+import { InvoiceDocument } from "@/components/InvoiceDocument";
+import { prepareInvoiceDocument } from "@/lib/invoicePrint";
+
 import { DT } from "@/lib/dataTableStyles";
 import { ReturnHistory } from "@/components/ReturnHistory";
 import { planInvoiceReturn, type ReturnLineSource, type ReturnedLine } from "@/lib/invoiceReturns";
@@ -12,7 +13,7 @@ import { planInvoiceReturn, type ReturnLineSource, type ReturnedLine } from "@/l
 type InvoiceSummary = { id: string; invoice_number: string; client_name: string; invoice_date: string;
   grand_total: string; is_walk_in: boolean; returns: { amount: string }[] };
 type ReturnRecord = { id: string; return_date: string; reason: string; amount: string; created_by_name: string;
-  items: { id: string; product_name: string; unit?: string; qty: string; amount: string; stock_restored_qty: string }[] };
+  items: { id: string; product_name: string; description?: string; unit?: string; qty: string; amount: string; stock_restored_qty: string }[] };
 type InvoiceDetail = Omit<InvoiceSummary, "returns"> & { discount_amount: string;
   items: (ReturnLineSource & { product: { name: string } | null; available_qty?: string | null; return_items: ReturnedLine[] })[];
   returns: ReturnRecord[] };
@@ -66,20 +67,14 @@ export default function ReturnsPage() {
 
   useEffect(() => {
     if (!receipt) return;
-    const style = document.createElement("style");
+    let cancelled = false;
     const frame = requestAnimationFrame(() => {
-      // The template stays hidden on screen; measure it briefly before printing.
       const node = receiptRef.current;
       if (!node) return;
-      node.style.display = "block";
-      const height = Math.max(100, Math.ceil(node.scrollHeight * 25.4 / 96) + 2);
-      node.style.display = "";
-      style.textContent = `@page return-receipt { size: 80mm ${height}mm; margin: 0; } @media print { .return-thermal-receipt { page: return-receipt; } dialog::backdrop { display: none !important; } }`;
-      document.head.appendChild(style);
-      try { window.print(); }
-      catch { setError("Return is saved. Use Print receipt in return history to try printing again."); }
+      void prepareInvoiceDocument(node).then(() => { if (!cancelled) window.print(); })
+        .catch(() => { if (!cancelled) setError("Return is saved. Use Print receipt in return history to try printing again."); });
     });
-    return () => { cancelAnimationFrame(frame); style.remove(); };
+    return () => { cancelled = true; cancelAnimationFrame(frame); };
   }, [receipt]);
 
   useEffect(() => {
@@ -259,26 +254,12 @@ export default function ReturnsPage() {
     </dialog>}
     </>}
   </div>
-    {receipt && <div ref={receiptRef} className="print-only return-thermal-receipt" style={{ width: "80mm", boxSizing: "border-box", padding: "3mm", background: "#fff", color: "#000", fontFamily: "Arial, Helvetica, sans-serif", fontSize: 11, lineHeight: 1.4 }}>
-      <PrintHeader variant="thermal" />
-            <div style={{ textAlign: "center", fontWeight: 700, marginBottom: 8 }}>{receipt.supplier ? "SUPPLIER RETURN" : "SALES RETURN"}</div>
-      <div style={{ overflowWrap: "anywhere" }}>
-        <div><strong>Return ID:</strong> {receipt.record.id}</div>
-        <div><strong>Invoice:</strong> {receipt.invoiceNumber}</div>
-        <div><strong>Date:</strong> {formatDate(receipt.record.return_date)}</div>
-        <div><strong>{receipt.supplier ? "Supplier" : "Customer"}:</strong> {receipt.party}</div>
-        {receipt.record.reason && <div style={{ whiteSpace: "pre-wrap" }}><strong>Reason:</strong> {receipt.record.reason}</div>}
-      </div>
-      <div style={{ margin: "8px 0", borderTop: "1px dashed #000", borderBottom: "1px dashed #000" }}>
-        {receipt.record.items.map(item => <div key={item.id} style={{ padding: "6px 0", breakInside: "avoid", overflowWrap: "anywhere" }}>
-          <strong>{item.product_name}</strong>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>Qty returned: {Number(item.qty)} {item.unit}</span><strong>{formatCurrency(Number(item.amount))}</strong></div>
-        </div>)}
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 800, fontSize: 13 }}><span>Total credit</span><span>{formatCurrency(Number(receipt.record.amount))}</span></div>
-      <p style={{ marginTop: 8 }}>Credit recorded. No cash refund recorded.</p>
-      <div>Processed by: {receipt.record.created_by_name}</div>
-      <PrintFooter style={{ marginTop: 8, fontSize: 10 }} />
+    {receipt && <div ref={receiptRef} className="print-only invoice-print-root">
+      <InvoiceDocument data={{ title: receipt.supplier ? "Supplier return" : "Sales return", returnDocument: true,
+        number: receipt.record.id, reference: receipt.invoiceNumber, date: receipt.record.return_date,
+        party: receipt.party, notes: receipt.record.reason, processedBy: receipt.record.created_by_name,
+        lines: receipt.record.items.map(item => ({ product: item.product_name, description: item.description, qty: Number(item.qty), unit: item.unit, amount: Number(item.amount) })),
+        totals: [{ label: "Total credit (PKR)", value: Number(receipt.record.amount), strong: true }] }} />
     </div>}
   </>;
 }
