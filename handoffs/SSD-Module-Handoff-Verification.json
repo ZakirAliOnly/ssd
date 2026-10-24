@@ -1,0 +1,12 @@
+{
+  "requested_modules": 10,
+  "reference_files_verified": 126,
+  "documentation_files": 9,
+  "archive_entries": 135,
+  "unresolved_static_local_imports": 0,
+  "excluded_sensitive_runtime_files": true,
+  "archive_integrity": "passed",
+  "zip_bytes": 369157,
+  "zip_sha256": "a2c279886b8daf160a74cb77e65c23c62b90730e33bc6f8be14a5604816a4f24",
+  "note": "Packaging/reference verification only; this is not a runnable standalone app or validation of a new implementation."
+}
