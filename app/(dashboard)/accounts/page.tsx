@@ -2229,8 +2229,8 @@ export default function AccountsPage() {
                   style={{ borderColor: "var(--blue)", color: "var(--blue)" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--blue-pale)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
-                  title="Save and print half Legal">
-                  {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />} Half Legal
+                  title="Save and print 8.5 × 6.5 inch">
+                  {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />} 8.5 × 6.5 in
                 </button>
 
                 <button onClick={() => void handleSaveInvoice()} disabled={invSaving}
@@ -2629,7 +2629,7 @@ export default function AccountsPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
                   >
                     {invPrinting ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
-                    Half Legal
+                    8.5 × 6.5 in
                   </button>
 
                   <button
@@ -2791,7 +2791,7 @@ export default function AccountsPage() {
       )}
     </div>
 
-    {/* Shared measured half Legal invoice pages. */}
+    {/* Shared measured 8.5 × 6.5 inch invoice pages. */}
     <div className="inv-a4-print-only">
       {viewingInvoice && <SalesInvoiceDocument invoice={viewingInvoice} items={viewingInvoiceItems} partyBalance={invoicePartyBalance?.id === viewingInvoice.id ? invoicePartyBalance : undefined} />}
     </div>

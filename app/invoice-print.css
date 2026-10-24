@@ -1,12 +1,12 @@
 /* Shared by sales, purchases and returns. Fixed sheets are used by both browser
    printing and PDF export, so no page is a crop of a tall document image. */
-@page invoice-half-legal { size: 215.9mm 177.8mm; margin: 0; }
+@page invoice-custom { size: 215.9mm 165.1mm; margin: 0; }
 .invoice-document { color: #000; background: #fff; font: 14px/1.25 Arial, Helvetica, sans-serif; }
 .invoice-document * { box-sizing: border-box; color: #000; border-color: #000; }
 .invoice-source { display: none; width: 215.9mm; padding: 6mm; }
 .invoice-measuring .invoice-source { display: block; }
 .invoice-measuring .invoice-pages { display: none; }
-.invoice-sheet { width: 215.9mm; height: 177.8mm; padding: 6mm; display: flex; flex-direction: column; background: #fff; overflow: visible; }
+.invoice-sheet { width: 215.9mm; height: 165.1mm; padding: 6mm; display: flex; flex-direction: column; background: #fff; overflow: visible; }
 .invoice-page-header, .invoice-page-footer { flex-shrink: 0; }
 .invoice-letterhead { display: flex; align-items: center; justify-content: center; gap: 14px; padding-bottom: 5px; text-align: center; border-bottom: 1px solid #000; }
 .invoice-letterhead svg { width: 65px; height: 59px; flex-shrink: 0; }
@@ -35,9 +35,9 @@
 @media print {
   .invoice-document { width: 215.9mm !important; max-width: none !important; }
   .invoice-source { display: none !important; }
-  .invoice-sheet { page: invoice-half-legal; break-after: page; break-inside: avoid; margin: 0 !important; }
+  .invoice-sheet { page: invoice-custom; break-after: page; break-inside: avoid; margin: 0 !important; }
   .invoice-sheet:last-child { break-after: auto; }
   .invoice-sheet, .invoice-sheet * { max-width: none !important; color: #000 !important; background: #fff !important; border-color: #000 !important; box-shadow: none !important; }
-  .inv-a4-print-only, .invoice-print-root { page: invoice-half-legal; padding: 0 !important; margin: 0 !important; width: 215.9mm !important; min-height: 0 !important; }
+  .inv-a4-print-only, .invoice-print-root { page: invoice-custom; padding: 0 !important; margin: 0 !important; width: 215.9mm !important; min-height: 0 !important; }
   dialog::backdrop { display: none !important; }
 }
