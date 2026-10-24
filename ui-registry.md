@@ -292,3 +292,7 @@ Keep A5 portrait (148 x 210 mm), 10 mm vertical and 4 mm side margins in both br
 ### Colorful A4 letterhead (Update 028)
 
 Default PrintHeader uses the original blue triangular logo and blue contact text, including email and sales contact. Explicit invoice/challan/thermal variants remain independent. Ledger debit amounts print red, credit amounts green, and balances follow the screen sign colors.
+
+### A5 portrait invoices (Update 029)
+
+Shared invoice sheets now measure 148 × 210 mm with 10 mm vertical and 4 mm horizontal insets. Use 12px compact line-item text and 70 mm totals. Keep measured pagination, repeated headers and page numbering. Browser printing and PDF export use identical sheets.

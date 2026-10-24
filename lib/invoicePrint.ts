@@ -1,9 +1,9 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-// Custom invoice sheet: 8.5 × 6.5 inches, landscape. Keep in sync with
+// A5 portrait invoice sheet. Keep in sync with
 // invoice-print.css; browser/PDF checks verify the physical page dimensions.
-export const INVOICE_PAPER_MM = { width: 215.9, height: 165.1, padding: 6 } as const;
+export const INVOICE_PAPER_MM = { width: 148, height: 210, padding: 10 } as const;
 const MM = 96 / 25.4;
 const height = (node: Element) => node.getBoundingClientRect().height;
 
@@ -38,7 +38,7 @@ function splitTallRow(row: HTMLTableRowElement, capacity: number): HTMLTableRowE
         const mid = Math.floor((low + high) / 2); render(mid);
         if (height(probe) <= capacity) { best = mid; low = mid + 1; } else high = mid - 1;
       }
-      if (!best) throw new Error("An invoice row cannot fit on 8.5 × 6.5 inch paper. Review its content.");
+      if (!best) throw new Error("An invoice row cannot fit on A5 paper. Review its content.");
       const pieces = render(best);
       result.push(probe.cloneNode(true) as HTMLTableRowElement);
       pieces.forEach((piece, i) => { remaining[i] = remaining[i].slice(piece.length); });
@@ -70,7 +70,7 @@ export async function prepareInvoiceDocument(root: HTMLElement): Promise<HTMLEle
         // A small safety allowance absorbs fractional CSS/physical pixel rounding.
         const capacity = (INVOICE_PAPER_MM.height - 2 * INVOICE_PAPER_MM.padding) * MM - height(header) - height(footer) - 5 - height(table.tHead!) - 5;
         const summaryHeight = height(summary);
-        if (capacity < 40 || summaryHeight > capacity) throw new Error("Invoice header or totals exceed 8.5 × 6.5 inch page space. Shorten the document details.");
+        if (capacity < 40 || summaryHeight > capacity) throw new Error("Invoice header or totals exceed A5 page space. Shorten the document details.");
         const rows = [...table.tBodies[0].rows].flatMap(row => splitTallRow(row, capacity));
         const measure = (row: HTMLTableRowElement) => {
           table.tBodies[0].appendChild(row); const result = height(row); row.remove(); return result;
@@ -126,7 +126,11 @@ export async function invoicePdfBlob(root: HTMLElement): Promise<Blob> {
   root.style.setProperty("display", "block", "important");
   Object.assign(root.style, { position: "fixed", top: "0", left: "-20000px", width: `${INVOICE_PAPER_MM.width}mm`, maxWidth: "none" });
   try {
-    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [INVOICE_PAPER_MM.width, INVOICE_PAPER_MM.height], compress: true });
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: [INVOICE_PAPER_MM.width, INVOICE_PAPER_MM.height], compress: true });
+    const metricsStyle = document.createElement("style");
+    metricsStyle.id = "__invoice_pdf_metrics";
+    metricsStyle.textContent = "body > div > img { display: inline !important; }";
+    document.head.appendChild(metricsStyle);
     for (const [i, sheet] of sheets.entries()) {
       const canvas = await html2canvas(sheet, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
       if (i) pdf.addPage();

@@ -20,7 +20,7 @@ export const documentNumber = (value: number) => Number(value || 0).toLocaleStri
 /** A measurement source and a separate page host. prepareInvoiceDocument fills
  * the host before printing/exporting; React continues to own the source. */
 export function InvoiceDocument({ data }: { data: InvoiceDocumentData }) {
-  const columns = data.purchase ? [4, 34, 18, 10, 15, 19] : data.returnDocument ? [4, 26, 38, 11, 21] : [4, 24, 30, 9, 12, 7, 14];
+  const columns = data.purchase ? [4, 34, 18, 10, 15, 19] : data.returnDocument ? [4, 26, 38, 11, 21] : [5, 24, 21, 10, 14, 10, 16];
   const headings = data.purchase ? ["SN", "Product", "Expiry", "Qty", "Rate", "Amount"]
     : data.returnDocument ? ["SN", "Product", "Description", "Qty", "Credit amount"] : ["SN", "Product", "Description", "Qty", "Rate", "Disc. %", "Amount"];
   return <div className="invoice-document">
