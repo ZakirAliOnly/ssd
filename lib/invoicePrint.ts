@@ -1,9 +1,9 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-// Half a US Legal sheet: 8.5 × 7 inches, landscape. Keep in sync with
+// Custom invoice sheet: 8.5 × 6.5 inches, landscape. Keep in sync with
 // invoice-print.css; browser/PDF checks verify the physical page dimensions.
-export const INVOICE_PAPER_MM = { width: 215.9, height: 177.8, padding: 6 } as const;
+export const INVOICE_PAPER_MM = { width: 215.9, height: 165.1, padding: 6 } as const;
 const MM = 96 / 25.4;
 const height = (node: Element) => node.getBoundingClientRect().height;
 
@@ -38,7 +38,7 @@ function splitTallRow(row: HTMLTableRowElement, capacity: number): HTMLTableRowE
         const mid = Math.floor((low + high) / 2); render(mid);
         if (height(probe) <= capacity) { best = mid; low = mid + 1; } else high = mid - 1;
       }
-      if (!best) throw new Error("An invoice row cannot fit on half Legal paper. Review its content.");
+      if (!best) throw new Error("An invoice row cannot fit on 8.5 × 6.5 inch paper. Review its content.");
       const pieces = render(best);
       result.push(probe.cloneNode(true) as HTMLTableRowElement);
       pieces.forEach((piece, i) => { remaining[i] = remaining[i].slice(piece.length); });
@@ -70,7 +70,7 @@ export async function prepareInvoiceDocument(root: HTMLElement): Promise<HTMLEle
         // A small safety allowance absorbs fractional CSS/physical pixel rounding.
         const capacity = (INVOICE_PAPER_MM.height - 2 * INVOICE_PAPER_MM.padding) * MM - height(header) - height(footer) - 5 - height(table.tHead!) - 5;
         const summaryHeight = height(summary);
-        if (capacity < 40 || summaryHeight > capacity) throw new Error("Invoice header or totals exceed half Legal page space. Shorten the document details.");
+        if (capacity < 40 || summaryHeight > capacity) throw new Error("Invoice header or totals exceed 8.5 × 6.5 inch page space. Shorten the document details.");
         const rows = [...table.tBodies[0].rows].flatMap(row => splitTallRow(row, capacity));
         const measure = (row: HTMLTableRowElement) => {
           table.tBodies[0].appendChild(row); const result = height(row); row.remove(); return result;
