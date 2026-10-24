@@ -1,9 +1,12 @@
 "use client";
 
+import { A4PrintHeader } from "./A4PrintHeader";
+
 type Props = { style?: React.CSSProperties; variant?: "default" | "challan" | "invoice" | "thermal" };
 
 /** Shared scalable letterhead for all documents and thermal receipts. */
 export function PrintHeader({ style, variant = "default" }: Props = {}) {
+  if (variant === "default") return <A4PrintHeader style={style} />;
   const thermal = variant === "thermal";
   const height = thermal ? 170 : 152;
   return <div className="business-print-header" style={{ width: "100%", marginBottom: 10, flexShrink: 0, breakInside: "avoid", background: "#fff", ...style }}>

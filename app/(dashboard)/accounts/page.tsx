@@ -2890,13 +2890,13 @@ export default function AccountsPage() {
                   <div style={{ padding: cellPad, color: "#111", borderLeft: "1px solid #000" }}>{formatDate(r.date)}</div>
                   <div style={{ padding: cellPad, fontWeight: 800, color: "#075985", fontFamily: "monospace", borderLeft: "1px solid #000" }}>{r.doc}</div>
                   <div style={{ padding: cellPad, color: "#111", borderLeft: "1px solid #000" }}>{r.desc}</div>
-                  <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: r.debit > 0 ? "#111" : "#ccc", borderLeft: "1px solid #000" }}>
+                  <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: r.debit > 0 ? "#dc2626" : "#ccc", borderLeft: "1px solid #000" }}>
                     {r.debit > 0 ? formatCurrency(r.debit) : "—"}
                   </div>
-                  <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: r.credit > 0 ? "#111" : "#ccc", borderLeft: "1px solid #000" }}>
+                  <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: r.credit > 0 ? "#16a34a" : "#ccc", borderLeft: "1px solid #000" }}>
                     {r.credit > 0 ? formatCurrency(r.credit) : "—"}
                   </div>
-                  <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", fontWeight: 800, color: "#111", borderLeft: "1px solid #000" }}>
+                  <div style={{ padding: cellPad, textAlign: "right", fontFamily: "monospace", fontWeight: 800, color: r.balance > 0 ? "#16a34a" : r.balance < 0 ? "#dc2626" : "#111", borderLeft: "1px solid #000" }}>
                     {formatCurrency(r.balance)}
                   </div>
                   <div style={{ padding: cellPad, color: "#333", borderLeft: "1px solid #000", borderRight: "1px solid #000" }}>
@@ -2934,7 +2934,7 @@ export default function AccountsPage() {
                 <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
                   Closing Balance{(ledgerDateFrom.trim() || ledgerDateTo.trim()) ? " (period)" : ""}
                 </span>
-                <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: "#111" }}>
+                <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 14, color: (ledgerDisplayWithBal.at(-1)?.balance ?? 0) >= 0 ? "#16a34a" : "#dc2626" }}>
                   {formatCurrency(ledgerDisplayWithBal.at(-1)?.balance ?? 0)}
                 </span>
               </div>
