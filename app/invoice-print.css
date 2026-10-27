@@ -3,10 +3,10 @@
 @page invoice-custom { size: 148mm 210mm; margin: 0; }
 .invoice-document { color: #000; background: #fff; font: 500 13px/1.35 Arial, Helvetica, sans-serif; }
 .invoice-document * { box-sizing: border-box; color: #000; border-color: #000; }
-.invoice-source { display: none; width: 148mm; padding: 10mm 4mm; }
+.invoice-source { display: none; width: 148mm; padding: 15mm 4mm 10mm; }
 .invoice-measuring .invoice-source { display: block; }
 .invoice-measuring .invoice-pages { display: none; }
-.invoice-sheet { width: 148mm; height: 210mm; padding: 10mm 4mm; display: flex; flex-direction: column; background: #fff; overflow: visible; }
+.invoice-sheet { width: 148mm; height: 210mm; padding: 15mm 4mm 10mm; display: flex; flex-direction: column; background: #fff; overflow: visible; }
 .invoice-page-header, .invoice-page-footer { flex-shrink: 0; }
 .invoice-letterhead { display: flex; align-items: center; justify-content: center; gap: 14px; padding-bottom: 9px; text-align: center; border-bottom: 1px solid #000; }
 .invoice-letterhead svg { width: 65px; height: 59px; flex-shrink: 0; }

@@ -1,9 +1,10 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { waitForPrintFonts } from "@/lib/printReadiness";
 
 // A5 portrait invoice sheet. Keep in sync with
 // invoice-print.css; browser/PDF checks verify the physical page dimensions.
-export const INVOICE_PAPER_MM = { width: 148, height: 210, padding: 10 } as const;
+export const INVOICE_PAPER_MM = { width: 148, height: 210, padding: 10, topPadding: 15 } as const;
 const MM = 96 / 25.4;
 const height = (node: Element) => node.getBoundingClientRect().height;
 
@@ -50,7 +51,7 @@ function splitTallRow(row: HTMLTableRowElement, capacity: number): HTMLTableRowE
 /** Must finish before window.print(). Restores the caller's exact inline style,
  * including on errors; no financial records or application settings are touched. */
 export async function prepareInvoiceDocument(root: HTMLElement): Promise<HTMLElement[]> {
-  await document.fonts.ready;
+  await waitForPrintFonts(document.fonts.ready);
   const originalStyle = root.getAttribute("style");
   const documents = [...root.querySelectorAll<HTMLElement>(".invoice-document")];
   if (!documents.length) throw new Error("Invoice print template not found.");
@@ -68,7 +69,7 @@ export async function prepareInvoiceDocument(root: HTMLElement): Promise<HTMLEle
         const table = source.querySelector<HTMLTableElement>("table")!;
         // Footer has a 5px margin in addition to its measured border/padding.
         // A small safety allowance absorbs fractional CSS/physical pixel rounding.
-        const capacity = (INVOICE_PAPER_MM.height - 2 * INVOICE_PAPER_MM.padding) * MM - height(header) - height(footer) - 5 - height(table.tHead!) - 5;
+        const capacity = (INVOICE_PAPER_MM.height - INVOICE_PAPER_MM.topPadding - INVOICE_PAPER_MM.padding) * MM - height(header) - height(footer) - 5 - height(table.tHead!) - 5;
         const summaryHeight = height(summary);
         if (capacity < 40 || summaryHeight > capacity) throw new Error("Invoice header or totals exceed A5 page space. Shorten the document details.");
         const rows = [...table.tBodies[0].rows].flatMap(row => splitTallRow(row, capacity));

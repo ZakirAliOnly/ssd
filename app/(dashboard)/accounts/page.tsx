@@ -7,6 +7,8 @@ import { invoiceUnitRate, invoiceLineTotal } from "@/lib/invoicePricing";
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
+import { flushSync } from "react-dom";
+import { withPrintTimeout } from "@/lib/printReadiness";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { db, saveInvoice } from "@/lib/db";
@@ -166,6 +168,7 @@ export default function AccountsPage() {
 
   // Invoice print state
   const [invPrinting, setInvPrinting] = useState(false);
+  const invPrintBusy = useRef(false);
 
   const [partyBalances, setPartyBalances] = useState<Record<string, number>>({});
   const [partyLoading, setPartyLoading] = useState(true);
@@ -604,11 +607,13 @@ export default function AccountsPage() {
     setViewingInvoiceItems([]);
   }
 
-  async function refreshInvoiceBalance(invoice: Invoice) {
+  async function refreshInvoiceBalance(invoice: Invoice, signal?: AbortSignal) {
     const fresh = await fetchPartySignedBalance(invoice.client_name);
+    if (signal?.aborted) throw new DOMException("Print preparation cancelled", "AbortError");
     const balance = { id: invoice.id, closing: fresh.signed, asOf: new Date().toLocaleString("en-PK") };
-    setInvoicePartyBalance(balance);
-    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    // Commit the fresh balance before measuring the template; animation frames
+    // may be suspended when the browser tab is hidden.
+    flushSync(() => setInvoicePartyBalance(balance));
     return balance;
   }
 
@@ -665,28 +670,34 @@ export default function AccountsPage() {
   }
 
   async function printViewingInvoice(invoice = viewingInvoice) {
-    if (!invoice || invPrinting) return;
+    if (!invoice || invPrintBusy.current) return;
+    invPrintBusy.current = true;
     setInvPrinting(true);
+    const controller = new AbortController();
+    const finish = () => {
+      restoreInvPrintMode();
+      invPrintBusy.current = false;
+      setInvPrinting(false);
+    };
     try {
-      await refreshInvoiceBalance(invoice);
+      await withPrintTimeout(refreshInvoiceBalance(invoice, controller.signal));
       await applyInvPrintMode();
-      scheduleAfterInvPrint(() => {
-        restoreInvPrintMode();
-        setInvPrinting(false);
-      });
+      scheduleAfterInvPrint(finish);
       window.print();
     } catch (error) {
+      controller.abort();
       showToast(error instanceof Error ? error.message : "Print failed", "err");
-      restoreInvPrintMode();
-      setInvPrinting(false);
+      finish();
     }
   }
 
   async function downloadInvoicePdf() {
-    if (!viewingInvoice || invPrinting) return;
+    if (!viewingInvoice || invPrintBusy.current) return;
+    invPrintBusy.current = true;
     setInvPrinting(true);
+    const controller = new AbortController();
     try {
-      await refreshInvoiceBalance(viewingInvoice);
+      await withPrintTimeout(refreshInvoiceBalance(viewingInvoice, controller.signal));
       const root = document.querySelector<HTMLElement>(".inv-a4-print-only");
       if (!root) throw new Error("Invoice template not found.");
       const clientName = viewingInvoice.client_name.replace(/[^a-zA-Z0-9 ]/g, "").trim();
@@ -696,6 +707,8 @@ export default function AccountsPage() {
       showToast("PDF download failed", "err");
       console.error(e);
     } finally {
+      controller.abort();
+      invPrintBusy.current = false;
       setInvPrinting(false);
     }
   }
@@ -2229,8 +2242,8 @@ export default function AccountsPage() {
                   style={{ borderColor: "var(--blue)", color: "var(--blue)" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--blue-pale)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
-                  title="Save and print 8.5 × 6.5 inch">
-                  {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />} 8.5 × 6.5 in
+                  title="Save and print A5">
+                  {invSaving ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />} A5 Print
                 </button>
 
                 <button onClick={() => void handleSaveInvoice()} disabled={invSaving}
@@ -2629,7 +2642,7 @@ export default function AccountsPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
                   >
                     {invPrinting ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
-                    8.5 × 6.5 in
+                    A5 Print
                   </button>
 
                   <button
@@ -2791,7 +2804,7 @@ export default function AccountsPage() {
       )}
     </div>
 
-    {/* Shared measured 8.5 × 6.5 inch invoice pages. */}
+    {/* Shared measured A5 invoice pages. */}
     <div className="inv-a4-print-only">
       {viewingInvoice && <SalesInvoiceDocument invoice={viewingInvoice} items={viewingInvoiceItems} partyBalance={invoicePartyBalance?.id === viewingInvoice.id ? invoicePartyBalance : undefined} />}
     </div>

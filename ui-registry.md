@@ -296,3 +296,9 @@ Default PrintHeader uses the original blue triangular logo and blue contact text
 ### A5 portrait invoices (Update 029)
 
 Shared invoice sheets now measure 148 × 210 mm with 10 mm vertical and 4 mm horizontal insets. Use 12px compact line-item text and 70 mm totals. Keep measured pagination, repeated headers and page numbering. Browser printing and PDF export use identical sheets.
+### A5 print header spacing and readiness (Update 030)
+
+Files: app/invoice-print.css, lib/invoicePrint.ts, app/(dashboard)/accounts/page.tsx
+Last updated: 2026-10-27
+
+Keep A5 sheets at 148 × 210mm with 15mm top, 10mm bottom and 4mm side padding. Measurement and rendered sheets must use matching spacing; deduct both vertical paddings from pagination capacity. Party print actions say A5 Print and retain the existing button styles and busy indicator, releasing controls on preparation failure.
