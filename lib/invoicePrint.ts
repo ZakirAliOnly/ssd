@@ -1,6 +1,7 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { waitForPrintFonts } from "@/lib/printReadiness";
+import { paginateInvoiceRows } from "@/lib/invoicePagination";
 
 // A5 portrait invoice sheet. Keep in sync with
 // invoice-print.css; browser/PDF checks verify the physical page dimensions.
@@ -77,26 +78,8 @@ export async function prepareInvoiceDocument(root: HTMLElement): Promise<HTMLEle
           table.tBodies[0].appendChild(row); const result = height(row); row.remove(); return result;
         };
         const sizes = rows.map(measure);
-        const pages: HTMLTableRowElement[][] = [[]];
-        let used = 0;
-        rows.forEach((row, i) => {
-          if (used + sizes[i] > capacity && pages.at(-1)!.length) { pages.push([]); used = 0; }
-          pages.at(-1)!.push(row); used += sizes[i];
-        });
-        if (used + summaryHeight > capacity) {
-          const tail = pages.at(-1)!;
-          const summaryRows: HTMLTableRowElement[] = [];
-          let total = summaryHeight;
-          while (tail.length) {
-            const row = tail.at(-1)!, rowSize = sizes[rows.indexOf(row)];
-            if (total + rowSize > capacity) break;
-            summaryRows.unshift(tail.pop()!); total += rowSize;
-          }
-          // A full-page continued text fragment may require a summary-only sheet.
-          // Normal invoices move their last rows with the summary instead.
-          if (!tail.length) pages.pop();
-          pages.push(summaryRows);
-        }
+        const pages = paginateInvoiceRows(sizes, capacity, summaryHeight)
+          .map(indices => indices.map(index => rows[index]));
         const host = doc.querySelector<HTMLElement>(".invoice-pages")!;
         host.replaceChildren();
         pages.forEach((pageRows, i) => {
