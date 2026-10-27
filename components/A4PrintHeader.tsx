@@ -20,8 +20,6 @@ export function A4PrintHeader({ style }: Props = {}) {
           <div>Dawn Medical Centre, Room No. 1, 1st Floor</div>
           <div>Jinnah Road, Quetta, Pakistan · Tel: +92-81-2836967</div>
           <div>Mob: 0333-7808836, 0334-2247408, 0345-8346536</div>
-          <div>E-mail: ssdig@isb.comsats.net.pk</div>
-          <div>Ejaz Gill · Sales Manager · 0333-7808836</div>
         </div>
       </div>
     </div>

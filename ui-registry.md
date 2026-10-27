@@ -302,3 +302,10 @@ Files: app/invoice-print.css, lib/invoicePrint.ts, app/(dashboard)/accounts/page
 Last updated: 2026-10-27
 
 Keep A5 sheets at 148 × 210mm with 15mm top, 10mm bottom and 4mm side padding. Measurement and rendered sheets must use matching spacing; deduct both vertical paddings from pagination capacity. Party print actions say A5 Print and retain the existing button styles and busy indicator, releasing controls on preparation failure.
+
+### Clean A4 statement letterhead (Update 032)
+
+File: components/A4PrintHeader.tsx
+Last updated: 2026-10-27
+
+Retain the colorful A4 logo, centered business title and blue address/contact text. Show the business address, telephone and mobile numbers only; omit the email address and individual sales-manager line from shared A4 print/PDF headers.
