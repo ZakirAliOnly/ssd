@@ -6,6 +6,22 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 See [WhatsApp setup and deployment](docs/whatsapp-setup.md) for QR linking with Baileys, consent, the persistent queue worker, and database migrations. Settings are available from **WhatsApp Setup** in the top navigation.
 
+### Kit / packet stock constraint upgrade (Update 033)
+
+For databases already using product packaging, apply the stock-constraint repair
+before retrying kit invoices or returns:
+
+```bash
+npm run db:upgrade:packaging-constraints
+```
+
+This changes database validation, not stored quantities or invoice amounts. It
+requires the existing packaging columns from v39. For a packaging upgrade that
+also installs those columns, `npm run db:upgrade:packaging` runs v39 followed by
+the repair. See [Update 033](docs/updates/033-kit-stock-constraints.md) for backup,
+deployment and verification instructions. A build or Prisma client generation
+alone does not apply these database constraints.
+
 ### Returns module deployment
 
 After deploying this source to the VPS, run these commands from the app folder
