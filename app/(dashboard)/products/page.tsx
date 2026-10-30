@@ -19,6 +19,7 @@ import { useSaving } from "@/lib/useSaving";
 
 interface Product extends Packaging {
   id: string;
+  is_active: boolean;
   code: string;
   name: string;
   description?: string | null;
@@ -46,6 +47,8 @@ export default function ProductsPage() {
   const { saving, run } = useSaving();
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [fActive, setFActive] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -72,7 +75,7 @@ export default function ProductsPage() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const { data, error } = await db.from("products").select("*, product_categories(*)").order("name");
+      const { data, error } = await db.from("products").select("*, product_categories(*)").in("is_active", [true, false]).order("name");
       setLoadError(error?.message ?? "");
       if (data) setProducts(data);
     } catch {
@@ -82,7 +85,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     let active = true;
-    void db.from("products").select("*, product_categories(*)").order("name").then(({ data, error }) => {
+    void db.from("products").select("*, product_categories(*)").in("is_active", [true, false]).order("name").then(({ data, error }) => {
       if (!active) return;
       setLoadError(error?.message ?? "");
       if (data) setProducts(data);
@@ -93,6 +96,7 @@ export default function ProductsPage() {
   }, []);
 
   function openAdd() {
+    setFActive(true);
     stockEntryFactor.current = 1;
     setPacketPrice(null);
     setPackaging({ ...emptyPackaging });
@@ -108,6 +112,7 @@ export default function ProductsPage() {
   }
 
   function openEdit(p: Product) {
+    setFActive(p.is_active !== false);
     setPacketPrice(p.packaging_enabled && Number(p.packet_sale_price) > 0 && Number(p.packet_sale_price) !== Math.round(Number(p.sale_price) * Number(p.pieces_per_packet) * 100) / 100 ? String(p.packet_sale_price) : null);
     setPackaging({ ...emptyPackaging, packaging_enabled: !!p.packaging_enabled, base_unit: p.base_unit || "Piece", pieces_per_packet: p.pieces_per_packet || 1, packets_per_box: p.packets_per_box || 1, packet_sale_price: Number(p.packet_sale_price || 0), box_sale_price: Number(p.box_sale_price || 0) });
     setConversionUnit("piece"); setConversionConfirmed(false);
@@ -150,6 +155,7 @@ export default function ProductsPage() {
     if (packetEntry && (!Number.isInteger(entryFactor) || entryFactor < 1 || entryFactor > 1000000)) { showToast("Enter whole loose units per kit / packet between 1 and 1,000,000", "err"); return; }
     if (packetEntry && packetPrice !== null && (!packetPrice.trim() || !Number.isFinite(Number(packetPrice)) || Number(packetPrice) < 0)) { showToast("Enter a kit / packet selling price of zero or more", "err"); return; }
     const payload = {
+      is_active: fActive,
       code: fCode || generateCode(fName, products),
       name: fName.trim(),
       description: fDescription.trim(),
@@ -187,6 +193,7 @@ export default function ProductsPage() {
   const inputStyle = { borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" };
   const searchQuery = search.trim().toLowerCase();
   const filteredProducts = products.filter((product) =>
+    (statusFilter === "all" || (product.is_active !== false) === (statusFilter === "active")) &&
     [product.name, product.code, product.description, product.product_categories?.name ?? "Uncategorized"]
       .some((value) => value?.toLowerCase().includes(searchQuery))
   );
@@ -218,11 +225,12 @@ export default function ProductsPage() {
         <div className="px-5 py-4 border-b border-[var(--gray-100)] flex items-center justify-between">
           <span className="text-lg sm:text-xl font-extrabold tracking-tight" style={{ color: "var(--gray-900)" }}>Product List</span>
           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "var(--blue-pale)", color: "var(--blue-deeper)" }}>
-            {searchQuery ? `${filteredProducts.length} of ${products.length}` : products.length} items
+            {filteredProducts.length} items
           </span>
         </div>
 
-        <div className="px-5 py-3 border-b border-[var(--gray-100)]">
+        <div className="px-5 py-3 border-b border-[var(--gray-100)] flex flex-wrap gap-3">
+          <label className="flex items-center gap-2 text-sm">Status<select aria-label="Filter products by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 bg-white"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option></select></label>
           <div className="relative w-full sm:max-w-md">
             <Search size={16} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--gray-800)" }} />
             <input
@@ -257,8 +265,8 @@ export default function ProductsPage() {
         ) : filteredProducts.length === 0 ? (
           <div className="py-14 px-5 text-center" role="status">
             <Search size={32} aria-hidden="true" className="mx-auto mb-2" style={{ color: "var(--gray-400)" }} />
-            <p className="text-[13px] font-medium" style={{ color: "var(--gray-800)" }}>No products match your search.</p>
-            <button type="button" onClick={() => setSearch("")} className="mt-2 text-[13px] font-semibold underline cursor-pointer" style={{ color: "var(--blue-deeper)" }}>Clear search</button>
+            <p className="text-[13px] font-medium" style={{ color: "var(--gray-800)" }}>No products match this status and search.</p>
+            <button type="button" onClick={() => { setSearch(""); setStatusFilter("all"); }} className="mt-2 text-[13px] font-semibold underline cursor-pointer" style={{ color: "var(--blue-deeper)" }}>Show all products</button>
           </div>
         ) : (
           <>
@@ -294,7 +302,7 @@ export default function ProductsPage() {
                         </span>
                       </td>
                       <td className={`${DT.td} ${DT.cellPrimary}`} style={{ color: "var(--gray-900)" }}>
-                        {p.name}{p.packaging_enabled && <small className="block font-normal text-xs">1 {unitLabel("packet", p.base_unit)} = {p.pieces_per_packet} {p.base_unit}s{Number(p.packets_per_box) > 1 && `; outer box = ${p.packets_per_box} packs`}</small>}
+                        {p.name}{p.is_active === false && <span className="block text-xs font-semibold text-red-700">Inactive</span>}{p.packaging_enabled && <small className="block font-normal text-xs">1 {unitLabel("packet", p.base_unit)} = {p.pieces_per_packet} {p.base_unit}s{Number(p.packets_per_box) > 1 && `; outer box = ${p.packets_per_box} packs`}</small>}
                       </td>
                       <td className={`${DT.td} max-w-[220px] sm:max-w-[280px]`} style={{ color: "var(--gray-800)" }}>
                         {p.description?.trim() ? (
@@ -368,6 +376,22 @@ export default function ProductsPage() {
               </button>
             </div>
             <div className="p-5 grid grid-cols-2 gap-3.5">
+              {editingId && (
+                <fieldset className="col-span-2">
+                  <legend className="text-xs font-semibold mb-2">Product status</legend>
+                  <div className="flex gap-2">
+                    {[{ label: "Active", value: true }, { label: "Inactive", value: false }].map(status => (
+                      <button key={status.label} type="button" aria-pressed={fActive === status.value}
+                        disabled={saving} onClick={() => setFActive(status.value)}
+                        className="px-4 py-2 rounded-lg border text-sm font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-50"
+                        style={{ background: fActive === status.value ? "var(--blue-deeper)" : "#fff", color: fActive === status.value ? "#fff" : "var(--blue-deeper)", borderColor: "var(--blue-deeper)" }}>
+                        {status.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-700 mt-2">Inactive products are hidden from new invoices and product selections. Existing records are kept.</p>
+                </fieldset>
+              )}
               {/* Product Name - full width */}
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-[10px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>

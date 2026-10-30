@@ -11,12 +11,14 @@ export async function lockInventoryUnits(tx: Prisma.TransactionClient) {
 export async function resolveLineUnit(tx: Prisma.TransactionClient, productId: string | null,
   unit: string | undefined, expected: number | undefined,
   previous?: { product_id: string | null; unit: string; unit_factor: Prisma.Decimal | number }) {
+  const product = productId ? await tx.product.findUnique({ where: { id: productId } }) : null;
+  if (productId && !product) throw new InventoryError("A selected product no longer exists.");
+  if (product?.is_active === false) throw new InventoryError(`${product.name} is inactive. Reactivate it before saving this document.`);
   if (previous && previous.product_id === productId && (unit ?? previous.unit) === previous.unit) {
     if (expected != null && expected !== Number(previous.unit_factor ?? 1)) throw new InventoryError("This item's packaging changed. Reload the document.");
     return { unit: previous.unit || "unit", unit_factor: Number(previous.unit_factor ?? 1) };
   }
   if (!productId) return { unit: "unit", unit_factor: 1 };
-  const product = await tx.product.findUnique({ where: { id: productId } });
   if (!product) throw new InventoryError("A selected product no longer exists.");
   if (product.packaging_enabled && unit == null) throw new InventoryError("Reload the app and choose Piece, Packet or Box before saving this product line.");
   const selected = productUnits(product).find(row => row.value === (unit ?? (product.packaging_enabled ? "piece" : "unit")));

@@ -309,3 +309,6 @@ File: components/A4PrintHeader.tsx
 Last updated: 2026-10-27
 
 Retain the colorful A4 logo, centered business title and blue address/contact text. Show the business address, telephone and mobile numbers only; omit the email address and individual sales-manager line from shared A4 print/PDF headers.
+### Product activity (Update 033)
+
+Edit Product uses a labelled Product status fieldset with Active and Inactive buttons. Use aria-pressed, blue-deeper selected background with white text, outlined unselected buttons and visible keyboard focus. Save status with the other product fields. Default the product list to Active; offer Inactive and All filters so hidden products can be reactivated. Show an Inactive label beside inactive names in management views. Keep historical document content intact.

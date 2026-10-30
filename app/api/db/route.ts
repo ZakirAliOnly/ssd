@@ -549,6 +549,9 @@ export async function POST(req: NextRequest) {
 
     if (operation === "select") {
       const where = buildWhere(filters, table);
+      // Product management explicitly requests both statuses for reactivation.
+      // All other catalog reads exclude inactive products, including old clients.
+      if (table === "products" && !filters.some((filter: Filter) => filter.col === "is_active")) where.is_active = true;
       const orderBy = buildOrderBy(orders);
       const selectArgs = parseSelectFields(select, table);
 

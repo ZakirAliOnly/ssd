@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   }
   try {
     const products = await prisma.$transaction(tx => tx.product.findMany({
-      where: { ...(product === "all" ? {} : { id: product }),
+      where: { is_active: true, ...(product === "all" ? {} : { id: product }),
         ...(category === "all" ? {} : { category_id: category === "uncategorized" ? null : category }) }, orderBy: { name: "asc" },
       include: { category: true,
         stock_batches: { include: { purchase_item: true, supplier_returns: { include: { supplier_return: { select: { return_date: true } } } }, allocations: { include: { invoice: { select: { invoice_date: true } }, returns: { include: { return_item: { include: { invoice_return: { select: { return_date: true } } } } } } } } } },

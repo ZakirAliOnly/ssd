@@ -2,6 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeCategory, normalizeProduct, ProductValidationError } from "../lib/productValidation.ts";
 
+test("product activity accepts only explicit boolean values", () => {
+  for (const is_active of [true, false]) assert.equal(normalizeProduct({ is_active }, false).is_active, is_active);
+  for (const is_active of ["false", 0, null, "Inactive"]) assert.throws(() => normalizeProduct({ is_active }, false), ProductValidationError);
+});
+
 test("category identity ignores case and extra whitespace", () => {
   assert.deepEqual(normalizeCategory({ name: "  Outdoor   Signs  " }), { name: "Outdoor Signs", name_key: "outdoor signs" });
   assert.equal(normalizeCategory({ name: "OUTDOOR signs", name_key: "spoof" }).name_key, "outdoor signs");

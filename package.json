@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "db:upgrade:product-status": "prisma db execute --file scripts/migration-v40-product-active.sql --schema prisma/schema.prisma",
     "test:packaging": "node --env-file=.env --test tests/integration/product-units.test.mjs",
     "test:whatsapp": "node --env-file=.env --test tests/whatsapp-policy.test.mjs tests/integration/whatsapp.test.mjs && tsx --env-file=.env --test tests/whatsapp-auth.test.mts",
     "whatsapp:worker": "tsx --env-file=.env scripts/whatsapp-worker.mts",

@@ -13,6 +13,7 @@ export function normalizeCategory(data: Record<string, unknown>) {
 }
 
 export function normalizeProduct(data: Record<string, unknown>, inserting: boolean): Record<string, unknown> {
+  if ("is_active" in data && typeof data.is_active !== "boolean") throw new ProductValidationError("Choose Active or Inactive for the product.");
   for (const key of ["cost_price", "sale_price"]) if (key in data && (typeof data[key] !== "number" || !Number.isFinite(data[key]) || Number(data[key]) < 0 || Number(data[key]) > 9999999999.99)) throw new ProductValidationError("Enter a valid non-negative cost and sale price.");
   if ("packaging_converted_at" in data) throw new ProductValidationError("Stock conversion history cannot be edited.");
   if (inserting && "conversion_unit" in data) throw new ProductValidationError("New products start in base units.");

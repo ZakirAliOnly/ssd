@@ -135,6 +135,7 @@ model Account {
 
 model Product {
   id           String   @id @default(uuid()) @db.Uuid
+  is_active    Boolean  @default(true)
   code         String   @unique
   name         String
   description  String?  @default("")
