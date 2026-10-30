@@ -3,6 +3,7 @@ import { describe, test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
 import { NextRequest } from 'next/server.js';
 import { tsLoader } from '../helpers/load-ts.mjs';
@@ -24,10 +25,52 @@ async function sell(lines,invoiceId){const total=lines.reduce((s,l)=>s+l.qty*(l.
 const qty=async()=>Number((await db.product.findUniqueOrThrow({where:{id:product.id}})).quantity);
 async function giveBack(invoiceId,itemId,n,type='sales'){const response=await returns.POST(request('/api/returns',{invoiceId,requestId:randomUUID(),date:'2026-10-03',reason:'Test return',type,selections:[{invoice_item_id:itemId,qty:n}]}));const body=await response.json();assert.equal(response.status,200,JSON.stringify(body));return body.record}
 async function stockReport(){const r=await report.GET(new NextRequest('http://localhost/api/reports/stock?from=2026-01-01&to=2026-10-20',{headers:{cookie:'auth=admin'}}));const body=await r.json();assert.equal(r.status,200,JSON.stringify(body));return body.rows.find(r=>r.id===product.id)}
+function migrate(file){execFileSync('./node_modules/.bin/prisma',['db','execute','--file',file,'--schema','prisma/schema.prisma'],{env:{...process.env,DATABASE_URL:url.toString()},stdio:'pipe'})}
 describe('Distribution units through real API transactions',()=>{
- before(async()=>{execFileSync('./node_modules/.bin/prisma',['db','push','--skip-generate'],{env:{...process.env,DATABASE_URL:url.toString()},stdio:'pipe'});await db.user.create({data:{id:adminId,email:'test@example.invalid',password_hash:'unused',role:'super_admin'}});await db.productCategory.create({data:{id:categoryId,name:'Test',name_key:'test'}})});
+ before(async()=>{
+  execFileSync('./node_modules/.bin/prisma',['db','push','--skip-generate'],{env:{...process.env,DATABASE_URL:url.toString()},stdio:'pipe'});
+  // Prisma db push does not install SQL CHECKs. Recreate the real legacy
+  // migration constraints instead of testing against a more permissive schema.
+  migrate('scripts/migration-v26-product-stock.sql');
+  for(const [table,column,file] of [
+   ['invoice_return_items','stock_restored_qty','scripts/migration-v33-invoice-returns.sql'],
+   ['supplier_return_items','stock_removed_qty','scripts/migration-v34-supplier-returns.sql'],
+  ]){
+   const definition=readFileSync(file,'utf8').split('\n').find(line=>line.trim().startsWith(column+' '));
+   const check=definition.slice(definition.indexOf('CHECK')).replace(/,\s*$/,'');
+   await db.$executeRawUnsafe(`ALTER TABLE ${table} ADD ${check}`);
+  }
+  await db.user.create({data:{id:adminId,email:'test@example.invalid',password_hash:'unused',role:'super_admin'}});await db.productCategory.create({data:{id:categoryId,name:'Test',name_key:'test'}})
+ });
  after(async()=>{await db.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`);await db.$disconnect()});
  beforeEach(async()=>{await db.$executeRawUnsafe('TRUNCATE products, suppliers, invoices, cashbook, activity_log CASCADE');product=await db.product.create({data:{name:'Distribution product',code:'1',category_id:categoryId,cost_price:5,sale_price:10,created_at:new Date('2026-01-01')}});supplier=await db.supplier.create({data:{name:'Supplier'}})});
+ test('v40 repairs the production kit CHECK failure, preserves rollback, and supports party sales and both returns',async()=>{
+  await convert('piece',{base_unit:'Vial',pieces_per_packet:4});
+  const po=await purchase(3,'packet');assert.equal(await qty(),12);
+  const body={table:'invoices',operation:'save_invoice',data:{client_name:'Synthetic party',is_walk_in:false,invoice_date:'2026-10-02',subtotal:14365.5,grand_total:14365.5,balance_due:14365.5},items:[{product_id:product.id,category:'Synthetic kit',qty:1,unit:'packet',rate:19154,discount_pct:25,amount:14365.5}]};
+  const failed=await call(body);assert.equal(failed.status,500);assert.match(failed.error.message,/invoice_items_stock_deducted_valid/);
+  assert.equal(await qty(),12);assert.equal(await db.invoice.count(),0);assert.equal(await db.stockAllocation.count(),0);
+  migrate('scripts/migration-v40-packaging-stock-constraints.sql');
+  migrate('scripts/migration-v40-packaging-stock-constraints.sql');
+  const inv=await ok(body);assert.equal(await qty(),8);
+  const item=await db.invoiceItem.findFirstOrThrow({where:{invoice_id:inv.id}});
+  assert.equal(Number(item.qty),1);assert.equal(Number(item.unit_factor),4);assert.equal(Number(item.stock_deducted_qty),4);
+  await assert.rejects(db.invoiceItem.update({where:{id:item.id},data:{stock_deducted_qty:5}}));
+  await assert.rejects(db.invoiceItem.update({where:{id:item.id},data:{stock_deducted_qty:-1}}));
+  await assert.rejects(db.invoiceItem.update({where:{id:item.id},data:{unit_factor:0,stock_deducted_qty:0}}));
+  await giveBack(inv.id,item.id,1);assert.equal(await qty(),12);
+  const returned=await db.invoiceReturnItem.findFirstOrThrow({where:{invoice_item_id:item.id}});
+  assert.equal(Number(returned.stock_restored_qty),4);
+  await assert.rejects(db.invoiceReturnItem.update({where:{id:returned.id},data:{stock_restored_qty:5}}));
+  await assert.rejects(db.invoiceReturnItem.update({where:{id:returned.id},data:{stock_restored_qty:-1}}));
+  const purchaseItem=await db.purchaseOrderItem.findFirstOrThrow({where:{purchase_order_id:po.id}});
+  await giveBack(po.id,purchaseItem.id,1,'supplier');assert.equal(await qty(),8);
+  const supplierReturn=await db.supplierReturnItem.findFirstOrThrow({where:{purchase_item_id:purchaseItem.id}});
+  assert.equal(Number(supplierReturn.stock_removed_qty),4);
+  await assert.rejects(db.supplierReturnItem.update({where:{id:supplierReturn.id},data:{stock_removed_qty:5}}));
+  await assert.rejects(db.supplierReturnItem.update({where:{id:supplierReturn.id},data:{stock_removed_qty:-1}}));
+  migrate('scripts/migration-v40-packaging-stock-constraints.sql');assert.equal(await qty(),8);
+ });
  test('box purchases, packet and loose-piece sales reconcile FIFO and report costs',async()=>{
   await convert('piece');await purchase(); assert.equal(await qty(),200);
   const invoice=await sell([{qty:1,unit:'packet',rate:90},{qty:3,unit:'piece',rate:10}]);assert.equal(await qty(),187);
@@ -127,5 +170,13 @@ describe('Distribution units through real API transactions',()=>{
  });
  test('additive migration can be repeated without changing converted stock',async()=>{
   await convert('piece');await purchase();for(let i=0;i<2;i++)execFileSync('./node_modules/.bin/prisma',['db','execute','--file','scripts/migration-v39-product-packaging.sql','--schema','prisma/schema.prisma'],{env:{...process.env,DATABASE_URL:url.toString()},stdio:'pipe'});assert.equal(await qty(),200);
+ });
+ test('full inventory upgrade remains repeatable and retains the packaging-safe checks',async()=>{
+  await convert('piece');await purchase();
+  const inv=await sell([{qty:1,unit:'packet'}]);const line=await db.invoiceItem.findFirstOrThrow({where:{invoice_id:inv.id}});
+  await giveBack(inv.id,line.id,1);assert.equal(await qty(),200);
+  for(let i=0;i<2;i++)execFileSync(process.execPath,['scripts/upgrade-inventory.cjs'],{env:{...process.env,DATABASE_URL:url.toString()},stdio:'pipe'});
+  assert.equal(await qty(),200);assert.equal(await db.invoiceReturnItem.count(),1);
+  await sell([{qty:1,unit:'packet'}]);assert.equal(await qty(),190);
  });
 });
