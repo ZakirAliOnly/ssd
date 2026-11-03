@@ -16,6 +16,7 @@ const migrations = [
   "migration-v34-supplier-returns.sql",
   "migration-v39-product-packaging.sql",
   "migration-v40-packaging-stock-constraints.sql",
+  "migration-v41-return-reversals.sql",
 ];
 const sql = migrations.map(file => fs.readFileSync(path.join(__dirname, file), "utf8")
   .replace(/^\s*(BEGIN|COMMIT);\s*$/gm, "")).join("\n");

@@ -28,9 +28,9 @@ export async function GET(request: NextRequest) {
       where: { is_active: true, ...(product === "all" ? {} : { id: product }),
         ...(category === "all" ? {} : { category_id: category === "uncategorized" ? null : category }) }, orderBy: { name: "asc" },
       include: { category: true,
-        stock_batches: { include: { purchase_item: true, supplier_returns: { include: { supplier_return: { select: { return_date: true } } } }, allocations: { include: { invoice: { select: { invoice_date: true } }, returns: { include: { return_item: { include: { invoice_return: { select: { return_date: true } } } } } } } } } },
+        stock_batches: { include: { purchase_item: true, supplier_returns: { include: { supplier_return: { select: { return_date: true, reversed_at: true } } } }, allocations: { include: { invoice: { select: { invoice_date: true } }, returns: { include: { return_item: { include: { invoice_return: { select: { return_date: true, reversed_at: true } } } } } } } } } },
         invoice_items: { include: { invoice: { include: { items: true } } } },
-        return_items: { include: { invoice_item: true, invoice_return: { select: { return_date: true } } } },
+        return_items: { include: { invoice_item: true, invoice_return: { select: { return_date: true, reversed_at: true } } } },
       },
     }), { isolationLevel: "RepeatableRead" });
     const rows = buildStockReport(products.map(p => ({
@@ -39,10 +39,10 @@ export async function GET(request: NextRequest) {
       created_at: p.created_at.toISOString(), cost_price: Number(p.cost_price),
       batches: p.stock_batches.map(b => ({ received_date: b.received_date.toISOString().slice(0, 10),
         received_qty: Number(b.received_qty), remaining_qty: Number(b.remaining_qty),
-        supplier_returns: b.supplier_returns.map(r => ({ qty: Number(r.stock_removed_qty), date: r.supplier_return.return_date.toISOString().slice(0, 10) })),
+        supplier_returns: b.supplier_returns.flatMap(r => [{ qty: Number(r.stock_removed_qty), date: r.supplier_return.return_date.toISOString().slice(0, 10) }, ...(r.supplier_return.reversed_at ? [{ qty: -Number(r.stock_removed_qty), date: r.supplier_return.reversed_at.toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" }) }] : [])]),
         allocations: b.allocations.map(a => ({ qty: Number(a.qty), date: a.invoice.invoice_date.toISOString().slice(0, 10),
           cost: b.unit_cost != null ? Number(b.unit_cost) : b.purchase_item && Number(b.purchase_item.qty) > 0 ? Number(b.purchase_item.amount) / (Number(b.purchase_item.qty) * Number(b.purchase_item.unit_factor)) : null,
-          returns: a.returns.map(r => ({ qty: Number(r.qty), date: r.return_item.invoice_return.return_date.toISOString().slice(0, 10) })) })),
+          returns: a.returns.flatMap(r => [{ qty: Number(r.qty), date: r.return_item.invoice_return.return_date.toISOString().slice(0, 10) }, ...(r.return_item.invoice_return.reversed_at ? [{ qty: -Number(r.qty), date: r.return_item.invoice_return.reversed_at.toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" }) }] : [])]) })),
       })),
       sales: p.invoice_items.flatMap(line => {
         if (!line.invoice) return [];
@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
           lineId: line.id, invoiceId: line.invoice.id, invoiceNumber: line.invoice.invoice_number,
           customer: line.invoice.client_name, unitPrice: invoiceUnitRate(line), amount: Number(line.amount) }];
       }),
-      returns: p.return_items.map(line => ({ date: line.invoice_return.return_date.toISOString().slice(0, 10),
-        qty: roundQuantity(Number(line.qty) * Number(line.invoice_item.unit_factor)), restored: Number(line.stock_restored_qty), revenue: Number(line.revenue) })),
+      returns: p.return_items.flatMap(line => [{ date: line.invoice_return.return_date.toISOString().slice(0, 10),
+        qty: roundQuantity(Number(line.qty) * Number(line.invoice_item.unit_factor)), restored: Number(line.stock_restored_qty), revenue: Number(line.revenue) }, ...(line.invoice_return.reversed_at ? [{ date: line.invoice_return.reversed_at.toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" }), qty: -roundQuantity(Number(line.qty) * Number(line.invoice_item.unit_factor)), restored: -Number(line.stock_restored_qty), revenue: -Number(line.revenue) }] : [])]),
     })), from, to);
     return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

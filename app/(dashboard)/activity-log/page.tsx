@@ -15,6 +15,7 @@ import {
 type EventType =
   | "invoice"
   | "invoice_return"
+  | "return_period"
   | "payment_in"
   | "payment_out"
   | "salary"
@@ -37,6 +38,7 @@ interface ActivityEntry {
 // ─── Config maps ─────────────────────────────────────────────────────────────
 
 const EVENT_COLORS: Record<EventType, { bg: string; color: string; border: string }> = {
+  return_period: { bg: "#F8FAFC", color: "#475569", border: "#E2E8F0" },
   invoice_return: { bg: "var(--blue-pale)", color: "var(--blue-deeper)", border: "var(--gray-200)" },
   invoice:        { bg: "#EFF6FF", color: "#1D4ED8", border: "#BFDBFE" },
   payment_in:     { bg: "#F0F9FF", color: "#15803D", border: "#BBF7D0" },
@@ -48,6 +50,7 @@ const EVENT_COLORS: Record<EventType, { bg: string; color: string; border: strin
 };
 
 const EVENT_ICONS: Record<EventType, React.ElementType> = {
+  return_period: FileText,
   invoice_return: RefreshCw,
   invoice:        FileText,
   payment_in:     TrendingUp,
@@ -59,6 +62,7 @@ const EVENT_ICONS: Record<EventType, React.ElementType> = {
 };
 
 const EVENT_LABELS: Record<EventType, string> = {
+  return_period: "Return period",
   invoice_return: "Return",
   invoice:        "Invoice",
   payment_in:     "Payment In",
@@ -267,6 +271,12 @@ dated(db
         all.push({ id: `return-${r.id}`, eventType: "invoice_return", title: r.title || "Invoice Return",
           subtitle: r.subtitle || "", amount: Number(r.amount), timestamp: r.created_at,
           badge: "Credit", userEmail: r.user_email, userName: r.user_name });
+        continue;
+      }
+      if (action === "update" && (["invoice_return", "supplier_return"].includes(r.entity_type) && r.title === "Return reversed" || r.entity_type === "return_period")) {
+        all.push({ id: `return-audit-${r.id}`, eventType: r.entity_type === "return_period" ? "return_period" : "invoice_return",
+          title: r.title, subtitle: r.subtitle || "", amount: r.amount == null ? undefined : Number(r.amount), timestamp: r.created_at,
+          badge: r.entity_type === "return_period" ? "Period change" : "Reversed", userEmail: r.user_email, userName: r.user_name });
         continue;
       }
       // For now we only render deletion rows here — the other rows are

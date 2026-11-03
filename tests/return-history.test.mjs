@@ -36,7 +36,7 @@ function harness({ signedIn = true, active = true, allowed = true, missing = fal
   const deps = {
     "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
     "@/lib/auth": { COOKIE_NAME: "auth", verifyToken: async () => signedIn ? { sub: "user" } : null },
-    "@/lib/prisma": { prisma }, "@/lib/moduleAccess": { canAccessPath: () => allowed }, "@/lib/returnHistory": history,
+    "@/lib/prisma": { prisma }, "@/lib/moduleAccess": { canAccessPath: () => allowed }, "@/lib/returnHistory": history, "@/lib/returnPeriod": { requiresLateConfirmation: () => true },
   };
   const module = { exports: {} };
   new Function("require", "module", "exports", compiled)(name => deps[name], module, module.exports);

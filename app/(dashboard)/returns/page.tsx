@@ -11,8 +11,8 @@ import { ReturnHistory } from "@/components/ReturnHistory";
 import { planInvoiceReturn, type ReturnLineSource, type ReturnedLine } from "@/lib/invoiceReturns";
 
 type InvoiceSummary = { id: string; invoice_number: string; client_name: string; invoice_date: string;
-  grand_total: string; is_walk_in: boolean; returns: { amount: string }[] };
-type ReturnRecord = { id: string; return_date: string; reason: string; amount: string; created_by_name: string;
+  grand_total: string; is_walk_in: boolean; returns: { amount: string; reversed_at?: string | null }[] };
+type ReturnRecord = { reversed_at?: string | null; reversal_reason?: string; reversed_by_name?: string; id: string; return_date: string; reason: string; amount: string; created_by_name: string;
   items: { id: string; product_name: string; description?: string; unit?: string; qty: string; amount: string; stock_restored_qty: string }[] };
 type InvoiceDetail = Omit<InvoiceSummary, "returns"> & { discount_amount: string;
   items: (ReturnLineSource & { product: { name: string } | null; available_qty?: string | null; return_items: ReturnedLine[] })[];
@@ -169,7 +169,7 @@ export default function ReturnsPage() {
       <button type="button" aria-pressed={historyOpen} disabled={locked} className={buttonClass} style={historyOpen ? { background: "var(--blue-deeper)", color: "white" } : undefined}
         onClick={() => { setSelectedId(null); setInvoice(null); setHistoryOpen(true); }}>Return History</button>
     </div>
-    {historyOpen ? <ReturnHistory onPrint={entry => setReceipt({ record: entry, invoiceNumber: entry.invoice_number, party: entry.party, supplier: entry.type === "supplier" })} /> : <>
+    {historyOpen ? <ReturnHistory onChanged={() => setRefresh(v => v + 1)} onPrint={entry => setReceipt({ record: entry, invoiceNumber: entry.invoice_number, party: entry.party, supplier: entry.type === "supplier" })} /> : <>
     {!selectedId && success && <p role="status" className="mb-4 rounded-[8px] border border-[var(--green)] bg-[var(--green-light)] p-3 text-sm">{success}</p>}
     <div className="bg-white border border-[var(--gray-100)] rounded-[14px] mb-6 overflow-hidden">
       <div className="p-4 border-b border-[var(--gray-100)]">
@@ -185,7 +185,7 @@ export default function ReturnsPage() {
             <td className={`${DT.td} ${DT.cellPrimary}`}>{row.invoice_number}</td><td className={`${DT.td} whitespace-nowrap`}>{formatDate(row.invoice_date)}</td>
             <td className={DT.td}>{row.client_name || "Walk-in"}{row.is_walk_in && <span className="block text-xs text-[var(--gray-800)]">Walk-in</span>}</td>
             <td className={`${DT.td} ${DT.cellMono} text-right`}>{formatCurrency(Number(row.grand_total))}</td>
-            <td className={`${DT.td} ${DT.cellMono} text-right`}>{formatCurrency(row.returns.reduce((sum, entry) => sum + Number(entry.amount), 0))}</td>
+            <td className={`${DT.td} ${DT.cellMono} text-right`}>{formatCurrency(row.returns.filter(entry => !entry.reversed_at).reduce((sum, entry) => sum + Number(entry.amount), 0))}</td>
             <td className={`${DT.td} text-right`}><button type="button" disabled={locked} onClick={() => { setInvoice(null); setDetailLoading(true); setSelectedId(row.id); setSuccess(""); }} className={buttonClass}>Return</button></td>
           </tr>)}{!loading && !list.length && <tr><td colSpan={6} className={DT.empty}>No invoices match your search.</td></tr>}</tbody>
         </table></div>}
@@ -242,7 +242,7 @@ export default function ReturnsPage() {
       </>}
       <div className="mt-6 border-t border-[var(--gray-100)] pt-4"><h3 className="text-base font-bold mb-3">Return history</h3>
         {!invoice.returns.length ? <p className="text-sm text-[var(--gray-800)]">No returns recorded for this invoice.</p> : <div className="space-y-3">{invoice.returns.map(record => <div key={record.id} className="border border-[var(--gray-100)] rounded-[8px] p-3 text-sm">
-          <div className="flex flex-wrap justify-between gap-2"><strong>{formatDate(record.return_date)}</strong><strong className="font-mono">{formatCurrency(Number(record.amount))}</strong></div>
+          <div className="flex flex-wrap justify-between gap-2"><strong>{formatDate(record.return_date)}{record.reversed_at ? " · REVERSED" : ""}</strong><strong className="font-mono">{formatCurrency(Number(record.amount))}</strong></div>
           <p className="text-xs text-[var(--gray-800)] break-all">Return ID: {record.id} · {record.created_by_name}</p>
           <button type="button" className={`${buttonClass} my-2`} disabled={locked} onClick={() => printReceipt(record, invoice)}><Printer size={15} className="inline mr-2" />Print receipt</button>
           {record.reason && <p className="mt-1 whitespace-pre-wrap">{record.reason}</p>}
@@ -255,9 +255,9 @@ export default function ReturnsPage() {
     </>}
   </div>
     {receipt && <div ref={receiptRef} className="print-only invoice-print-root">
-      <InvoiceDocument data={{ title: receipt.supplier ? "Supplier return" : "Sales return", returnDocument: true,
+      <InvoiceDocument data={{ title: receipt.record.reversed_at ? "Reversed return" : receipt.supplier ? "Supplier return" : "Sales return", returnDocument: true,
         number: receipt.record.id, reference: receipt.invoiceNumber, date: receipt.record.return_date,
-        party: receipt.party, notes: receipt.record.reason, processedBy: receipt.record.created_by_name,
+        party: receipt.party, notes: `${receipt.record.reversed_at ? "REVERSED — Original credit is cancelled. " : ""}${receipt.record.reason}`, processedBy: receipt.record.created_by_name,
         lines: receipt.record.items.map(item => ({ product: item.product_name, description: item.description, qty: Number(item.qty), unit: item.unit, amount: Number(item.amount) })),
         totals: [{ label: "Total credit (PKR)", value: Number(receipt.record.amount), strong: true }] }} />
     </div>}

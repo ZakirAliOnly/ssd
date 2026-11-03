@@ -685,7 +685,7 @@ export async function POST(req: NextRequest) {
             await lockInventoryUnits(tx);
             await tx.$queryRawUnsafe('SELECT id FROM purchase_orders WHERE id = $1::uuid FOR UPDATE', purchase.id);
             const fresh = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } });
-            const returns = await tx.supplierReturn.findMany({ where: { purchase_order_id: purchase.id } });
+            const returns = await tx.supplierReturn.findMany({ where: { purchase_order_id: purchase.id, reversed_at: null } });
             const credit = returns.reduce((sum, item) => sum + Number(item.amount), 0);
             const paid = Number((updateData as Record<string, unknown>).amount_paid ?? fresh.amount_paid);
             if (!Number.isFinite(paid) || paid < 0 || Math.abs(paid - Math.round(paid * 100) / 100) > 0.00000001
@@ -712,8 +712,8 @@ export async function POST(req: NextRequest) {
         await partySettlementTransaction(prisma, async tx => {
           const entries = await tx.cashbook.findMany({ where, select: { id: true, account_name: true }, orderBy: { id: "asc" } });
           for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
-          const returns = await tx.invoiceReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
-          const supplierReturns = await tx.supplierReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
+          const returns = await tx.invoiceReturn.findMany({ where: { OR: [{ credit_entry_id: { in: entries.map(entry => entry.id) } }, { reversal_credit_entry_id: { in: entries.map(entry => entry.id) } }] }, take: 1 });
+          const supplierReturns = await tx.supplierReturn.findMany({ where: { OR: [{ credit_entry_id: { in: entries.map(entry => entry.id) } }, { reversal_credit_entry_id: { in: entries.map(entry => entry.id) } }] }, take: 1 });
           if (returns.length || supplierReturns.length) throw new InventoryError("Return credits cannot be edited. Record a separate adjustment if needed.");
           await tx.cashbook.updateMany({ where: { id: { in: entries.map(entry => entry.id) } }, data: coerceDates(updateData, table) });
           for (const name of new Set([...entries.map(e => e.account_name), String((updateData as Record<string, unknown>).account_name ?? "")])) await settlePartyInvoices(tx, name);
@@ -777,8 +777,8 @@ export async function POST(req: NextRequest) {
         await partySettlementTransaction(prisma, async tx => {
           const entries = await tx.cashbook.findMany({ where, select: { id: true, account_name: true }, orderBy: { id: "asc" } });
           for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
-          const returns = await tx.invoiceReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
-          const supplierReturns = await tx.supplierReturn.findMany({ where: { credit_entry_id: { in: entries.map(entry => entry.id) } }, take: 1 });
+          const returns = await tx.invoiceReturn.findMany({ where: { OR: [{ credit_entry_id: { in: entries.map(entry => entry.id) } }, { reversal_credit_entry_id: { in: entries.map(entry => entry.id) } }] }, take: 1 });
+          const supplierReturns = await tx.supplierReturn.findMany({ where: { OR: [{ credit_entry_id: { in: entries.map(entry => entry.id) } }, { reversal_credit_entry_id: { in: entries.map(entry => entry.id) } }] }, take: 1 });
           if (returns.length || supplierReturns.length) throw new InventoryError("Return credits cannot be deleted. Return history must remain intact.");
           await auditDeletion(tx, "cashbook", { id: { in: entries.map(entry => entry.id) } });
           await tx.cashbook.deleteMany({ where: { id: { in: entries.map(entry => entry.id) } } });
