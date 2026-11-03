@@ -41,6 +41,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
   const rowBatch = row => state.batches.find(batch => batch.id === row.batch_id);
   function matches(row, where = {}) {
     return Object.entries(where).every(([key, expected]) => {
+      if (key === "AND") return (Array.isArray(expected) ? expected : [expected]).every(condition => matches(row, condition));
       if (key === "OR") return expected.some(condition => matches(row, condition));
       if (key === "invoice_return") return matches(state.returns.find(r => r.id === row.return_id) ?? {}, expected);
       if (key === "supplier_return") return matches(state.supplierReturns.find(r => r.id === row.return_id) ?? {}, expected);

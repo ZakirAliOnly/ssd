@@ -143,6 +143,20 @@ function buildWhere(filters: Filter[], table?: string): Record<string, unknown> 
         where[f.col] = { not: coerce(f.col, f.val) };
         break;
       case "in":
+        // Prisma's Boolean filter has equals/not, but no scalar `in` operator.
+        // Products requests both statuses so its Active/Inactive/All picker can
+        // filter locally. Keep other predicates and the active-only default.
+        if (table === "products" && f.col === "is_active") {
+          if (!Array.isArray(f.val) || f.val.some(value => typeof value !== "boolean")) {
+            throw new ProductValidationError("Product status filters must contain true or false values.");
+          }
+          const predicates = [...new Set(f.val)].map(value => ({ is_active: value }));
+          // An empty OR nested inside AND can be optimized away by Prisma.
+          // Use an explicit contradiction for an empty inclusion list.
+          const conditions = predicates.length ? [{ OR: predicates }] : [{ is_active: true }, { is_active: false }];
+          where.AND = [...(where.AND as Record<string, unknown>[] ?? []), ...conditions];
+          break;
+        }
         where[f.col] = { in: (f.val as unknown[]).map((v) => coerce(f.col, v)) };
         break;
       case "ilike": {
