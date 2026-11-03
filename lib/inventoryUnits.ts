@@ -45,6 +45,7 @@ export async function convertProductUnits(tx: Prisma.TransactionClient, productI
   await tx.$executeRaw`UPDATE purchase_order_items SET unit_factor = unit_factor * ${factor}, stock_received_qty = stock_received_qty * ${factor} WHERE product_id = ${productId}::uuid`;
   await tx.$executeRaw`UPDATE invoice_return_items SET stock_restored_qty = stock_restored_qty * ${factor} WHERE product_id = ${productId}::uuid`;
   await tx.$executeRaw`UPDATE supplier_return_items SET stock_removed_qty = stock_removed_qty * ${factor} WHERE purchase_item_id IN (SELECT id FROM purchase_order_items WHERE product_id = ${productId}::uuid)`;
+  await tx.$executeRaw`UPDATE return_reversal_stock SET qty = qty * ${factor} WHERE batch_id IN (SELECT id FROM stock_batches WHERE product_id = ${productId}::uuid)`;
   await tx.product.update({ where: { id: productId }, data: { quantity: expectedQty * factor,
     cost_price: Number(product.cost_price) / factor, packaging_converted_at: new Date() } });
 }

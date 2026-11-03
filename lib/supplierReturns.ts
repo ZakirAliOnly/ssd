@@ -1,3 +1,4 @@
+import { assertReturnPeriodOpen, businessDate } from "./returnPeriod";
 import type { Prisma } from "@prisma/client";
 import { lockInventoryUnits } from "./inventoryUnits";
 import { InventoryError, syncProductStock } from "./inventory";
@@ -13,13 +14,14 @@ export async function saveSupplierReturn(tx: Prisma.TransactionClient, input: {
     if (existing.purchase_order_id !== input.invoiceId) throw new InventoryError("This request was already used for another purchase invoice.");
     return existing;
   }
+  await assertReturnPeriodOpen(tx, [input.date, businessDate()]);
   const purchase = await tx.purchaseOrder.findUnique({ where: { id: input.invoiceId }, include: { items: { include: { stock_batch: true } } } });
   if (!purchase) throw new InventoryError("Supplier invoice not found.");
   if (!purchase.supplier_id) throw new InventoryError("This invoice has no linked supplier. Link the supplier before returning it.");
   const supplier = await tx.supplier.findUnique({ where: { id: purchase.supplier_id } });
   if (!supplier) throw new InventoryError("The linked supplier no longer exists.");
   if (input.date < purchase.order_date.toISOString().slice(0, 10)) throw new InventoryError("Return date cannot be before the purchase invoice date.");
-  const previous = await tx.supplierReturnItem.findMany({ where: { purchase_item_id: { in: purchase.items.map(item => item.id) } } });
+  const previous = await tx.supplierReturnItem.findMany({ where: { purchase_item_id: { in: purchase.items.map(item => item.id) }, supplier_return: { reversed_at: null } } });
   const plan = planInvoiceReturn({ id: purchase.id, grand_total: purchase.grand_total,
     discount_amount: purchase.items.reduce((sum, item) => sum + Number(item.amount), 0) - Number(purchase.grand_total),
     items: purchase.items.map(item => ({ ...item, category: item.description, stock_deducted_qty: item.stock_received_qty })) },
@@ -45,7 +47,7 @@ export async function saveSupplierReturn(tx: Prisma.TransactionClient, input: {
     date: new Date(input.date), description: `Supplier return ${purchase.po_number} / ${record.id}${input.reason ? `: ${input.reason}` : ""}`,
     account_name: supplier.name, reference: supplier.id, created_by_email: user.email, created_by_name: user.name } });
   const saved = await tx.supplierReturn.update({ where: { id: record.id }, data: { credit_entry_id: credit.id } });
-  const allReturns = await tx.supplierReturn.findMany({ where: { purchase_order_id: purchase.id } });
+  const allReturns = await tx.supplierReturn.findMany({ where: { purchase_order_id: purchase.id, reversed_at: null } });
   const due = Math.round((Number(purchase.grand_total) - Number(purchase.amount_paid) - allReturns.reduce((sum, item) => sum + Number(item.amount), 0)) * 100) / 100;
   await tx.purchaseOrder.update({ where: { id: purchase.id }, data: { balance_due: due,
     payment_status: due <= 0 ? "paid" : Number(purchase.amount_paid) > 0 || allReturns.length ? "partial" : "unpaid" } });

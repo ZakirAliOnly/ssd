@@ -1,3 +1,4 @@
+import { assertReturnPeriodOpen, businessDate } from "./returnPeriod";
 import type { Prisma } from "@prisma/client";
 import { lockInventoryUnits } from "./inventoryUnits";
 import { InventoryError, roundQuantity, validQuantity, syncProductStock } from "./inventory";
@@ -87,10 +88,11 @@ export async function saveInvoiceReturn(tx: Prisma.TransactionClient, input: {
     if (existing.invoice_id !== input.invoiceId) throw new InventoryError("This request was already used for another invoice.");
     return existing;
   }
+  await assertReturnPeriodOpen(tx, [input.date, businessDate()]);
   const invoice = await tx.invoice.findUnique({ where: { id: input.invoiceId }, include: { items: true } });
   if (!invoice) throw new InventoryError("Invoice not found. Search again and select an invoice.");
   if (input.date < invoice.invoice_date.toISOString().slice(0, 10)) throw new InventoryError("Return date cannot be before the invoice date.");
-  const previous = await tx.invoiceReturnItem.findMany({ where: { invoice_item_id: { in: invoice.items.map(item => item.id) } } });
+  const previous = await tx.invoiceReturnItem.findMany({ where: { invoice_item_id: { in: invoice.items.map(item => item.id) }, invoice_return: { reversed_at: null } } });
   const plan = planInvoiceReturn(invoice, previous, input.selections);
   const record = await tx.invoiceReturn.create({ data: {
     request_id: input.requestId, invoice_id: invoice.id, return_date: new Date(input.date),
@@ -106,7 +108,7 @@ export async function saveInvoiceReturn(tx: Prisma.TransactionClient, input: {
     let needed = line.stock_restored_qty;
     const allocations = await tx.stockAllocation.findMany({
       where: { invoice_id: invoice.id, batch: { product_id: line.product_id } },
-      include: { returns: true }, orderBy: [{ created_at: "desc" }, { id: "desc" }],
+      include: { returns: { where: { return_item: { invoice_return: { reversed_at: null } } } } }, orderBy: [{ created_at: "desc" }, { id: "desc" }],
     });
     for (const allocation of allocations) {
       const available = roundQuantity(Number(allocation.qty) - allocation.returns.reduce((sum, entry) => sum + Number(entry.qty), 0));
@@ -120,9 +122,10 @@ export async function saveInvoiceReturn(tx: Prisma.TransactionClient, input: {
     if (needed) {
       // Legacy sales have no batch allocation. Receive the physical return as a new batch.
       const source = await tx.product.findUniqueOrThrow({ where: { id: line.product_id } });
-      await tx.stockBatch.create({ data: { product_id: line.product_id,
+      const restoredBatch = await tx.stockBatch.create({ data: { product_id: line.product_id,
         received_qty: needed, remaining_qty: needed, unit_cost: source.cost_price, expiry_date: source.expiry_date,
         received_date: new Date(input.date) } });
+      await tx.invoiceReturnItem.update({ where: { id: savedLine.id }, data: { restored_batch_id: restoredBatch.id } });
     }
   }
   for (const productId of products) {

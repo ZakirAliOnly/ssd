@@ -2,6 +2,8 @@ export type ReturnHistoryItem = { unit?: string; id: string; product_name: strin
 export type ReturnHistoryEntry = {
   id: string; type: "sales" | "supplier"; return_date: string; created_at: string; reason: string; amount: string; created_by_name: string;
   invoice_number: string; party: string; invoice_date: string; scope: "Whole invoice" | "Remaining invoice" | "Selected items";
+  reversed_at?: string | null; reversal_reason?: string; reversed_by_name?: string;
+  needs_late_confirmation?: boolean;
   items: ReturnHistoryItem[];
 };
 type Quantity = { id: string; qty: unknown };

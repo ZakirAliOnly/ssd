@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { COOKIE_NAME, verifyToken } from "@/lib/auth";
 import { canAccessPath } from "@/lib/moduleAccess";
+import { requiresLateConfirmation } from "@/lib/returnPeriod";
 import { returnScope, type ReturnHistoryEntry } from "@/lib/returnHistory";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -31,11 +32,12 @@ export async function GET(request: NextRequest) {
           include: { items: true, purchase_order: { include: { items: true, returns: { include: { items: true } } } } },
         });
         const returns: ReturnHistoryEntry[] = records.map(r => ({
+          reversed_at: r.reversed_at?.toISOString() ?? null, reversal_reason: r.reversal_reason, reversed_by_name: r.reversed_by_name, needs_late_confirmation: requiresLateConfirmation(r.created_at),
           id: r.id, type: "supplier", return_date: r.return_date.toISOString(), created_at: r.created_at.toISOString(), reason: r.reason,
           amount: String(r.amount), created_by_name: r.created_by_name, invoice_number: r.purchase_order.po_number,
           invoice_date: r.purchase_order.order_date.toISOString(), party: r.purchase_order.supplier_name,
           scope: returnScope(r.purchase_order.items, r.items.map(i => ({ id: i.purchase_item_id, qty: i.qty })),
-            r.purchase_order.returns.filter(p => p.created_at < r.created_at || (+p.created_at === +r.created_at && p.id < r.id)).flatMap(p => p.items.map(i => ({ id: i.purchase_item_id, qty: i.qty })))),
+            r.purchase_order.returns.filter(p => (!p.reversed_at || p.reversed_at > r.created_at) && (p.created_at < r.created_at || (+p.created_at === +r.created_at && p.id < r.id))).flatMap(p => p.items.map(i => ({ id: i.purchase_item_id, qty: i.qty })))),
           items: r.items.map(i => ({ id: i.id, unit: i.unit, product_name: i.product_name, description: i.description, qty: String(i.qty), amount: String(i.amount), stock_restored_qty: String(i.stock_removed_qty) })),
         }));
         return { returns, count, page };
@@ -50,11 +52,12 @@ export async function GET(request: NextRequest) {
         include: { items: true, invoice: { include: { items: true, returns: { include: { items: true } } } } },
       });
       const returns: ReturnHistoryEntry[] = records.map(r => ({
+        reversed_at: r.reversed_at?.toISOString() ?? null, reversal_reason: r.reversal_reason, reversed_by_name: r.reversed_by_name, needs_late_confirmation: requiresLateConfirmation(r.created_at),
         id: r.id, type: "sales", return_date: r.return_date.toISOString(), created_at: r.created_at.toISOString(), reason: r.reason,
         amount: String(r.amount), created_by_name: r.created_by_name, invoice_number: r.invoice.invoice_number,
         invoice_date: r.invoice.invoice_date.toISOString(), party: r.invoice.client_name || "Walk-in",
         scope: returnScope(r.invoice.items, r.items.map(i => ({ id: i.invoice_item_id, qty: i.qty })),
-          r.invoice.returns.filter(p => p.created_at < r.created_at || (+p.created_at === +r.created_at && p.id < r.id)).flatMap(p => p.items.map(i => ({ id: i.invoice_item_id, qty: i.qty })))),
+          r.invoice.returns.filter(p => (!p.reversed_at || p.reversed_at > r.created_at) && (p.created_at < r.created_at || (+p.created_at === +r.created_at && p.id < r.id))).flatMap(p => p.items.map(i => ({ id: i.invoice_item_id, qty: i.qty })))),
         items: r.items.map(i => ({ id: i.id, unit: i.unit, product_name: i.product_name, description: i.description, qty: String(i.qty), amount: String(i.amount), stock_restored_qty: String(i.stock_restored_qty) })),
       }));
       return { returns, count, page };

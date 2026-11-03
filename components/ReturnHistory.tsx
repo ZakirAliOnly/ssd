@@ -1,5 +1,8 @@
 "use client";
 
+import { ReverseReturn } from "./ReverseReturn";
+import { ReturnPeriodSettings } from "./ReturnPeriodSettings";
+import { useUser } from "@/lib/UserContext";
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/helpers";
@@ -9,7 +12,8 @@ import type { ReturnHistoryEntry } from "@/lib/returnHistory";
 const button = "border border-[var(--gray-200)] rounded-[8px] px-3 py-2 text-sm font-semibold bg-white hover:bg-[var(--blue-pale)] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-[var(--blue)] cursor-pointer";
 const input = "border border-[var(--gray-200)] rounded-[8px] px-3 py-2 text-sm bg-[var(--gray-50)] focus-visible:outline-2 focus-visible:outline-[var(--blue)]";
 
-export function ReturnHistory({ onPrint }: { onPrint: (entry: ReturnHistoryEntry) => void }) {
+export function ReturnHistory({ onPrint, onChanged }: { onPrint: (entry: ReturnHistoryEntry) => void; onChanged?: () => void }) {
+  const user = useUser();
   const [type, setType] = useState<"sales" | "supplier">("sales");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -41,6 +45,7 @@ export function ReturnHistory({ onPrint }: { onPrint: (entry: ReturnHistoryEntry
   const reset = () => { setPage(1); setRows([]); setLoading(true); setError(""); };
   return <section className="bg-white rounded-[14px] border border-[var(--gray-100)] p-4 sm:p-5">
     <h2 className="text-lg font-bold mb-4">Return History</h2>
+    {user?.isAdmin && <ReturnPeriodSettings />}
     {selectedId ? <button type="button" className={`${button} mb-4`} onClick={() => { setSelectedId(null); setDetail(null); setLoading(true); }}><ChevronLeft size={16} className="inline mr-1" />Back to history</button> : <div className="flex flex-wrap gap-3 mb-4">
       <label className="flex flex-col gap-1 text-sm font-semibold">Return type
         <select value={type} className={input} onChange={e => { setType(e.target.value as "sales" | "supplier"); reset(); }}>
@@ -58,6 +63,8 @@ export function ReturnHistory({ onPrint }: { onPrint: (entry: ReturnHistoryEntry
         <div><h3 className="text-base font-bold">{detail.scope}</h3><p className="text-sm">{detail.invoice_number} · {detail.party}</p></div>
         <button type="button" className={button} onClick={() => onPrint(detail)}><Printer size={16} className="inline mr-2" />Print receipt</button>
       </div>
+      {detail.reversed_at && <p role="status" className="mb-4 rounded-lg border p-3 text-sm"><strong>REVERSED</strong> · {new Date(detail.reversed_at).toLocaleString("en-PK", { timeZone: "Asia/Karachi" })} · {detail.reversed_by_name}<br />{detail.reversal_reason}. Original credit cancelled; cash refunds are separate.</p>}
+      {user?.isAdmin && <ReverseReturn key={detail.id} entry={detail} onDone={() => { setRefresh(v => v + 1); onChanged?.(); }} />}
       <dl className="grid sm:grid-cols-2 gap-3 mb-4 text-sm">
         <div><dt className="font-semibold">Return date</dt><dd>{formatDate(detail.return_date)}</dd></div>
         <div><dt className="font-semibold">Invoice date</dt><dd>{formatDate(detail.invoice_date)}</dd></div>
@@ -76,13 +83,13 @@ export function ReturnHistory({ onPrint }: { onPrint: (entry: ReturnHistoryEntry
         </tr>)}</tbody>
         <tfoot><tr className="font-bold"><td colSpan={3} className={DT.tdDense}>Total credit</td><td className={`${DT.tdDense} text-right font-mono`}>{formatCurrency(Number(detail.amount))}</td></tr></tfoot>
       </table></div>
-      <p className="text-xs text-[var(--gray-800)] mt-3">This record credits the return value. Cash refunds are recorded separately.</p>
+      <p className="text-xs text-[var(--gray-800)] mt-3">{detail.reversed_at ? "This original credit has been reversed. The original record is retained for audit." : "This record credits the return value. Cash refunds are recorded separately."}</p>
     </div>}
     {!selectedId && !loading && !error && <>
       <div className="overflow-x-auto"><table className={`${DT.table} min-w-[700px]`}>
         <thead><tr>{["Return date", "Invoice", "Party / Supplier", "Return scope", "Credit", ""].map((h, i) => <th key={i} scope="col" className={`${DT.thDense} ${i === 4 ? "text-right" : "text-left"}`} style={DT.thStyle}>{h}</th>)}</tr></thead>
         <tbody>{rows.map(row => <tr key={row.id} className={DT.row}>
-          <td className={DT.tdDense}>{formatDate(row.return_date)}</td><td className={DT.tdDense}>{row.invoice_number}</td><td className={DT.tdDense}>{row.party}</td><td className={DT.tdDense}>{row.scope}</td>
+          <td className={DT.tdDense}>{formatDate(row.return_date)}</td><td className={DT.tdDense}>{row.invoice_number}</td><td className={DT.tdDense}>{row.party}</td><td className={DT.tdDense}>{row.scope}{row.reversed_at && <strong className="block text-[var(--red)]">REVERSED</strong>}</td>
           <td className={`${DT.tdDense} text-right font-mono`}>{formatCurrency(Number(row.amount))}</td>
           <td className={DT.tdDense}><button type="button" className={button} aria-label={`View return details for ${row.invoice_number} on ${formatDate(row.return_date)}`} onClick={() => { setSelectedId(row.id); setDetail(null); setLoading(true); }}>View details</button></td>
         </tr>)}{!rows.length && <tr><td colSpan={6} className={DT.empty}>No returns match your search.</td></tr>}</tbody>

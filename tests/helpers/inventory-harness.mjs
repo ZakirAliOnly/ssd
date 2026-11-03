@@ -15,13 +15,14 @@ const compiled = compile("../../app/api/db/route.ts");
 const inventoryUnits = (await import("./load-ts.mjs")).tsLoader({ "./inventory": inventory })("lib/inventoryUnits.ts");
 const purchaseModule = { exports: {} };
 new Function("require", "module", "exports", compile("../../lib/purchaseInventory.ts"))(
-  name => name === "./inventoryUnits" ? inventoryUnits : name === "./inventory" ? inventory : require(name), purchaseModule, purchaseModule.exports);
+  name => name === "./returnPeriod" ? returnPeriod : name === "./inventoryUnits" ? inventoryUnits : name === "./inventory" ? inventory : require(name), purchaseModule, purchaseModule.exports);
+const returnPeriod = (await import("./load-ts.mjs")).tsLoader({ "./inventory": inventory })("lib/returnPeriod.ts");
 const returnModule = { exports: {} };
 new Function("require", "module", "exports", compile("../../lib/invoiceReturns.ts"))(
-  name => name === "./inventoryUnits" ? inventoryUnits : name === "./inventory" ? inventory : require(name), returnModule, returnModule.exports);
+  name => name === "./returnPeriod" ? returnPeriod : name === "./inventoryUnits" ? inventoryUnits : name === "./inventory" ? inventory : require(name), returnModule, returnModule.exports);
 const supplierReturnModule = { exports: {} };
 new Function("require", "module", "exports", compile("../../lib/supplierReturns.ts"))(
-  name => name === "./inventoryUnits" ? inventoryUnits : name === "./inventory" ? inventory : name === "./invoiceReturns" ? returnModule.exports : require(name), supplierReturnModule, supplierReturnModule.exports);
+  name => name === "./returnPeriod" ? returnPeriod : name === "./inventoryUnits" ? inventoryUnits : name === "./inventory" ? inventory : name === "./invoiceReturns" ? returnModule.exports : require(name), supplierReturnModule, supplierReturnModule.exports);
 
 /** Rollback-capable adapter exercising the real route and batch algorithms. */
 export function harness(profile = { role: "super_admin", modules: [], is_active: true }, openingQty = 10) {
@@ -41,6 +42,8 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
   function matches(row, where = {}) {
     return Object.entries(where).every(([key, expected]) => {
       if (key === "OR") return expected.some(condition => matches(row, condition));
+      if (key === "invoice_return") return matches(state.returns.find(r => r.id === row.return_id) ?? {}, expected);
+      if (key === "supplier_return") return matches(state.supplierReturns.find(r => r.id === row.return_id) ?? {}, expected);
       if (key === "batch") return matches(rowBatch(row) ?? {}, expected);
       if (key === "invoice_id_batch_id") return matches(row, expected);
       if (expected && typeof expected === "object") {
@@ -64,12 +67,12 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     const hydrate = (row, include) => ({ ...row,
       ...(key === "purchases" && include?.items ? { items: state.purchaseItems.filter(item => item.purchase_order_id === row.id).map(item => ({ ...item,
         stock_batch: state.batches.find(batch => batch.purchase_item_id === item.id) ?? null,
-        return_items: state.supplierReturnItems.filter(entry => entry.purchase_item_id === item.id),
+        return_items: state.supplierReturnItems.filter(entry => entry.purchase_item_id === item.id && !state.supplierReturns.find(r => r.id === entry.return_id)?.reversed_at),
       })) } : {}),
       ...(key === "purchases" && include?.returns ? { returns: state.supplierReturns.filter(entry => entry.purchase_order_id === row.id).map(entry => ({ ...entry, items: state.supplierReturnItems.filter(item => item.return_id === entry.id) })) } : {}),
       ...(key === "invoices" && include?.items ? { items: state.invoiceItems.filter(item => item.invoice_id === row.id).map(item => ({ ...item,
         product: state.products.find(product => product.id === item.product_id) ?? null,
-        return_items: state.returnItems.filter(entry => entry.invoice_item_id === item.id),
+        return_items: state.returnItems.filter(entry => entry.invoice_item_id === item.id && !state.returns.find(r => r.id === entry.return_id)?.reversed_at),
       })) } : {}),
       ...(key === "invoices" && include?.returns ? { returns: state.returns.filter(entry => entry.invoice_id === row.id).map(entry => ({ ...entry, items: state.returnItems.filter(item => item.return_id === entry.id) })) } : {}),
       ...(key === "allocations" && include?.returns ? { returns: state.returnAllocations.filter(entry => entry.stock_allocation_id === row.id) } : {}),
@@ -98,6 +101,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
       async create({ data }) {
         const row = { id: randomUUID(), created_at: new Date(Date.UTC(2026, 9, 6) + ticks++),
           ...(key === "purchaseItems" ? { stock_received_qty: 0 } : {}),
+          ...(["returns", "supplierReturns"].includes(key) ? { reversed_at: null } : {}),
           ...(key === "batches" ? { purchase_item_id: null } : {}), ...data };
         if (key === "invoices") Object.assign(row, { discount_amount: 0, amount_received: 0, is_walk_in: false, ...row });
         state[key].push(row); return { ...row };
@@ -125,6 +129,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     return api;
   }
   const prisma = {
+    returnPeriodLock: { findUnique: async () => null },
     product: model("products"), invoice: model("invoices"), invoiceItem: model("invoiceItems"), stockBatch: model("batches"),
     stockAllocation: model("allocations"), purchaseOrder: model("purchases"), purchaseOrderItem: model("purchaseItems"), supplier: model("suppliers"),
     quickInvoice: { findMany: async () => [] }, user: { findUnique: async () => profile }, $queryRawUnsafe: async () => [],

@@ -175,6 +175,8 @@ model ProductCategory {
 model Cashbook {
   supplier_return SupplierReturn?
   invoice_return InvoiceReturn?
+  sales_reversal InvoiceReturn? @relation("SalesReversalCredit")
+  supplier_reversal SupplierReturn? @relation("SupplierReversalCredit")
   id               String   @id @default(uuid()) @db.Uuid
   type             String
   description      String
@@ -421,6 +423,8 @@ model PurchaseOrderItem {
 }
 
 model StockBatch {
+  reversal_movements ReturnReversalStock[]
+  legacy_return_items InvoiceReturnItem[] @relation("LegacyRestoredBatch")
   supplier_returns SupplierReturnItem[]
   id                    String            @id @default(uuid()) @db.Uuid
   product_id            String            @db.Uuid
@@ -456,6 +460,14 @@ model SupplierReturn {
 
   @@map("supplier_returns")
   @@index([purchase_order_id, return_date])
+  reversed_at DateTime? @db.Timestamptz(6)
+  reversal_reason String @default("")
+  reversed_by_email String @default("")
+  reversed_by_name String @default("")
+  reversal_credit_entry_id String? @unique @db.Uuid
+  reversal_credit_entry Cashbook? @relation("SupplierReversalCredit", fields: [reversal_credit_entry_id], references: [id], onDelete: Restrict)
+  reversal_stock ReturnReversalStock[]
+
 }
 
 model SupplierReturnItem {
@@ -510,9 +522,19 @@ model InvoiceReturn {
 
   @@map("invoice_returns")
   @@index([invoice_id, return_date])
+  reversed_at DateTime? @db.Timestamptz(6)
+  reversal_reason String @default("")
+  reversed_by_email String @default("")
+  reversed_by_name String @default("")
+  reversal_credit_entry_id String? @unique @db.Uuid
+  reversal_credit_entry Cashbook? @relation("SalesReversalCredit", fields: [reversal_credit_entry_id], references: [id], onDelete: Restrict)
+  reversal_stock ReturnReversalStock[]
+
 }
 
 model InvoiceReturnItem {
+  restored_batch_id String? @db.Uuid
+  restored_batch StockBatch? @relation("LegacyRestoredBatch", fields: [restored_batch_id], references: [id], onDelete: Restrict)
   id                 String @id @default(uuid()) @db.Uuid
   return_id          String @db.Uuid
   invoice_return     InvoiceReturn @relation(fields: [return_id], references: [id], onDelete: Restrict)
@@ -706,4 +728,27 @@ model ActivityLog {
   @@index([action])
   @@index([user_id])
   @@map("activity_log")
+}
+
+// Positive quantities; direction is sales = stock out, supplier = stock in.
+model ReturnReversalStock {
+  id String @id @default(uuid()) @db.Uuid
+  sales_return_id String? @db.Uuid
+  sales_return InvoiceReturn? @relation(fields: [sales_return_id], references: [id], onDelete: Restrict)
+  supplier_return_id String? @db.Uuid
+  supplier_return SupplierReturn? @relation(fields: [supplier_return_id], references: [id], onDelete: Restrict)
+  batch_id String @db.Uuid
+  batch StockBatch @relation(fields: [batch_id], references: [id], onDelete: Restrict)
+  qty Decimal @db.Decimal(14,2)
+  movement_date DateTime @db.Date
+  @@map("return_reversal_stock")
+  @@index([batch_id, movement_date])
+}
+
+// Singleton cutoff: all return dates through closed_through are closed.
+model ReturnPeriodLock {
+  id Int @id @default(1)
+  closed_through DateTime? @db.Date
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  @@map("return_period_lock")
 }

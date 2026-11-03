@@ -24,6 +24,13 @@ alone does not apply these database constraints.
 
 ### Returns module deployment
 
+For **Update 034**, deploy with `npm run db:upgrade:return-reversals` and regenerate
+Prisma before starting the new app. Super admin can reverse a mistaken return in
+**Returns → Return History → View details**, with a reason and refund review.
+After 24 hours from creation, typed confirmation is required. Configure closed
+return dates in **Return accounting period — admin**. See
+[Update 034](docs/updates/034-reverse-returns.md) for safeguards and deployment.
+
 After deploying this source to the VPS, run these commands from the app folder
 with its production database configured in `.env`:
 

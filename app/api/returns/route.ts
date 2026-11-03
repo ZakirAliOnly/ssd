@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { settlePartyInvoices } from "@/lib/partyInvoiceSettlement";
+import { isTransactionConflict, settlePartyInvoices } from "@/lib/partyInvoiceSettlement";
 import { prisma } from "@/lib/prisma";
 import { COOKIE_NAME, verifyToken } from "@/lib/auth";
 import { canAccessPath } from "@/lib/moduleAccess";
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       if (id) {
         if (!uuidPattern.test(id)) throw new InventoryError("Select a valid supplier invoice.");
         const purchase = await prisma.purchaseOrder.findUnique({ where: { id }, include: {
-          items: { include: { stock_batch: { include: { product: { select: { name: true } } } }, return_items: true }, orderBy: { id: "asc" } },
+          items: { include: { stock_batch: { include: { product: { select: { name: true } } } }, return_items: { where: { supplier_return: { reversed_at: null } } } }, orderBy: { id: "asc" } },
           returns: { include: { items: true }, orderBy: [{ created_at: "desc" }, { id: "desc" }] },
         } });
         if (!purchase) return NextResponse.json({ error: "Supplier invoice not found." }, { status: 404 });
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       const [purchases, count] = await prisma.$transaction([
         prisma.purchaseOrder.findMany({ where, take: 25, skip: (page - 1) * 25,
           orderBy: [{ order_date: "desc" }, { created_at: "desc" }, { id: "desc" }],
-          select: { id: true, po_number: true, supplier_name: true, order_date: true, grand_total: true, returns: { select: { amount: true } } } }),
+          select: { id: true, po_number: true, supplier_name: true, order_date: true, grand_total: true, returns: { where: { reversed_at: null }, select: { amount: true } } } }),
         prisma.purchaseOrder.count({ where }),
       ]);
       return NextResponse.json({ invoices: purchases.map(p => ({ ...p, invoice_number: p.po_number, client_name: p.supplier_name, invoice_date: p.order_date, is_walk_in: false })), count, page }, { headers: { "Cache-Control": "no-store" } });
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     if (id) {
       if (!uuidPattern.test(id)) throw new InventoryError("Select a valid invoice.");
       const invoice = await prisma.invoice.findUnique({ where: { id }, include: {
-        items: { include: { product: { select: { name: true } }, return_items: true }, orderBy: { id: "asc" } },
+        items: { include: { product: { select: { name: true } }, return_items: { where: { invoice_return: { reversed_at: null } } } }, orderBy: { id: "asc" } },
         returns: { include: { items: true }, orderBy: [{ created_at: "desc" }, { id: "desc" }] },
       } });
       if (!invoice) return NextResponse.json({ error: "Invoice not found." }, { status: 404 });
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     const [invoices, count] = await prisma.$transaction([
       prisma.invoice.findMany({ where, orderBy: [{ invoice_date: "desc" }, { created_at: "desc" }, { id: "desc" }],
         take: 25, skip: (page - 1) * 25, select: { id: true, invoice_number: true, client_name: true,
-          invoice_date: true, grand_total: true, is_walk_in: true, returns: { select: { amount: true } } } }),
+          invoice_date: true, grand_total: true, is_walk_in: true, returns: { where: { reversed_at: null }, select: { amount: true } } } }),
       prisma.invoice.count({ where }),
     ]);
     return NextResponse.json({ invoices, count, page }, { headers: { "Cache-Control": "no-store" } });
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
         }, { isolationLevel: "Serializable", timeout: 20000 });
         return NextResponse.json({ record });
       } catch (error) {
-        if (attempt < 3 && ["P2034", "P2002"].includes((error as { code?: string }).code ?? "")) continue;
+        if (attempt < 3 && (isTransactionConflict(error) || (error as { code?: string }).code === "P2002")) continue;
         throw error;
       }
     }

@@ -1,9 +1,14 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 
+export function isTransactionConflict(error: unknown): boolean {
+  const value = error as { code?: string; meta?: { code?: string } };
+  return value?.code === "P2034" || value?.code === "P2010" && ["40001", "40P01"].includes(value.meta?.code ?? "");
+}
+
 export async function partySettlementTransaction<T>(client: PrismaClient, work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try { return await client.$transaction(work, { isolationLevel: "Serializable", timeout: 20000 }); }
-    catch (error) { if (attempt >= 4 || (error as { code?: string }).code !== "P2034") throw error; }
+    catch (error) { if (attempt >= 4 || !isTransactionConflict(error)) throw error; }
   }
 }
 
@@ -46,7 +51,7 @@ export function planPartyInvoiceSettlement(invoices: SettlementInvoice[], entrie
 export async function settlePartyInvoices(tx: Prisma.TransactionClient, accountName: string) {
   if (!accountName.trim()) return;
   const invoices = await tx.invoice.findMany({ where: { client_name: { equals: accountName, mode: "insensitive" }, is_walk_in: false },
-    include: { returns: { select: { amount: true, credit_entry_id: true } } },
+    include: { returns: { where: { reversed_at: null }, select: { amount: true, credit_entry_id: true } } },
     orderBy: [{ invoice_date: "asc" }, { created_at: "asc" }, { id: "asc" }] });
   if (!invoices.length) return;
   const cash = await tx.cashbook.findMany({ where: { account_name: { equals: accountName, mode: "insensitive" } } });
