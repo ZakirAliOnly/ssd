@@ -1,7 +1,7 @@
 import { assertReturnPeriodOpen, businessDate } from "./returnPeriod";
 import type { Prisma } from "@prisma/client";
 import { lockInventoryUnits } from "./inventoryUnits";
-import { InventoryError, roundQuantity, validQuantity, syncProductStock } from "./inventory";
+import { InventoryError, roundQuantity, validQuantity, syncProductStock, createOpeningBatch } from "./inventory";
 
 type Value = number | string | { toString(): string };
 export type ReturnLineSource = { id: string; product_id: string | null; category: string; description: string;
@@ -101,6 +101,15 @@ export async function saveInvoiceReturn(tx: Prisma.TransactionClient, input: {
   // Lock products in the same order as sales to prevent lost stock updates.
   const products = [...new Set(plan.lines.filter(line => line.stock_restored_qty > 0).map(line => line.product_id!))].sort();
   for (const productId of products) await tx.$queryRawUnsafe('SELECT id FROM products WHERE id = $1::uuid FOR UPDATE', productId);
+  for (const productId of products) {
+    // Legacy on-hand stock may predate batch tracking. Preserve it before the
+    // return creates its first batch and stock is recalculated from batches.
+    // Include depleted batches: their existence means this is tracked stock.
+    if (await tx.stockBatch.count({ where: { product_id: productId } }) === 0) {
+      const product = await tx.product.findUniqueOrThrow({ where: { id: productId } });
+      await createOpeningBatch(tx, product);
+    }
+  }
   for (const line of plan.lines) {
     const product = line.product_id ? await tx.product.findUnique({ where: { id: line.product_id }, select: { name: true } }) : null;
     const savedLine = await tx.invoiceReturnItem.create({ data: { ...line, product_name: product?.name ?? line.product_name, return_id: record.id } });

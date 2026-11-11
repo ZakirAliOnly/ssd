@@ -80,6 +80,29 @@ test("legacy sales without batch history restock returned products", async () =>
   assert.equal((await h.returnCall(body(3))).status, 200);
   assert.equal(h.state().products[0].quantity, 10);
 });
+
+test("returns preserve legacy on-hand stock when batch records are missing", async () => {
+  const { h, body } = await setup();
+  h.state().allocations.length = 0;
+  h.state().batches.length = 0;
+  h.state().invoiceItems[0].stock_deducted_qty = 0;
+  const request = body(1);
+  assert.equal((await h.returnCall(request)).status, 200);
+  assert.equal(h.state().products[0].quantity, 7);
+  assert.equal(h.state().batches.reduce((sum, batch) => sum + Number(batch.remaining_qty), 0), 7);
+  assert.equal((await h.returnCall(request)).status, 200);
+  assert.equal(h.state().products[0].quantity, 7);
+  assert.equal((await h.returnCall(body(3))).status, 200);
+  assert.equal(h.state().products[0].quantity, 10);
+});
+
+test("a fully depleted tracked batch is restored without creating opening stock", async () => {
+  const { h, body } = await setup(10);
+  assert.equal((await h.returnCall(body(2))).status, 200);
+  assert.equal(h.state().products[0].quantity, 2);
+  assert.equal(h.state().batches.length, 1);
+  assert.equal(h.state().batches[0].remaining_qty, 2);
+});
 test("return history protects invoices, items and ledger credits from edits and deletion", async () => {
   const { h, body, invoiceId, lineId } = await setup();
   assert.equal((await h.returnCall(body(1))).status, 200);
