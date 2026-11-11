@@ -24,6 +24,11 @@ test("partial return restores original batch stock and credits the party without
   assert.equal(h.state().batches[0].remaining_qty, 7.5);
   assert.equal(h.state().allocations[0].qty, 4);
   assert.equal(h.state().returnAllocations[0].qty, 1.5);
+  assert.equal(h.state().returnItems[0].invoice_before_qty, 4);
+  assert.equal(h.state().returnItems[0].invoice_after_qty, 2.5);
+  assert.equal(h.state().returnItems[0].stock_before_qty, 6);
+  assert.equal(h.state().returnItems[0].stock_after_qty, 7.5);
+  assert.equal(h.state().returnItems[0].stock_unit, "Unit");
   assert.deepEqual(h.state().invoices, original.map(invoice => ({ ...invoice, balance_due: 250, payment_status: "partial" })));
   assert.deepEqual(h.state().invoiceItems, items);
   assert.equal(h.state().cashbook[0].method, "Adjustment");
@@ -48,6 +53,10 @@ test("repeated partial returns cannot exceed sold quantity and roll back on fail
   assert.equal(rejected.status, 400);
   assert.deepEqual(h.state(), before);
   assert.equal((await h.returnCall(body(2.25))).status, 200);
+  assert.equal(h.state().returnItems[1].invoice_before_qty, 2.25);
+  assert.equal(h.state().returnItems[1].invoice_after_qty, 0);
+  assert.equal(h.state().returnItems[1].stock_before_qty, 7.75);
+  assert.equal(h.state().returnItems[1].stock_after_qty, 10);
   assert.equal(h.state().products[0].quantity, 10);
   assert.equal((await h.returnCall(body(0.01))).status, 400);
 });
@@ -59,6 +68,28 @@ test("whole-invoice return selects several lines and preserves the original sale
   assert.equal(result.status, 200); assert.equal(result.body.record.amount, 270);
   assert.equal(h.state().products[0].quantity, 10);
   assert.equal(h.state().returnItems.length, 2);
+  assert.equal(h.state().returnItems[0].stock_before_qty, 7);
+  assert.equal(h.state().returnItems[1].stock_before_qty, h.state().returnItems[0].stock_after_qty);
+  assert.equal(h.state().returnItems[1].stock_after_qty, 10);
+});
+
+test("packaged returns snapshot invoice units separately from base stock", async () => {
+  const h = harness(undefined, 20);
+  Object.assign(h.state().products[0], { packaging_enabled: true, base_unit: "Vial", pieces_per_packet: 4, packets_per_box: 1 });
+  const sale = await h.call({ table: "invoices", operation: "save_invoice", data: { client_name: "Test", invoice_date: "2026-10-06", grand_total: 200 },
+    items: [{ product_id: h.productId, category: "Kit", unit: "packet", qty: 2, rate: 100, amount: 200 }] });
+  assert.equal(sale.status, 200);
+  const result = await h.returnCall({ invoiceId: sale.body.data.id, requestId: randomUUID(), date: "2026-10-10", reason: "Kit return",
+    selections: [{ invoice_item_id: h.state().invoiceItems[0].id, qty: 0.5 }] });
+  assert.equal(result.status, 200);
+  const line = h.state().returnItems[0];
+  assert.equal(line.invoice_before_qty, 2);
+  assert.equal(line.invoice_after_qty, 1.5);
+  assert.equal(line.stock_before_qty, 12);
+  assert.equal(line.stock_after_qty, 14);
+  assert.equal(line.stock_unit, "Vial");
+  h.state().products[0].quantity = 50;
+  assert.equal(line.stock_after_qty, 14);
 });
 test("invalid quantities, duplicate selections, foreign items and invalid dates are rejected", async () => {
   const { h, body } = await setup(); const before = structuredClone(h.state());

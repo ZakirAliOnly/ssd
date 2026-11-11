@@ -533,6 +533,11 @@ model InvoiceReturn {
 }
 
 model InvoiceReturnItem {
+  invoice_before_qty Decimal? @db.Decimal(14, 2)
+  invoice_after_qty Decimal? @db.Decimal(14, 2)
+  stock_before_qty Decimal? @db.Decimal(14, 2)
+  stock_after_qty Decimal? @db.Decimal(14, 2)
+  stock_unit String?
   restored_batch_id String? @db.Uuid
   restored_batch StockBatch? @relation("LegacyRestoredBatch", fields: [restored_batch_id], references: [id], onDelete: Restrict)
   id                 String @id @default(uuid()) @db.Uuid

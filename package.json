@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "db:upgrade:return-report": "prisma db execute --file scripts/migration-v42-return-report.sql --schema prisma/schema.prisma",
     "test:product-status": "node --env-file=.env --test tests/integration/product-status.test.mjs",
     "db:upgrade:product-status": "prisma db execute --file scripts/migration-v40-product-active.sql --schema prisma/schema.prisma",
     "test:packaging": "node --env-file=.env --test tests/integration/product-units.test.mjs",

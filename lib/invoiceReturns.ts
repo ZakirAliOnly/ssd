@@ -110,9 +110,20 @@ export async function saveInvoiceReturn(tx: Prisma.TransactionClient, input: {
       await createOpeningBatch(tx, product);
     }
   }
+  const stockBalances = new Map<string, number>();
   for (const line of plan.lines) {
-    const product = line.product_id ? await tx.product.findUnique({ where: { id: line.product_id }, select: { name: true } }) : null;
-    const savedLine = await tx.invoiceReturnItem.create({ data: { ...line, product_name: product?.name ?? line.product_name, return_id: record.id } });
+    const product = line.product_id ? await tx.product.findUnique({ where: { id: line.product_id } }) : null;
+    const original = invoice.items.find(item => item.id === line.invoice_item_id)!;
+    const invoiceBefore = roundQuantity(Number(original.qty) - previous.filter(item => item.invoice_item_id === line.invoice_item_id)
+      .reduce((sum, item) => sum + Number(item.qty), 0));
+    const stockBefore = product ? stockBalances.get(product.id) ?? Number(product.quantity) : null;
+    const stockAfter = stockBefore == null ? null : roundQuantity(stockBefore + line.stock_restored_qty);
+    if (product && stockAfter != null) stockBalances.set(product.id, stockAfter);
+    const savedLine = await tx.invoiceReturnItem.create({ data: { ...line, product_name: product?.name ?? line.product_name, return_id: record.id,
+      invoice_before_qty: invoiceBefore, invoice_after_qty: roundQuantity(invoiceBefore - line.qty),
+      stock_before_qty: stockBefore, stock_after_qty: stockAfter,
+      stock_unit: product ? product.packaging_enabled ? product.base_unit : "Unit" : null,
+    } });
     if (!line.stock_restored_qty || !line.product_id) continue;
     let needed = line.stock_restored_qty;
     const allocations = await tx.stockAllocation.findMany({

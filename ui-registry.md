@@ -1,5 +1,19 @@
 # UI Registry
 
+### Return Report
+
+Files: app/(dashboard)/reports/page.tsx, components/ReturnReport.tsx
+Last updated: 2026-11-11
+
+Reuse Reports' ReportTypeCard, date-range presets, filter panel, Generate and
+Print / PDF actions. The output panel uses bg-white, rounded-[14px], a gray-100
+border, p-4 and shadow-sm. Heading uses text-lg font-extrabold; notes use text-xs
+and gray-800. Use DT.table, thDense, thStyle, tdDense, row and cellMono; wrap long
+column headings, center quantities with explicit units and right-align credits.
+Tables scroll horizontally on narrow screens. The same component renders screen
+and wide A4 print content, with the existing PdfPrintBanner and PrintFooter.
+Represent missing historical stock snapshots as — and keep reversed rows marked.
+
 ### Delivery challan serial numbers
 
 Files: app/(dashboard)/delivery-challan/page.tsx, app/api/delivery-challans/route.ts

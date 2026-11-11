@@ -17,12 +17,14 @@ import { buildSupplierStatements } from "@/lib/supplierStatement";
 import { buildPartyStatements } from "@/lib/partyStatement";
 import { SupplierStatementReport } from "@/components/SupplierStatementReport";
 import { StockReport } from "@/components/StockReport";
+import { ReturnReport } from "@/components/ReturnReport";
+import type { ReturnReportRow } from "@/lib/returnReport";
 import { DailyStatementReport } from "@/components/DailyStatementReport";
 import type { DailyStatementData } from "@/lib/dailyStatement";
 import type { StockReportRow } from "@/lib/stockReport";
 import type { Supplier, PurchaseOrder } from "@/lib/database.types";
 
-type Tab = "dailystatement" | "account" | "cashbook" | "dailyparties" | "paymentmethod" | "expense" | "supplier" | "party" | "stock";
+type Tab = "dailystatement" | "account" | "cashbook" | "dailyparties" | "paymentmethod" | "expense" | "supplier" | "party" | "stock" | "returns";
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   paid:    { bg: "var(--green-light)", color: "var(--green)", label: "Paid" },
@@ -66,6 +68,7 @@ function KpiCard({ label, value, color, sub }: { label: string; value: string; c
 }
 
 const REPORT_CARDS: { id: Tab; title: string; description: string; icon: ReactNode }[] = [
+  { id: "returns", title: "Return Report", description: "Returned invoices, products and quantities before and after each customer return.", icon: <FileText size={22} /> },
   { id: "dailystatement", title: "Daily Statement", description: "Income, expenses, returns, invoices and cash movements for any selected date.", icon: <CalendarDays size={22} /> },
   { id: "stock", title: "Stock reports", description: "Stock received, sold and available by product and date, with revenue and estimated gross profit.", icon: <Package size={22} /> },
   { id: "party", title: "Party Statement", description: "All party balances. Select a party to view debit and credit details.", icon: <Users size={22} /> },
@@ -127,6 +130,8 @@ export default function ReportsPage() {
   const [stockProducts, setStockProducts] = useState<{ id: string; name: string; category_id: string | null }[]>([]);
   const [dailyStatement, setDailyStatement] = useState<DailyStatementData | null>(null);
   const [stockRows, setStockRows] = useState<StockReportRow[]>([]);
+  const [returnRows, setReturnRows] = useState<ReturnReportRow[]>([]);
+  const [returnSearch, setReturnSearch] = useState("");
 
   // ── Master filter state ───────────────────────────────────
   const [fromDate, setFromDate] = useState(() => {
@@ -262,6 +267,19 @@ export default function ReportsPage() {
         setDailyStatement(result);
       } catch (error) {
         setGenerateError(error instanceof Error ? error.message : "Could not load daily statement.");
+        return;
+      } finally { setLoading(false); }
+    } else if (activeTab === "returns") {
+      setLoading(true);
+      setReportGenerated(false);
+      setReturnRows([]);
+      try {
+        const response = await fetch(`/api/reports/returns?${new URLSearchParams({ from: fromDate, to: toDate, q: returnSearch })}`);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not load Return Report.");
+        setReturnRows(result.rows);
+      } catch (error) {
+        setGenerateError(error instanceof Error ? error.message : "Could not load Return Report.");
         return;
       } finally { setLoading(false); }
     } else if (activeTab === "stock") {
@@ -423,7 +441,16 @@ export default function ReportsPage() {
                 </div>
               ) : (
                 <>
-                  {activeTab === "stock" ? (
+                  {activeTab === "returns" ? (
+                    <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
+                      <label htmlFor="return-report-search" className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Invoice, customer or product</label>
+                      <input id="return-report-search" type="search" value={returnSearch} maxLength={100}
+                        onChange={event => { setReportGenerated(false); setReturnSearch(event.target.value); }}
+                        placeholder="Search returns"
+                        className="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] w-full focus-visible:outline-2 focus-visible:outline-[var(--blue)]"
+                        style={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }} />
+                    </div>
+                  ) : activeTab === "stock" ? (
                     <>
                     <div className="flex flex-col gap-1 min-w-[200px] flex-1 max-w-[280px]">
                       <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>Category</label>
@@ -526,6 +553,7 @@ export default function ReportsPage() {
         {/* ── TAB: ACCOUNT STATEMENT ────────────────────────── */}
         {reportGenerated && activeTab === "dailystatement" && dailyStatement && <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-4 mb-4"><DailyStatementReport data={dailyStatement} /></div>}
         {reportGenerated && activeTab === "stock" && <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-4 mb-4" style={{ boxShadow: "var(--shadow-sm)" }}><h2 className="text-lg font-extrabold mb-1">Stock reports</h2><p className="text-xs mb-4">{formatDate(fromDate)} — {formatDate(toDate)} · {stockProducts.find(c => c.id === stockProduct)?.name ?? "All products"}</p><StockReport rows={stockRows} /></div>}
+        {reportGenerated && activeTab === "returns" && <div className="bg-white rounded-[14px] border border-[var(--gray-100)] p-4 mb-4" style={{ boxShadow: "var(--shadow-sm)" }}><h2 className="text-lg font-extrabold mb-1">Return Report</h2><p className="text-xs mb-4">{filterLabel}{returnSearch.trim() ? ` · Search: ${returnSearch.trim()}` : ""}</p><ReturnReport rows={returnRows} /></div>}
         {reportGenerated && activeTab === "party" && <SupplierStatementReport statements={partyStatements} selectedId={selectedSupplierId} onSelect={setSelectedSupplierId} onBack={() => setSelectedSupplierId(null)} party />}
 
         {reportGenerated && activeTab === "supplier" && <SupplierStatementReport statements={supplierStatements} selectedId={selectedSupplierId} onSelect={setSelectedSupplierId} onBack={() => setSelectedSupplierId(null)} />}
@@ -874,7 +902,7 @@ export default function ReportsPage() {
       </div>
 
       {/* ── Print Layout (A4 — flex column pins footer to page bottom) ── */}
-      <div className={`ledger-a4-print-only a4-report${activeTab === "stock" ? " a4-report-wide" : ""}`} style={{ background: "#fff", fontFamily: "Arial, sans-serif" }}>
+      <div className={`ledger-a4-print-only a4-report${activeTab === "stock" || activeTab === "returns" ? " a4-report-wide" : ""}`} style={{ background: "#fff", fontFamily: "Arial, sans-serif" }}>
         {reportGenerated && activeTab ? (
           <>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -889,12 +917,13 @@ export default function ReportsPage() {
             {activeTab === "paymentmethod" && methodFilter !== "all" && <span style={{ marginLeft: 8, color: "#888" }}>· Method: {methodFilter}</span>}
           </div>
           <div style={{ fontWeight: 900, color: "#075985", fontSize: 14, letterSpacing: 2, textTransform: "uppercase" }}>
-            {{ dailystatement: "Daily Statement", stock: "Stock reports", account: "Head Account Statement", cashbook: "Cashbook", dailyparties: "Daily Parties Report", paymentmethod: "Payment Method Report", expense: "Expense Report", supplier: "Supplier Statement", party: "Party Statement" }[activeTab]}
+            {{ dailystatement: "Daily Statement", returns: "Return Report", stock: "Stock reports", account: "Head Account Statement", cashbook: "Cashbook", dailyparties: "Daily Parties Report", paymentmethod: "Payment Method Report", expense: "Expense Report", supplier: "Supplier Statement", party: "Party Statement" }[activeTab]}
           </div>
         </div>
 
         {activeTab === "dailystatement" && dailyStatement && <DailyStatementReport data={dailyStatement} />}
         {activeTab === "stock" && <><p className="text-xs mb-3">Category: {stockCategoryLabel} / Product: {stockProducts.find(c => c.id === stockProduct)?.name ?? "All products"}</p><StockReport rows={stockRows} /></>}
+        {activeTab === "returns" && <>{returnSearch.trim() && <p className="text-xs mb-3">Search: {returnSearch.trim()}</p>}<ReturnReport rows={returnRows} /></>}
         {activeTab === "party" && <SupplierStatementReport statements={partyStatements} selectedId={selectedSupplierId} print party />}
 
         {activeTab === "supplier" && <SupplierStatementReport statements={supplierStatements} selectedId={selectedSupplierId} print />}
