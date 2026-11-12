@@ -484,6 +484,11 @@ export async function POST(req: NextRequest) {
                   supplier_name: supplier.name, supplier_phone: supplier.phone, amount_paid: paid,
                   payment_method: String(data.payment_method ?? "Cash") }, table, authUser), tx);
             const savedItems = await receivePurchaseItems(tx, purchase.id, items, orderDate);
+            if (body.purchaseId) await tx.activityLog.create({ data: {
+              action: "update", entity_type: "purchase_order", entity_id: purchase.id,
+              title: "Purchase Invoice Edited", subtitle: `${purchase.po_number} — ${purchase.supplier_name}`,
+              amount: Number(purchase.grand_total), user_id: authUser.id, user_email: authUser.email, user_name: authUser.name,
+            } });
             return { ...purchase, items: savedItems };
           }, { timeout: 20000 });
           return NextResponse.json({ data: serializeForTable(saved, table), error: null });
@@ -535,6 +540,11 @@ export async function POST(req: NextRequest) {
             await tx.invoiceItem.createMany({ data: normalizedItems.map((line, index) => ({ ...line, invoice_id: invoice.id, stock_deducted_qty: stockLines[index].stock_deducted_qty })) as Prisma.InvoiceItemCreateManyInput[] });
             if (!invoice.is_walk_in) await settlePartyInvoices(tx, String(invoice.client_name ?? ""));
             await enqueueInvoice(tx, invoice.id, !!body.invoiceId);
+            if (body.invoiceId) await tx.activityLog.create({ data: {
+              action: "update", entity_type: "invoice", entity_id: invoice.id,
+              title: "Invoice Edited", subtitle: `${invoice.invoice_number} — ${invoice.client_name || "Walk-in"}`,
+              amount: Number(invoice.grand_total), user_id: authUser.id, user_email: authUser.email, user_name: authUser.name,
+            } });
             return await tx.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
           }, { timeout: 15000 });
           return NextResponse.json({ data: serializeForTable(saved, "invoices"), error: null });
@@ -719,6 +729,12 @@ export async function POST(req: NextRequest) {
           if (returns.length) throw new InventoryError("This invoice has returns and cannot be edited. Record further payments separately in Cash Book.");
           await tx.invoice.updateMany({ where: { id: { in: invoices.map(invoice => invoice.id) } }, data: coerceDates(updateData, table) });
           for (const name of new Set([...invoices.map(i => i.client_name), String((updateData as Record<string, unknown>).client_name ?? "")])) await settlePartyInvoices(tx, name);
+          for (const invoice of invoices) {
+            const updated = await tx.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+            await tx.activityLog.create({ data: { action: "update", entity_type: "invoice", entity_id: updated.id,
+              title: "Invoice Edited", subtitle: `${updated.invoice_number} — ${updated.client_name || "Walk-in"}`,
+              amount: updated.grand_total, user_id: authUser.id, user_email: authUser.email, user_name: authUser.name } });
+          }
         });
         return NextResponse.json({ data: null, error: null });
       }
@@ -770,6 +786,9 @@ export async function POST(req: NextRequest) {
       if (table === "activity_log") throw new InventoryError("Activity history cannot be deleted.");
       // Log on the server in the same transaction: a failed deletion leaves no audit event.
       const auditDeletion = async (tx: Prisma.TransactionClient, key: string, match: Record<string, unknown>) => {
+        // These rows mirror canonical invoice items and are replaced on edit.
+        // Their removal is housekeeping, not deletion of a business document.
+        if (key === "quick_invoice_items") return;
         const entities: Record<string, string> = { invoices: "invoice", invoice_items: "invoice_item", cashbook: "cashbook",
           products: "product", suppliers: "supplier", accounts: "account", head_accounts: "head_account",
           quick_invoices: "quick_invoice", quick_invoice_items: "quick_invoice_item", purchase_orders: "purchase_order",

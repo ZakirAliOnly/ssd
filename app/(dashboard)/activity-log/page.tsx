@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { formatCurrency } from "@/lib/helpers";
 import { DT } from "@/lib/dataTableStyles";
 import { isLedgerOnlyEntry } from "@/lib/paymentMethods";
+import { editActivityEntry, isInternalItemDeletion } from "@/lib/activityEdits";
 import {
   FileText, TrendingUp, TrendingDown,
   Users, Truck, FileSignature, RefreshCw, Activity, Trash2,
@@ -21,6 +22,7 @@ type EventType =
   | "salary"
   | "purchase_order"
   | "quote"
+  | "edit"
   | "deletion";
 
 interface ActivityEntry {
@@ -38,6 +40,7 @@ interface ActivityEntry {
 // ─── Config maps ─────────────────────────────────────────────────────────────
 
 const EVENT_COLORS: Record<EventType, { bg: string; color: string; border: string }> = {
+  edit: { bg: "var(--blue-pale)", color: "var(--blue-deeper)", border: "var(--gray-200)" },
   return_period: { bg: "#F8FAFC", color: "#475569", border: "#E2E8F0" },
   invoice_return: { bg: "var(--blue-pale)", color: "var(--blue-deeper)", border: "var(--gray-200)" },
   invoice:        { bg: "#EFF6FF", color: "#1D4ED8", border: "#BFDBFE" },
@@ -50,6 +53,7 @@ const EVENT_COLORS: Record<EventType, { bg: string; color: string; border: strin
 };
 
 const EVENT_ICONS: Record<EventType, React.ElementType> = {
+  edit: RefreshCw,
   return_period: FileText,
   invoice_return: RefreshCw,
   invoice:        FileText,
@@ -62,6 +66,7 @@ const EVENT_ICONS: Record<EventType, React.ElementType> = {
 };
 
 const EVENT_LABELS: Record<EventType, string> = {
+  edit: "Edits",
   return_period: "Return period",
   invoice_return: "Return",
   invoice:        "Invoice",
@@ -267,6 +272,7 @@ dated(db
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = row as any;
       const action = String(r.action ?? "");
+      if (isInternalItemDeletion(r)) continue;
       if (action === "create" && ["invoice_return", "supplier_return"].includes(r.entity_type)) {
         all.push({ id: `return-${r.id}`, eventType: "invoice_return", title: r.title || "Invoice Return",
           subtitle: r.subtitle || "", amount: Number(r.amount), timestamp: r.created_at,
@@ -279,8 +285,12 @@ dated(db
           badge: r.entity_type === "return_period" ? "Period change" : "Reversed", userEmail: r.user_email, userName: r.user_name });
         continue;
       }
-      // For now we only render deletion rows here — the other rows are
-      // already represented by the create-time queries above.
+      const edit = editActivityEntry(r);
+      if (edit) {
+        all.push(edit);
+        continue;
+      }
+      // Create events are represented by the source-table queries above.
       if (action !== "delete") continue;
       all.push({
         id: `log-${r.id}`,

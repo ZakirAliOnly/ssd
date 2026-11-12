@@ -1,5 +1,17 @@
 # UI Registry
 
+### Activity edit events
+
+Files: app/(dashboard)/activity-log/page.tsx, lib/activityEdits.ts
+Last updated: 2026-11-12
+
+Preserve the activity table and existing editor name/email columns. Show updates
+as Edits with RefreshCw and the existing blue-pale/blue-deeper/gray-200 badge
+palette. Invoice Edited rows use invoice number — customer as the subtitle.
+Keep edits separate from Invoice Created so counts and invoice totals are not
+duplicated. Suppress internal quick-invoice item replacement deletion noise;
+keep real document deletions and return-specific events distinct.
+
 ### Return Report
 
 Files: app/(dashboard)/reports/page.tsx, components/ReturnReport.tsx

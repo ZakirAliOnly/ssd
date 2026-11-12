@@ -32,7 +32,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     products: [{ id: productId, code: "001", name: "Sign", quantity: openingQty, expiry_date: new Date("2027-12-31"), created_at: new Date("2026-01-01") }],
     batches: openingQty ? [{ id: openingId, product_id: productId, purchase_item_id: null,
       received_qty: openingQty, remaining_qty: openingQty, expiry_date: new Date("2027-12-31"), received_date: new Date("2026-01-01"), created_at: new Date("2026-01-01") }] : [],
-    allocations: [], invoices: [], invoiceItems: [], purchases: [], purchaseItems: [],
+    allocations: [], invoices: [], invoiceItems: [], quickInvoices: [], quickInvoiceItems: [], purchases: [], purchaseItems: [],
     returns: [], returnItems: [], returnAllocations: [], cashbook: [], activity: [],
     supplierReturns: [], supplierReturnItems: [],
     suppliers: [{ id: supplierId, name: "Supplier", phone: "" }],
@@ -133,7 +133,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     returnPeriodLock: { findUnique: async () => null },
     product: model("products"), invoice: model("invoices"), invoiceItem: model("invoiceItems"), stockBatch: model("batches"),
     stockAllocation: model("allocations"), purchaseOrder: model("purchases"), purchaseOrderItem: model("purchaseItems"), supplier: model("suppliers"),
-    quickInvoice: { findMany: async () => [] }, user: { findUnique: async () => profile }, $queryRawUnsafe: async () => [],
+    quickInvoice: model("quickInvoices"), quickInvoiceItem: model("quickInvoiceItems"), user: { findUnique: async () => profile }, $queryRawUnsafe: async () => [],
     invoiceReturn: model("returns"), invoiceReturnItem: model("returnItems"), returnStockAllocation: model("returnAllocations"),
     cashbook: model("cashbook"), activityLog: model("activity"),
     supplierReturn: model("supplierReturns"), supplierReturnItem: model("supplierReturnItems"),
@@ -144,7 +144,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     const before = structuredClone(state);
     try { return await callback(prisma); } catch (error) { state = before; throw error; }
   };
-  const module = { exports: {} };
+  const dbRouteModule = { exports: {} };
   const dependencies = {
     "@/lib/partyInvoiceSettlement": partyInvoiceSettlement,
     "@/lib/whatsappOutbox": { enqueueInvoice: async () => {}, enqueuePayment: async () => {} },
@@ -155,12 +155,12 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
     "@/lib/invoiceReturns": returnModule.exports,
     "@/lib/supplierReturns": supplierReturnModule.exports,
   };
-  new Function("require", "module", "exports", compiled)(name => dependencies[name] ?? require(name), module, module.exports);
+  new Function("require", "module", "exports", compiled)(name => dependencies[name] ?? require(name), dbRouteModule, dbRouteModule.exports);
   const returnRoute = { exports: {} };
   new Function("require", "module", "exports", compile("../../app/api/returns/route.ts"))(name => dependencies[name] ?? require(name), returnRoute, returnRoute.exports);
   const returnCall = body => returnRoute.exports.POST({ cookies: { get: () => ({ value: "test" }) }, json: async () => body });
   const returnGet = params => returnRoute.exports.GET({ cookies: { get: () => ({ value: "test" }) }, nextUrl: new URL(`http://localhost/api/returns?${new URLSearchParams(params)}`) });
-  const call = body => module.exports.POST({ cookies: { get: () => ({ value: "test" }) }, json: async () => body });
+  const call = body => dbRouteModule.exports.POST({ cookies: { get: () => ({ value: "test" }) }, json: async () => body });
   const save = (qty, invoiceId, total = qty * 100) => call({ table: "invoices", operation: "save_invoice", invoiceId,
     data: { client_name: "Test", invoice_date: "2026-10-06", grand_total: total },
     items: [{ product_id: productId, category: "Sign", qty, rate: 100, amount: total }] });
