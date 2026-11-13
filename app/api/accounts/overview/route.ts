@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { COOKIE_NAME, verifyToken } from "@/lib/auth";
 import { canAccessPath } from "@/lib/moduleAccess";
+import { loadPartyCashbook } from "@/lib/partyCashbook";
 import { partyBalanceOverview } from "@/lib/partyOverview";
 import type { Invoice, CashbookEntry } from "@/lib/database.types";
 
@@ -24,11 +25,12 @@ export async function GET(request: NextRequest) {
         tx.cashbook.findMany({ where: party == null ? {} : { account_name: { equals: party, mode: "insensitive" } }, select: { id: true, account_name: true, type: true, amount: true, method: true,
           description: true, reference: true, date: true, created_at: true } }),
       ]);
-      const balances = partyBalanceOverview(accounts, invoices as unknown as Invoice[], cashbook as unknown as CashbookEntry[]);
+      const partyCashbook = await loadPartyCashbook(tx, cashbook, invoices.map(i => i.id));
+      const balances = partyBalanceOverview(accounts, invoices as unknown as Invoice[], partyCashbook as unknown as CashbookEntry[]);
       return { accounts: accounts.map(({ head_account, ...account }) => ({ ...account, head_accounts: head_account })), heads, balances,
         ...(party == null ? {} : {
           invoices: invoices.map(invoice => ({ ...invoice, invoice_date: new Date(invoice.invoice_date).toISOString().slice(0, 10) })),
-          cashbook: cashbook.map(entry => ({ ...entry, date: new Date(entry.date).toISOString().slice(0, 10) })),
+          cashbook: partyCashbook.map(entry => ({ ...entry, date: new Date(entry.date).toISOString().slice(0, 10) })),
         }) };
     }, { isolationLevel: "RepeatableRead" });
     return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });

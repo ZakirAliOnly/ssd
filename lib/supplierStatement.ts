@@ -1,3 +1,4 @@
+import { supplierCashbookMatcher } from "./cashbookOwnership";
 import type { Supplier, PurchaseOrder, CashbookEntry } from "./database.types";
 
 export type SupplierStatementRow = {
@@ -41,6 +42,7 @@ export function buildSupplierStatements(
   const payments = new Map<string, CashbookEntry[]>();
   const uncertain = new Set<string>();
   const seen = new Set<string>();
+  const hasSupplierLabel = supplierCashbookMatcher();
   for (const entry of cashbook) {
     if (seen.has(entry.id)) continue;
     seen.add(entry.id);
@@ -50,10 +52,11 @@ export function buildSupplierStatements(
     const reference = entry.reference?.trim();
     let owner = paymentOwner.get(entry.id)
       ?? (byId.has(reference) ? reference : purchaseOwner.get(reference));
+    if (!owner && /^(payment received from|sales return)\b/i.test(entry.description.trim())) continue;
     if (!owner) {
       const key = nameKey(entry.account_name ?? "");
       const matches = byName.get(key) ?? [];
-      if (!reference && matches.length === 1 && !customers.has(key)) owner = matches[0].id;
+      if (!reference && matches.length === 1 && (!customers.has(key) || hasSupplierLabel(entry))) owner = matches[0].id;
       else for (const match of matches) uncertain.add(match.id);
     }
     if (owner) payments.set(owner, [...(payments.get(owner) ?? []), entry]);

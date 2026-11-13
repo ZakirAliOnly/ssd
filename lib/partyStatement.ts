@@ -1,3 +1,4 @@
+import { filterPartyCashbook } from "./cashbookOwnership";
 import type { Account, Invoice, CashbookEntry, Supplier, PurchaseOrder } from "./database.types";
 import type { SupplierStatement } from "./supplierStatement";
 import { buildLedgerRows } from "./partyBalance";
@@ -7,9 +8,7 @@ import { ledgerRowsForDateRange, openingBalanceBeforeDate } from "./ledger";
  * opening adjustments and invoice-payment deduplication, rather than its cache. */
 export function buildPartyStatements(accounts: Account[], invoices: Invoice[], cashbook: CashbookEntry[],
   suppliers: Supplier[], purchases: PurchaseOrder[], from: string, to: string): SupplierStatement[] {
-  const supplierReferences = new Set([...suppliers.map(s => s.id), ...purchases.map(p => p.id)]);
-  const supplierPaymentIds = new Set(purchases.map(p => p.cashbook_entry_id).filter(Boolean));
-  const partyCashbook = cashbook.filter(c => !supplierReferences.has(c.reference) && !supplierPaymentIds.has(c.id));
+  const partyCashbook = filterPartyCashbook(cashbook, suppliers, purchases, invoices.map(i => i.id));
   return [...accounts].sort((a, b) => a.name.localeCompare(b.name)).map(account => {
     const all = buildLedgerRows(account.name, invoices, partyCashbook);
     const opening = openingBalanceBeforeDate(all, from);
