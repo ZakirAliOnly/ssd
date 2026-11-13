@@ -122,90 +122,6 @@ function estimatedSupplierPayable(supplierId: string, openingBalance: number, po
   return Math.round((opening + poRemain) * 100) / 100;
 }
 
-interface SupplierLedgerCashbookEntry {
-  id: string;
-  date: string;
-  created_at: string;
-  description: string;
-  amount: number;
-  type: string;
-  method?: string | null;
-  account_name?: string | null;
-  reference?: string | null;
-}
-
-interface SupplierLedgerPo {
-  id: string;
-  po_number: string;
-  order_date: string;
-  created_at?: string;
-  grand_total: number;
-  payment_method?: string | null;
-}
-
-/** Sign convention mirrors the customer ledger so the same UI/print template renders cleanly:
- *    debit = adds to what we owe the supplier  (opening balance, PO grand totals)
- *    credit = reduces what we owe the supplier (cashbook payments / refunds)
- *    closing balance > 0 = payable to supplier */
-function buildSupplierLedgerRows(
-  supplierName: string,
-  supplierCreatedAt: string,
-  openingBalance: number,
-  pos: SupplierLedgerPo[],
-  cashbook: SupplierLedgerCashbookEntry[]
-): LedgerRow[] {
-  const rows: LedgerRow[] = [];
-  const nameLower = supplierName.toLowerCase();
-  const opening = Math.max(0, Number(openingBalance) || 0);
-
-  // Opening balance row — anchored to the supplier's creation date so it sorts first.
-  if (opening > 0) {
-    const openDate = (supplierCreatedAt || "").slice(0, 10) || "1970-01-01";
-    rows.push({
-      date: openDate,
-      sortAt: `${openDate}T00:00:00_opening`,
-      doc: "Opening",
-      desc: "Opening balance",
-      debit: opening,
-      credit: 0,
-      method: "—",
-    });
-  }
-
-  pos.forEach((po) => {
-    const date = po.order_date;
-    rows.push({
-      date,
-      sortAt: `${date}T${po.created_at || "1970-01-01"}_po`,
-      doc: po.po_number,
-      purchaseOrderId: po.id,
-      desc: "Purchase invoice",
-      debit: Number(po.grand_total) || 0,
-      credit: 0,
-      method: po.payment_method || "—",
-    });
-  });
-
-  cashbook
-    .filter((c) => (c.account_name || "").toLowerCase() === nameLower)
-    .forEach((c) => {
-      rows.push({
-        date: c.date,
-        sortAt: `${c.date}T${c.created_at || "1970-01-01"}_${c.id}`,
-        doc: "Cashbook",
-        desc: c.description || (c.type === "in" ? "Cashbook entry (in)" : "Cashbook entry (out)"),
-        // A cash refund received settles a supplier credit; noncash return
-        // adjustments and cash paid reduce what we owe.
-        debit: c.type === "in" ? Number(c.amount) || 0 : 0,
-        credit: c.type === "out" ? Number(c.amount) || 0 : 0,
-        method: c.method || "—",
-      });
-    });
-
-  rows.sort((a, b) => a.sortAt.localeCompare(b.sortAt));
-  return rows;
-}
-
 interface SupplierUnpaidPoRow {
   id: string;
   po_number: string;
@@ -248,10 +164,9 @@ export default function SupplierPage() {
   const [ledgerSupplier, setLedgerSupplier] = useState<SupplierRow | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerItemsByPo, setLedgerItemsByPo] = useState<Record<string, PurchaseOrderItem[]>>({});
-  const [ledgerPos, setLedgerPos] = useState<SupplierLedgerPo[]>([]);
-  const [ledgerCashbook, setLedgerCashbook] = useState<SupplierLedgerCashbookEntry[]>([]);
-  const [ledgerOpeningSnapshot, setLedgerOpeningSnapshot] = useState(0);
-  const [ledgerSupplierCreatedAt, setLedgerSupplierCreatedAt] = useState("");
+  const [ledgerBaseRows, setLedgerBaseRows] = useState<LedgerRow[]>([]);
+  const [ledgerWarning, setLedgerWarning] = useState("");
+  const ledgerRequest = useRef(0);
   const [ledgerDateFrom, setLedgerDateFrom] = useState("");
   const [ledgerDateTo, setLedgerDateTo] = useState("");
   const [ledgerMonth, setLedgerMonth] = useState("");
@@ -539,60 +454,55 @@ export default function SupplierPage() {
   }
 
   async function openLedgerModal(s: SupplierRow) {
+    const request = ++ledgerRequest.current;
     setLedgerSupplier(s);
     setShowLedgerModal(true);
     setLedgerLoading(true);
     setLedgerDateFrom("");
     setLedgerDateTo("");
     setLedgerMonth("");
-    setLedgerPos([]);
+    setLedgerBaseRows([]);
+    setLedgerWarning("");
     setLedgerItemsByPo({});
-    setLedgerCashbook([]);
-    setLedgerOpeningSnapshot(Number(s.opening_balance) || 0);
-    setLedgerSupplierCreatedAt("");
-    const [{ data: supRow }, { data: poRows }, { data: cbRows }] = await Promise.all([
-      db.from("suppliers").select("opening_balance, created_at").eq("id", s.id).single(),
-      db
-        .from("purchase_orders")
-        .select("id, po_number, order_date, created_at, grand_total, payment_method")
-        .eq("supplier_id", s.id)
-        .order("order_date", { ascending: true })
-        .order("created_at", { ascending: true }),
-      db
-        .from("cashbook")
-        .select("id, date, created_at, description, amount, type, method, account_name, reference")
-        .ilike("account_name", s.name)
-        .order("date", { ascending: true })
-        .order("created_at", { ascending: true }),
-    ]);
-    if (supRow) {
-      setLedgerOpeningSnapshot(Number((supRow as { opening_balance: number }).opening_balance) || 0);
-      setLedgerSupplierCreatedAt(String((supRow as { created_at: string }).created_at || ""));
+    let poIds: string[] = [];
+    try {
+      const response = await fetch(`/api/suppliers/ledger?id=${encodeURIComponent(s.id)}`, { cache: "no-store" });
+      const result = await response.json();
+      if (request !== ledgerRequest.current) return;
+      if (!response.ok) throw new Error(result.error || "Could not load supplier ledger.");
+      setLedgerBaseRows(result.rows);
+      setLedgerWarning(result.warning || "");
+      poIds = result.purchaseIds;
+    } catch (error) {
+      if (request !== ledgerRequest.current) return;
+      const message = error instanceof Error ? error.message : "Could not load supplier ledger.";
+      setLedgerWarning(message); showToast(message, "err");
+      setLedgerLoading(false); return;
     }
-    if (poRows) setLedgerPos(poRows as SupplierLedgerPo[]);
-    if (cbRows) setLedgerCashbook(cbRows as SupplierLedgerCashbookEntry[]);
-    const poIds = ((poRows ?? []) as SupplierLedgerPo[]).map(po => po.id);
     if (poIds.length) {
       try {
         const { data: items, error } = await db.from("purchase_order_items").select("*")
           .in("purchase_order_id", poIds).order("id", { ascending: true });
+        if (request !== ledgerRequest.current) return;
         if (error) showToast(error.message, "err");
         const grouped: Record<string, PurchaseOrderItem[]> = {};
         for (const item of (items ?? []) as PurchaseOrderItem[]) (grouped[item.purchase_order_id] ||= []).push(item);
         setLedgerItemsByPo(grouped);
       } catch {
+        if (request !== ledgerRequest.current) return;
         showToast("Could not load purchase item details. Reopen the ledger to try again.", "err");
       }
     }
-    setLedgerLoading(false);
+    if (request === ledgerRequest.current) setLedgerLoading(false);
   }
 
   function closeLedgerModal() {
+    ledgerRequest.current++;
     setShowLedgerModal(false);
     setLedgerSupplier(null);
-    setLedgerPos([]);
+    setLedgerBaseRows([]);
+    setLedgerWarning("");
     setLedgerItemsByPo({});
-    setLedgerCashbook([]);
     setLedgerDateFrom("");
     setLedgerDateTo("");
     setLedgerMonth("");
@@ -678,15 +588,7 @@ export default function SupplierPage() {
   }
 
   // Memo-equivalents inlined; small data so re-derivation per render is fine.
-  const ledgerAllRows = ledgerSupplier
-    ? buildSupplierLedgerRows(
-        ledgerSupplier.name,
-        ledgerSupplierCreatedAt,
-        ledgerOpeningSnapshot,
-        ledgerPos,
-        ledgerCashbook
-      )
-    : [];
+  const ledgerAllRows = ledgerBaseRows;
   const ledgerDisplayWithBal = ledgerRowsForDateRange(ledgerAllRows, ledgerDateFrom, ledgerDateTo);
   const ledgerOpeningBefore = openingBalanceBeforeDate(ledgerAllRows, ledgerDateFrom);
 
@@ -1842,6 +1744,7 @@ export default function SupplierPage() {
             </div>
 
             <div className="p-5 max-h-[min(60vh,520px)] overflow-auto">
+              {ledgerWarning && <p role="alert" className="p-3 text-sm text-amber-800 bg-amber-50">{ledgerWarning}</p>}
               {ledgerLoading ? (
                 <p className="text-[13px] m-0" style={{ color: "var(--gray-600)" }}>Loading…</p>
               ) : ledgerAllRows.length === 0 ? (
@@ -1934,6 +1837,7 @@ export default function SupplierPage() {
       {ledgerSupplier && (
         <div ref={ledgerPdfRef} className="ledger-a4-print-only" style={{ background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", fontSize: 11 }}>
           <PrintHeader />
+          {ledgerWarning && <p className="text-sm font-semibold">Review required: {ledgerWarning}</p>}
 
           {/* Title bar — matches A4 invoice */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px", background: "#075985", color: "#fff", marginBottom: 10 }}>

@@ -1,3 +1,4 @@
+import { loadPartyCashbook } from "./partyCashbook";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 export function isTransactionConflict(error: unknown): boolean {
@@ -55,14 +56,8 @@ export async function settlePartyInvoices(tx: Prisma.TransactionClient, accountN
     orderBy: [{ invoice_date: "asc" }, { created_at: "asc" }, { id: "asc" }] });
   if (!invoices.length) return;
   const cash = await tx.cashbook.findMany({ where: { account_name: { equals: accountName, mode: "insensitive" } } });
-  const references = cash.map(c => c.reference).filter(ref => /^[0-9a-f-]{36}$/i.test(ref));
-  const [suppliers, purchases] = await Promise.all([
-    tx.supplier.findMany({ where: { id: { in: references } }, select: { id: true } }),
-    tx.purchaseOrder.findMany({ where: { OR: [{ id: { in: references } }, { cashbook_entry_id: { in: cash.map(c => c.id) } }] }, select: { id: true, cashbook_entry_id: true } }),
-  ]);
-  const supplierRefs = new Set([...suppliers.map(s => s.id), ...purchases.map(p => p.id)]);
-  const supplierPayments = new Set(purchases.map(p => p.cashbook_entry_id).filter(Boolean));
-  const plan = planPartyInvoiceSettlement(invoices, cash.filter(c => !supplierRefs.has(c.reference) && !supplierPayments.has(c.id)));
+  const partyCash = await loadPartyCashbook(tx, cash, invoices.map(i => i.id));
+  const plan = planPartyInvoiceSettlement(invoices, partyCash);
   for (const update of plan) {
     const original = invoices.find(i => i.id === update.id)!;
     if (Number(original.balance_due) !== update.balance_due || original.payment_status !== update.payment_status) {

@@ -1,3 +1,4 @@
+import { filterPartyCashbook } from "./cashbookOwnership";
 import type { Invoice, CashbookEntry } from "@/lib/database.types";
 import type { LedgerRow } from "@/lib/ledger";
 import { isLedgerOnlyEntry, isOpeningBalanceEntry } from "@/lib/cashbookEntries";
@@ -22,6 +23,7 @@ export function buildLedgerRows(
 ): LedgerRow[] {
   const rows: LedgerRow[] = [];
   const nameLower = accountName.toLowerCase();
+  cashbook = filterPartyCashbook(cashbook, [], [], invoices.map(i => i.id));
 
   /** Invoice IDs that already have a cashbook line (reference = invoice id) — avoids double-counting payment. */
   const invoiceIdsWithCashbookPayment = new Set(

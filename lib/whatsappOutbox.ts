@@ -1,3 +1,4 @@
+import { loadPartyCashbook } from "./partyCashbook";
 import type { Cashbook, Prisma } from "@prisma/client";
 import { buildInvoiceShareWhatsAppMessage, buildPaymentReceivedWhatsAppMessage, buildSupplierPaymentWhatsAppMessage } from "@/lib/whatsappWaMe";
 import { normalizeWhatsAppPhone, isWhatsAppRecipientBlocked, type WhatsAppEvent } from "@/lib/whatsappPolicy";
@@ -67,8 +68,9 @@ export async function enqueuePayment(tx: Tx, entry: Cashbook) {
     const party = parties[0];
     const invoices = await tx.invoice.findMany({ where: { client_name: party.name, is_walk_in: false } });
     const cash = await tx.cashbook.findMany({ where: { account_name: { equals: party.name, mode: "insensitive" } } });
+    const partyCash = await loadPartyCashbook(tx, cash, invoices.map(i => i.id));
     const signed = computePartySignedBalance(party.name,
-      JSON.parse(JSON.stringify(invoices)) as Invoice[], JSON.parse(JSON.stringify(cash)) as CashbookEntry[]);
+      JSON.parse(JSON.stringify(invoices)) as Invoice[], JSON.parse(JSON.stringify(partyCash)) as CashbookEntry[]);
     const description = entry.description.startsWith(`Payment received from ${party.name} — `)
       ? entry.description.slice(`Payment received from ${party.name} — `.length) : "";
     const input = { partyName: party.name, amount: Number(entry.amount), dateISO: iso(entry.date), method: entry.method,

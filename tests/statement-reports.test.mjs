@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import ts from "typescript";
-import { buildSupplierStatements } from "../lib/supplierStatement.ts";
+
 
 // Execute the actual TypeScript helpers, resolving the app's aliases locally.
 const require = createRequire(import.meta.url);
@@ -20,6 +20,7 @@ function load(path) {
   return module.exports;
 }
 const { buildPartyStatements } = load("partyStatement");
+const { buildSupplierStatements } = load("supplierStatement");
 const supplier = { id: "s1", name: "Supplier", phone: "", opening_balance: 100, created_at: "2026-01-01T00:00:00Z" };
 const purchase = { id: "p1", po_number: "PO001", supplier_id: "s1", supplier_name: "Old name", order_date: "2026-02-01", created_at: "2026-02-01T10:00:00Z", grand_total: 500, amount_paid: 200, cashbook_entry_id: "c1" };
 const payment = { id: "c1", reference: "p1", account_name: "Old name", date: "2026-02-01", created_at: "2026-02-01T11:00:00Z", type: "out", amount: 200, method: "Cash", description: "Purchase payment" };

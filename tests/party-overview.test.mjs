@@ -30,7 +30,7 @@ test('overview groups large ledgers without dropping duplicate-name accounts or 
  assert.equal(Object.keys(result).length,301);assert.ok(Object.values(result).every(v=>v===100));assert.equal(JSON.stringify(many),snapshot);
 });
 function routeFor(profile={role:'super_admin',is_active:true},authorized=true){
- const calls=[];const tx={account:{findMany:async()=>accounts.map(a=>({...a,head_account:null}))},headAccount:{findMany:async()=>[]},invoice:{findMany:async args=>{calls.push(args);return invoices;}},cashbook:{findMany:async()=>entries}};
+ const calls=[];const tx={supplier:{findMany:async()=>[]},purchaseOrder:{findMany:async()=>[]},account:{findMany:async()=>accounts.map(a=>({...a,head_account:null}))},headAccount:{findMany:async()=>[]},invoice:{findMany:async args=>{calls.push(args);return invoices;}},cashbook:{findMany:async()=>entries}};
  const prisma={user:{findUnique:async()=>profile},$transaction:async(work,options)=>{assert.equal(options.isolationLevel,'RepeatableRead');return work(tx);}};
  return {calls,route:tsLoader({'@/lib/prisma':{prisma},'@/lib/auth':{COOKIE_NAME:'auth',verifyToken:async()=>authorized?{sub:'admin'}:null}}, {serverOnly:true})('app/api/accounts/overview/route.ts')};
 }

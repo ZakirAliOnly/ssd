@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { planPartyInvoiceSettlement, partySettlementTransaction } from "../lib/partyInvoiceSettlement.ts";
+import { tsLoader } from "./helpers/load-ts.mjs";
+const { planPartyInvoiceSettlement, partySettlementTransaction } = tsLoader()("lib/partyInvoiceSettlement.ts");
 import { harness } from "./helpers/inventory-harness.mjs";
 
 const invoice = (id, total, date, received = 0, returns = []) => ({ id, grand_total: total, amount_received: received, invoice_date: date, created_at: date, returns });

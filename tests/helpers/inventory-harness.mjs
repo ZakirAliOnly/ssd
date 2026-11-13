@@ -5,7 +5,8 @@ import ts from "typescript";
 import * as inventory from "../../lib/inventory.ts";
 import * as productValidation from "../../lib/productValidation.ts";
 import * as moduleAccess from "../../lib/moduleAccess.ts";
-import * as partyInvoiceSettlement from "../../lib/partyInvoiceSettlement.ts";
+import { tsLoader } from "./load-ts.mjs";
+const partyInvoiceSettlement = tsLoader()("lib/partyInvoiceSettlement.ts");
 
 const require = createRequire(import.meta.url);
 const compile = path => ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
