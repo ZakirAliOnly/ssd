@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DirectSettlements } from "@/components/DirectSettlements";
 import { db } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { useUser } from "@/lib/UserContext";
@@ -308,6 +309,8 @@ export default function PaymentMethodsPage() {
         </div>
       ) : (
         <>
+          <DirectSettlements onChanged={() => void fetchData()} />
+
           <section className="mb-6">
             <div className="flex items-center gap-2.5 mb-3">
               <Wallet size={14} style={{ color: "var(--gray-700)" }} />

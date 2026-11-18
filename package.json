@@ -38,7 +38,9 @@
     "db:upgrade:users": "prisma db execute --file scripts/migration-v29-user-modules.sql --schema prisma/schema.prisma",
     "db:upgrade:batches": "prisma db execute --file scripts/migration-v30-stock-batches.sql --schema prisma/schema.prisma",
     "db:studio": "prisma studio",
-    "create:admin": "node --env-file=.env scripts/create-admin.mjs"
+    "create:admin": "node --env-file=.env scripts/create-admin.mjs",
+    "db:upgrade:direct-settlements": "prisma db execute --file scripts/migration-v43-direct-settlements.sql --schema prisma/schema.prisma",
+    "test:direct-settlements": "node --env-file=.env --test tests/integration/direct-settlements.test.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",

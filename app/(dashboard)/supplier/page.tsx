@@ -1,5 +1,7 @@
 "use client";
 
+import { useLedgerDeepLink } from "@/lib/useLedgerDeepLink";
+
 import { hasWhatsAppAutomation } from "@/lib/whatsappAutomation";
 import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { db, savePurchase } from "@/lib/db";
@@ -452,6 +454,8 @@ export default function SupplierPage() {
     setPaySupplierUnpaid([]);
     setPayOpeningSnapshot(0);
   }
+
+  useLedgerDeepLink(suppliers, openLedgerModal);
 
   async function openLedgerModal(s: SupplierRow) {
     const request = ++ledgerRequest.current;

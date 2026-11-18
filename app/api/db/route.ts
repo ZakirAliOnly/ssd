@@ -1,3 +1,4 @@
+import { assertNoDirectSettlementEntries } from "@/lib/directSettlements";
 import { NextRequest, NextResponse } from "next/server";
 import { settlePartyInvoices, partySettlementTransaction } from "@/lib/partyInvoiceSettlement";
 import { prisma } from "@/lib/prisma";
@@ -463,6 +464,7 @@ export async function POST(req: NextRequest) {
             await lockInventoryUnits(tx);
             await tx.$queryRawUnsafe('SELECT id FROM purchase_orders WHERE id = $1::uuid FOR UPDATE', id);
             if (body.purchaseId) {
+              if (await tx.directSettlementAllocation.findFirst({ where: { purchase_order_id: id } })) throw new InventoryError("This purchase has direct settlement history and cannot be edited. Record corrections separately.");
               const returns = await tx.supplierReturn.findMany({ where: { purchase_order_id: id }, take: 1 });
               if (returns.length) throw new InventoryError("This supplier invoice has returns and cannot be edited. Its original items must remain unchanged.");
             }
@@ -742,6 +744,7 @@ export async function POST(req: NextRequest) {
         await partySettlementTransaction(prisma, async tx => {
           const entries = await tx.cashbook.findMany({ where, select: { id: true, account_name: true }, orderBy: { id: "asc" } });
           for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
+          await assertNoDirectSettlementEntries(tx, entries.map(e => e.id));
           const returns = await tx.invoiceReturn.findMany({ where: { OR: [{ credit_entry_id: { in: entries.map(entry => entry.id) } }, { reversal_credit_entry_id: { in: entries.map(entry => entry.id) } }] }, take: 1 });
           const supplierReturns = await tx.supplierReturn.findMany({ where: { OR: [{ credit_entry_id: { in: entries.map(entry => entry.id) } }, { reversal_credit_entry_id: { in: entries.map(entry => entry.id) } }] }, take: 1 });
           if (returns.length || supplierReturns.length) throw new InventoryError("Return credits cannot be edited. Record a separate adjustment if needed.");
@@ -810,6 +813,7 @@ export async function POST(req: NextRequest) {
         await partySettlementTransaction(prisma, async tx => {
           const entries = await tx.cashbook.findMany({ where, select: { id: true, account_name: true }, orderBy: { id: "asc" } });
           for (const entry of entries) await tx.$queryRawUnsafe('SELECT id FROM cashbook WHERE id = $1::uuid FOR UPDATE', entry.id);
+          await assertNoDirectSettlementEntries(tx, entries.map(e => e.id));
           const returns = await tx.invoiceReturn.findMany({ where: { OR: [{ credit_entry_id: { in: entries.map(entry => entry.id) } }, { reversal_credit_entry_id: { in: entries.map(entry => entry.id) } }] }, take: 1 });
           const supplierReturns = await tx.supplierReturn.findMany({ where: { OR: [{ credit_entry_id: { in: entries.map(entry => entry.id) } }, { reversal_credit_entry_id: { in: entries.map(entry => entry.id) } }] }, take: 1 });
           if (returns.length || supplierReturns.length) throw new InventoryError("Return credits cannot be deleted. Return history must remain intact.");
@@ -895,6 +899,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data: null, error: { message: err.message } }, { status: 400 });
     }
     const code = (err as { code?: string } | null)?.code;
+    if (code === "P2003" && ["accounts", "suppliers", "purchase_orders", "cashbook"].includes(table)) {
+      return NextResponse.json({ data: null, error: { message: "This record has linked financial history and cannot be deleted." } }, { status: 409 });
+    }
     if (code === "P2003" && table === "products") {
       return NextResponse.json({ data: null, error: { message: "This product is used in an invoice and cannot be deleted." } }, { status: 409 });
     }

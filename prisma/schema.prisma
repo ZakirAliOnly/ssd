@@ -116,6 +116,7 @@ model HeadAccount {
 }
 
 model Account {
+  direct_settlements DirectSettlement[]
   id           String      @id @default(uuid()) @db.Uuid
   name         String
   head_id      String?     @db.Uuid
@@ -173,6 +174,10 @@ model ProductCategory {
 }
 
 model Cashbook {
+  direct_customer DirectSettlement? @relation("DirectCustomer")
+  direct_supplier DirectSettlement? @relation("DirectSupplier")
+  direct_customer_reversal DirectSettlement? @relation("DirectCustomerReversal")
+  direct_supplier_reversal DirectSettlement? @relation("DirectSupplierReversal")
   supplier_return SupplierReturn?
   invoice_return InvoiceReturn?
   sales_reversal InvoiceReturn? @relation("SalesReversalCredit")
@@ -365,6 +370,7 @@ model QuotationItem {
 }
 
 model Supplier {
+  direct_settlements DirectSettlement[]
   id              String          @id @default(uuid()) @db.Uuid
   name            String
   phone           String          @default("")
@@ -378,6 +384,7 @@ model Supplier {
 }
 
 model PurchaseOrder {
+  direct_allocations DirectSettlementAllocation[]
   returns SupplierReturn[]
   id                String              @id @default(uuid()) @db.Uuid
   po_number         String              @unique
@@ -756,4 +763,50 @@ model ReturnPeriodLock {
   closed_through DateTime? @db.Date
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
   @@map("return_period_lock")
+}
+
+// One immutable business event with two noncash ledger credits.
+model DirectSettlement {
+  id String @id @default(uuid()) @db.Uuid
+  request_id String @unique @db.Uuid
+  customer_id String @db.Uuid
+  customer Account @relation(fields: [customer_id], references: [id], onDelete: Restrict)
+  supplier_id String @db.Uuid
+  supplier Supplier @relation(fields: [supplier_id], references: [id], onDelete: Restrict)
+  customer_name String
+  supplier_name String
+  amount Decimal @db.Decimal(12, 2)
+  date DateTime @db.Date
+  reference String @default("")
+  notes String @default("")
+  opening_applied Decimal @default(0) @db.Decimal(12, 2)
+  customer_entry_id String @unique @db.Uuid
+  customer_entry Cashbook @relation("DirectCustomer", fields: [customer_entry_id], references: [id], onDelete: Restrict)
+  supplier_entry_id String @unique @db.Uuid
+  supplier_entry Cashbook @relation("DirectSupplier", fields: [supplier_entry_id], references: [id], onDelete: Restrict)
+  created_by_email String
+  created_by_name String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  reversed_at DateTime? @db.Timestamptz(6)
+  reversal_reason String @default("")
+  reversed_by_email String @default("")
+  reversed_by_name String @default("")
+  customer_reversal_id String? @unique @db.Uuid
+  customer_reversal Cashbook? @relation("DirectCustomerReversal", fields: [customer_reversal_id], references: [id], onDelete: Restrict)
+  supplier_reversal_id String? @unique @db.Uuid
+  supplier_reversal Cashbook? @relation("DirectSupplierReversal", fields: [supplier_reversal_id], references: [id], onDelete: Restrict)
+  allocations DirectSettlementAllocation[]
+  @@index([date, created_at])
+  @@map("direct_settlements")
+}
+
+model DirectSettlementAllocation {
+  id String @id @default(uuid()) @db.Uuid
+  settlement_id String @db.Uuid
+  settlement DirectSettlement @relation(fields: [settlement_id], references: [id], onDelete: Restrict)
+  purchase_order_id String @db.Uuid
+  purchase_order PurchaseOrder @relation(fields: [purchase_order_id], references: [id], onDelete: Restrict)
+  amount Decimal @db.Decimal(12, 2)
+  @@unique([settlement_id, purchase_order_id])
+  @@map("direct_settlement_allocations")
 }
