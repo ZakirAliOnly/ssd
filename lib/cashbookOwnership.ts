@@ -14,7 +14,7 @@ export function supplierCashbookMatcher(suppliers: SupplierRef[] = [], purchases
     // Reserved application-generated labels cover clearly identified old rows
     // whose original supplier/purchase reference is missing. Never infer from
     // the shared party/supplier name alone.
-    return /^(supplier (payment|return|refund)|purchase (invoice|order|payment))\b/i.test((entry.description ?? "").trim());
+    return /^(supplier (payment|return|refund|direct settlement)|purchase (invoice|order|payment))\b/i.test((entry.description ?? "").trim());
   };
 }
 

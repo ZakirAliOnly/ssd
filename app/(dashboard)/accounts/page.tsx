@@ -1,5 +1,7 @@
 "use client";
 
+import { useLedgerDeepLink } from "@/lib/useLedgerDeepLink";
+
 import { hasWhatsAppAutomation } from "@/lib/whatsappAutomation";
 import { InvoiceUnitSelect } from "@/components/InvoiceUnitSelect";
 import { productUnits, unitSalePrice, unitLabel, type Packaging } from "@/lib/productUnits";
@@ -517,6 +519,8 @@ export default function AccountsPage() {
     setLedgerDateFrom(from);
     setLedgerDateTo(to);
   }
+
+  useLedgerDeepLink(accounts, openLedgerModal);
 
   async function openLedgerModal(account: Account) {
     setLedgerAccount(account);

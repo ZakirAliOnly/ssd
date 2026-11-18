@@ -46,7 +46,7 @@ export function buildSupplierStatements(
   for (const entry of cashbook) {
     if (seen.has(entry.id)) continue;
     seen.add(entry.id);
-    const returnCredit = /^supplier return\b/i.test(entry.description) && entry.method?.trim().toLowerCase() === "adjustment";
+    const returnCredit = /^supplier (return|direct settlement)\b/i.test(entry.description) && entry.method?.trim().toLowerCase() === "adjustment";
     if (!returnCredit && (/^(opening balance|balance adjustment)/i.test(entry.description)
       || entry.method?.trim().toLowerCase() === "adjustment")) continue;
     const reference = entry.reference?.trim();
@@ -66,7 +66,10 @@ export function buildSupplierStatements(
     const entries = payments.get(supplier.id) ?? [];
     const paid = orders.reduce((sum, p) => sum + Number(p.amount_paid), 0);
     const cashPaid = entries.filter(e => e.type === "out" && e.method?.trim().toLowerCase() !== "adjustment").reduce((sum, e) => sum + Number(e.amount), 0);
-    const originalOpening = money(Number(supplier.opening_balance ?? 0) + Math.max(0, cashPaid - paid));
+    const directPaid = entries.filter(e => /^supplier direct settlement\b/i.test(e.description) && e.method?.trim().toLowerCase() === "adjustment")
+      .reduce((sum, e) => sum + (e.type === "out" ? 1 : -1) * Number(e.amount), 0);
+    const linkedPaid = cashPaid + directPaid;
+    const originalOpening = money(Number(supplier.opening_balance ?? 0) + Math.max(0, linkedPaid - paid));
     const all: (Omit<SupplierStatementRow, "balance"> & { sortAt: string })[] = [];
     if (originalOpening) {
       const date = supplier.created_at.slice(0, 10);
@@ -89,7 +92,7 @@ export function buildSupplierStatements(
     });
     const debit = money(rows.reduce((sum, r) => sum + r.debit, 0));
     const credit = money(rows.reduce((sum, r) => sum + r.credit, 0));
-    const warning = uncertain.has(supplier.id) || money(paid - cashPaid) > 0.01
+    const warning = uncertain.has(supplier.id) || money(paid - linkedPaid) > 0.01
       ? "Some payment history could not be linked reliably. This statement may be incomplete; review the supplier ledger and cashbook."
       : null;
     return { supplier, opening, debit, credit, closing: money(opening + debit - credit), rows, warning };

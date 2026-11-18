@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { DirectSettlements } from "@/components/DirectSettlements";
 import { db } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
@@ -383,6 +384,8 @@ function isWalkInAccount(accountName: string): boolean {
           </button>
         </div>
       </div>
+
+      <DirectSettlements historyOnly />
 
       {/* Per-method current balances + today's activity cards — admin only */}
       {userProfile?.isAdmin && (() => {

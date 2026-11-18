@@ -132,6 +132,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
   }
   const prisma = {
     returnPeriodLock: { findUnique: async () => null },
+    directSettlement: { findFirst: async () => null }, directSettlementAllocation: { findFirst: async () => null },
     product: model("products"), invoice: model("invoices"), invoiceItem: model("invoiceItems"), stockBatch: model("batches"),
     stockAllocation: model("allocations"), purchaseOrder: model("purchases"), purchaseOrderItem: model("purchaseItems"), supplier: model("suppliers"),
     quickInvoice: model("quickInvoices"), quickInvoiceItem: model("quickInvoiceItems"), user: { findUnique: async () => profile }, $queryRawUnsafe: async () => [],
@@ -148,6 +149,7 @@ export function harness(profile = { role: "super_admin", modules: [], is_active:
   const dbRouteModule = { exports: {} };
   const dependencies = {
     "@/lib/partyInvoiceSettlement": partyInvoiceSettlement,
+    "@/lib/directSettlements": tsLoader()("lib/directSettlements.ts"),
     "@/lib/whatsappOutbox": { enqueueInvoice: async () => {}, enqueuePayment: async () => {} },
     "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
     "@/lib/prisma": { prisma }, "@/lib/auth": { COOKIE_NAME: "auth", verifyToken: async () => ({ sub: randomUUID(), email: "test@example.com", full_name: "Test" }) },
