@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { db } from "@/lib/db";
 import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
 import { Printer, FileText } from "lucide-react";
@@ -24,33 +24,48 @@ export default function InvoiceReportPage() {
   const [allAccounts, setAllAccounts] = useState<{ id: string; name: string }[]>([]);
 
   // Filters
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().split("T")[0];
-  });
+  const [fromDate, setFromDate] = useState(() => `${todayISO().slice(0, 7)}-01`);
   const [toDate, setToDate] = useState(todayISO());
   const [clientFilter, setClientFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "partial" | "unpaid">("all");
 
+  const requestId = useRef(0);
+  const [error, setError] = useState("");
+  const invalidRange = !!fromDate && !!toDate && fromDate > toDate;
+
   const fetchData = useCallback(async () => {
+    const id = ++requestId.current;
+    setInvoices([]);
+    setError("");
+    if (fromDate && toDate && fromDate > toDate) {
+      setLoading(false);
+      setError("From Date must be on or before To Date.");
+      return;
+    }
     setLoading(true);
-    const [{ data: invData }, { data: acctData }] = await Promise.all([
-      db
-        .from("invoices")
-        .select("*")
-        .gte("invoice_date", fromDate)
-        .lte("invoice_date", toDate)
-        .order("invoice_date", { ascending: true })
-        .order("created_at", { ascending: true }),
-      db.from("accounts").select("id, name").order("name"),
-    ]);
-    if (invData) setInvoices(invData);
-    if (acctData) setAllAccounts(acctData);
-    setLoading(false);
+    try {
+      let query = db.from("invoices").select("*");
+      if (fromDate) query = query.gte("invoice_date", fromDate);
+      if (toDate) query = query.lte("invoice_date", toDate);
+      const [inv, accounts] = await Promise.all([
+        query.order("invoice_date", { ascending: true }).order("created_at", { ascending: true }),
+        db.from("accounts").select("id, name").order("name"),
+      ]);
+      if (id !== requestId.current) return;
+      if (inv.error) throw new Error(inv.error.message);
+      setInvoices(inv.data ?? []);
+      if (accounts.data) setAllAccounts(accounts.data);
+    } catch (e) {
+      if (id === requestId.current) setError(e instanceof Error ? e.message : "Could not load invoice report.");
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
   }, [fromDate, toDate]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    void fetchData();
+    return () => { requestId.current++; };
+  }, [fetchData]);
 
   // Filtered list
   const filtered = invoices.filter((inv) => {
@@ -77,7 +92,7 @@ export default function InvoiceReportPage() {
             <h1 className="text-xl font-extrabold" style={{ color: "var(--gray-900)" }}>Invoice Report</h1>
             <p className="text-xs mt-0.5" style={{ color: "var(--gray-800)" }}>Summary of all invoices for the selected period</p>
           </div>
-          <button onClick={() => window.print()}
+          <button disabled={loading || !!error || invalidRange} onClick={() => window.print()}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[9px] text-[12.5px] font-semibold border-[1.5px] bg-white cursor-pointer"
             style={{ borderColor: "var(--gray-200)", color: "var(--blue-deeper)" }}>
             <Printer size={14} /> Print / PDF
@@ -89,13 +104,13 @@ export default function InvoiceReportPage() {
           style={{ boxShadow: "var(--shadow-sm)" }}>
           <div className="flex flex-col gap-1">
             <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>From Date</label>
-            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+            <input aria-label="From Date" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
               className="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] outline-none"
               style={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }} />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[9.5px] font-bold tracking-[1.2px] uppercase" style={{ color: "var(--blue-deeper)" }}>To Date</label>
-            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+            <input aria-label="To Date" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
               className="border-[1.5px] rounded-[8px] px-2.5 py-1.5 text-[12.5px] outline-none"
               style={{ borderColor: "var(--gray-200)", background: "var(--gray-50)", color: "var(--gray-900)" }} />
           </div>
@@ -127,6 +142,10 @@ export default function InvoiceReportPage() {
             </div>
           </div>
         </div>
+
+        {error && <div role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          {error}{!invalidRange && <button type="button" className="ml-2 underline" onClick={() => void fetchData()}>Retry</button>}
+        </div>}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
