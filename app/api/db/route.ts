@@ -170,10 +170,11 @@ function buildWhere(filters: Filter[], table?: string): Record<string, unknown> 
         where[f.col] = f.val; // null
         break;
       case "gte":
-        where[f.col] = { gte: coerce(f.col, f.val) };
-        break;
       case "lte":
-        where[f.col] = { lte: coerce(f.col, f.val) };
+        // Keep every bound, even when multiple filters target the same column.
+        // Assigning where[col] here discarded the earlier start/end date.
+        where.AND = [...(where.AND as Record<string, unknown>[] ?? []),
+          { [f.col]: { [f.type]: coerce(f.col, f.val) } }];
         break;
     }
   }
