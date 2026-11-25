@@ -3,7 +3,7 @@
 import { useLedgerDeepLink } from "@/lib/useLedgerDeepLink";
 
 import { hasWhatsAppAutomation } from "@/lib/whatsappAutomation";
-import { Fragment, useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { db, savePurchase } from "@/lib/db";
 import { showToast } from "@/components/Toast";
 import { formatCurrency, formatDate, todayISO } from "@/lib/helpers";
@@ -19,6 +19,9 @@ import {
   Wallet,
   FileText,
   BookOpen,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { DT } from "@/lib/dataTableStyles";
 import html2canvas from "html2canvas";
@@ -138,6 +141,20 @@ export default function SupplierPage() {
   const { methods: paymentMethods } = usePaymentMethods();
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
   const [savedPOs, setSavedPOs] = useState<SavedPO[]>([]);
+  const [poSearch, setPoSearch] = useState("");
+  const [poPage, setPoPage] = useState(1);
+  const [poPageSize, setPoPageSize] = useState(10);
+  const [poLoading, setPoLoading] = useState(true);
+  const [poError, setPoError] = useState("");
+  const filteredPOs = useMemo(() => {
+    const query = poSearch.trim().toLowerCase();
+    return savedPOs.filter(po => !query || po.po_number.toLowerCase().includes(query)
+      || po.supplier_name.toLowerCase().includes(query));
+  }, [savedPOs, poSearch]);
+  const poPages = Math.max(1, Math.ceil(filteredPOs.length / poPageSize));
+  const currentPoPage = Math.min(poPage, poPages);
+  const poStart = (currentPoPage - 1) * poPageSize;
+  const visiblePOs = filteredPOs.slice(poStart, poStart + poPageSize);
   const [poDraft, setPoDraft] = useState<PoDraft | null>(null);
   const [editPoId, setEditPoId] = useState<string | null>(null);
   const purchaseSaveRef = useRef(false);
@@ -197,13 +214,18 @@ export default function SupplierPage() {
   }, []);
 
   const fetchPOs = useCallback(async () => {
-    const { data } = await db
+    setPoLoading(true);
+    setPoError("");
+    const { data, error } = await db
       .from("purchase_orders")
       .select(
         "id, po_number, supplier_id, supplier_name, supplier_phone, order_date, grand_total, amount_paid, balance_due, payment_status"
       )
       .order("created_at", { ascending: false })
-      .limit(80);
+      .order("id", { ascending: false });
+    // Keep all headers for search, supplier balances and the purchase editor.
+    // Only the purchase-invoice table is paginated; items load on demand.
+    if (error) setPoError(error.message);
     if (data) {
       setSavedPOs(
         (data as SavedPO[]).map((r) => ({
@@ -214,6 +236,7 @@ export default function SupplierPage() {
         }))
       );
     }
+    setPoLoading(false);
   }, []);
 
   useEffect(() => {
@@ -1249,16 +1272,35 @@ export default function SupplierPage() {
           </div>
         </section>
 
-        <section>
+        <section aria-label="Purchase invoices">
           <div className="flex items-center gap-2.5 mb-3">
             <span className="text-[10px] font-bold tracking-[2px] uppercase" style={{ color: "var(--gray-700)" }}>
               Purchase invoices
             </span>
             <div className="flex-1 h-px" style={{ background: "var(--gray-200)" }} />
-            <span className="text-[11px] font-semibold" style={{ color: "var(--gray-700)" }}>{savedPOs.length}</span>
+            <span className="text-[11px] font-semibold" style={{ color: "var(--gray-700)" }}>{filteredPOs.length}{poSearch.trim() ? ` of ${savedPOs.length}` : ""}</span>
           </div>
           <div className="bg-white rounded-[14px] border border-[var(--gray-100)] overflow-hidden" style={{ boxShadow: "var(--shadow-sm)" }}>
-            <div className="overflow-x-auto">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-[var(--gray-100)]">
+              <div className="relative w-full sm:max-w-md">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
+                <input type="search" aria-label="Search purchase invoices" placeholder="Search by PO number or supplier / party name"
+                  value={poSearch} onChange={event => { setPoSearch(event.target.value); setPoPage(1); }}
+                  className="w-full rounded-[9px] border border-[var(--gray-200)] py-2.5 pl-9 pr-10 text-sm outline-none focus:border-sky-500" />
+                {poSearch && <button type="button" aria-label="Clear purchase search" onClick={() => { setPoSearch(""); setPoPage(1); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500"><X size={15} /></button>}
+              </div>
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">Rows per page
+                <select value={poPageSize} onChange={event => { setPoPageSize(Number(event.target.value)); setPoPage(1); }}
+                  className="rounded-lg border border-[var(--gray-200)] bg-white px-2 py-2">
+                  {[10, 25, 50].map(size => <option key={size} value={size}>{size}</option>)}
+                </select>
+              </label>
+            </div>
+            {poError && <div role="alert" className="p-4 text-sm text-red-700">Could not load purchase invoices. {poError}
+              <button type="button" onClick={() => void fetchPOs()} className="ml-2 underline">Retry</button>
+            </div>}
+            <div className="overflow-x-auto" aria-busy={poLoading}>
               <table className={`${DT.table} min-w-[720px]`}>
                 <thead>
                   <tr>
@@ -1274,14 +1316,14 @@ export default function SupplierPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {savedPOs.length === 0 ? (
+                  {poLoading || filteredPOs.length === 0 ? (
                     <tr>
                       <td colSpan={7} className={DT.empty} style={DT.emptyStyle}>
-                        No purchase invoices yet
+                        {poLoading ? "Loading purchase invoices…" : poError ? "Purchase invoices unavailable" : poSearch.trim() ? "No purchase invoices match your search" : "No purchase invoices yet"}
                       </td>
                     </tr>
                   ) : (
-                    savedPOs.map((po) => {
+                    visiblePOs.map((po) => {
                       const st = STATUS[po.payment_status] ?? STATUS.unpaid;
                       return (
                         <tr key={po.id} className={DT.row}>
@@ -1376,6 +1418,20 @@ export default function SupplierPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--gray-100)] px-4 py-3 text-xs text-slate-600">
+              <p aria-live="polite">{poLoading ? "Loading…" : `Showing ${filteredPOs.length ? poStart + 1 : 0}–${Math.min(poStart + poPageSize, filteredPOs.length)} of ${filteredPOs.length} purchase invoices`}</p>
+              <nav aria-label="Purchase invoice pagination" className="flex items-center gap-3">
+                <button type="button" aria-label="Previous purchase page" disabled={poLoading || currentPoPage === 1}
+                  onClick={() => setPoPage(currentPoPage - 1)} className="flex items-center gap-1 rounded-lg border border-[var(--gray-200)] px-3 py-2 font-semibold disabled:opacity-40">
+                  <ChevronLeft size={14} />Previous
+                </button>
+                <span>Page {currentPoPage} of {poPages}</span>
+                <button type="button" aria-label="Next purchase page" disabled={poLoading || currentPoPage === poPages}
+                  onClick={() => setPoPage(currentPoPage + 1)} className="flex items-center gap-1 rounded-lg border border-[var(--gray-200)] px-3 py-2 font-semibold disabled:opacity-40">
+                  Next<ChevronRight size={14} />
+                </button>
+              </nav>
             </div>
           </div>
         </section>
