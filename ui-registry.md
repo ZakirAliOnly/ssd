@@ -338,3 +338,10 @@ Retain the colorful A4 logo, centered business title and blue address/contact te
 ### Product activity (Update 033)
 
 Edit Product uses a labelled Product status fieldset with Active and Inactive buttons. Use aria-pressed, blue-deeper selected background with white text, outlined unselected buttons and visible keyboard focus. Save status with the other product fields. Default the product list to Active; offer Inactive and All filters so hidden products can be reactivated. Show an Inactive label beside inactive names in management views. Keep historical document content intact.
+
+### Invoice report party header (Update 043)
+
+File: app/(dashboard)/invoice-report/page.tsx
+Last updated: 2026-11-28
+
+Preserve the blue #0369a1 report title bar and white text. Use a bold 20px party name above the 12px date range in the right-hand group, with 4px separation. Allow long names and the title bar to wrap without overlap. Print seven columns with no repeated Client / Party column, and span the totals label across the first three columns.
